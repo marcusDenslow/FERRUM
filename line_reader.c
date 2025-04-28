@@ -8,6 +8,7 @@
 #include "bookmarks.h" // Added for bookmark support
 #include "builtins.h"  // Added for history access
 #include "common.h"
+#include "git_integration.h"
 #include "persistent_history.h"
 #include "tab_complete.h"
 #include "themes.h"
@@ -22,6 +23,22 @@
 #ifndef PATH_MAX
 #define PATH_MAX 4096
 #endif
+
+// Suggestion state - make these global
+static int has_suggestion = 0;
+static int suggestion_index = 0;
+static char **suggestions = NULL;
+static int suggestion_count = 0;
+static char full_suggestion[LSH_RL_BUFSIZE] = {0};
+static int prefix_start = 0;
+static int menu_mode = 0;
+static int menu_start_line = 0;
+
+// Define colors for suggestions
+#define SUGGESTION_COLOR "\033[2;37m"  // Dim white color for suggestions
+#define HIGHLIGHT_COLOR "\033[7;36m"   // Highlighted background for selected item
+#define NORMAL_COLOR "\033[0;36m"      // Normal color for menu items
+#define RESET_COLOR "\033[0m"
 
 /**
  * Check if a command is valid
@@ -55,6 +72,52 @@ int is_valid_command(const char *cmd) {
   if (alias) {
     return 1;
   }
+
+  void generate_enhanced_prompt(char *prompt_buffer, size_t buffer_size) {
+    // Get current directory information
+    char cwd[PATH_MAX];
+    char parent_dir[PATH_MAX / 2];
+    char current_dir[PATH_MAX / 2];
+
+    if (getcwd(cwd, sizeof(cwd)) != NULL) {
+        get_path_display(cwd, parent_dir, current_dir, PATH_MAX / 2);
+    } else {
+        strcpy(parent_dir, "unknown");
+        strcpy(current_dir, "dir");
+    }
+
+    // Get Git information - modified to extract just the branch name
+    char git_display[LSH_RL_BUFSIZE] = {0};
+    char *git_status_info = get_git_status();
+    if (git_status_info != NULL) {
+        // Extract just the branch name from git status info
+        char branch_name[LSH_RL_BUFSIZE] = {0};
+        char *paren_open = strchr(git_status_info, '(');
+        char *paren_close = strchr(git_status_info, ')');
+        
+        if (paren_open && paren_close && paren_close > paren_open) {
+            // Extract content between parentheses - should be the branch name
+            size_t branch_len = paren_close - paren_open - 1;
+            if (branch_len < sizeof(branch_name)) {
+                strncpy(branch_name, paren_open + 1, branch_len);
+                branch_name[branch_len] = '\0';
+                snprintf(git_display, sizeof(git_display), " \033[1;35mgit:(%s)\033[0m", branch_name);
+            } else {
+                // Fallback if branch name is too long
+                snprintf(git_display, sizeof(git_display), " \033[1;35mgit:(?)\033[0m");
+            }
+        } else {
+            // If we can't parse the branch name, just use the whole status
+            snprintf(git_display, sizeof(git_display), " \033[1;35mgit:(%s)\033[0m", git_status_info);
+        }
+        
+        free(git_status_info);
+    }
+
+    // Format the prompt
+    snprintf(prompt_buffer, buffer_size, "\033[1;36m%s/%s\033[0m%s \033[1;31m✗\033[0m ", 
+             parent_dir, current_dir, git_display);
+}
 
   // Check if it's an executable in PATH
   // We'll use a simplified approach - check if the file exists and is executable
@@ -111,7 +174,6 @@ int read_key(void) {
   char seq[6];
   
   // Define local constants for special keys 
-  // We avoid modifying common.h by using local constants
   #define LOCAL_KEY_SHIFT_ENTER 1010
   
   // Read a character
@@ -156,7 +218,6 @@ int read_key(void) {
       }
       
       // Check for Shift+Enter sequence (varies by terminal, try common forms)
-      // Note: These may vary widely between terminals
       if (i >= 3) {
         // xterm/vte: ESC [ 13 ; 2 ~
         if (seq[0] == '[' && seq[1] == '1' && seq[2] == '3' && i >= 5 && seq[3] == ';' && seq[4] == '2') {
@@ -177,123 +238,165 @@ int read_key(void) {
 }
 
 /**
- * Read a line of input from the user
- *
- * @return The line read from stdin
+ * Update suggestions based on current input
  */
-char *lsh_read_line(void) {
-  int bufsize = LSH_RL_BUFSIZE;
-  int position = 0;
-  char *buffer = malloc(sizeof(char) * bufsize);
-  int c;
-  int history_position = -1;
-  int show_suggestions = 0;
-  
-  // Suggestion state
-  static int has_suggestion = 0;
-  static int suggestion_index = 0;
-  static char **suggestions = NULL;
-  static int suggestion_count = 0;
-  static char full_suggestion[LSH_RL_BUFSIZE] = {0};
-  static int prefix_start = 0;
-  
-  // Define colors for suggestions
-  #define SUGGESTION_COLOR "\033[2;37m"  // Dim white color for suggestions
-  #define COUNTER_COLOR "\033[0;36m"     // Cyan color for the counter
-  #define RESET_COLOR "\033[0m"
-  
-  if (!buffer) {
-    fprintf(stderr, "lsh: allocation error\n");
-    exit(EXIT_FAILURE);
-  }
-  
-  // Clear the buffer
-  buffer[0] = '\0';
-  
-  // Display prompt
-  printf("\033[1;32m➜\033[0m ");
-  fflush(stdout);
-
-  // Function to check if current input exactly matches current suggestion
-  int is_complete_match() {
-    if (!has_suggestion || suggestion_count == 0) {
-      return 0;  // No suggestion to compare with
+void update_suggestions(const char *buffer, int position) {
+  // Free previous suggestions if any
+  if (suggestions) {
+    for (int i = 0; i < suggestion_count; i++) {
+      if (suggestions[i]) free(suggestions[i]);
     }
-    
-    // If we're typing a command (not an argument)
-    if (prefix_start == 0) {
-      // Check if buffer exactly matches the current suggestion
-      return (strcasecmp(buffer, suggestions[suggestion_index]) == 0);
-    } else {
-      // We're completing an argument
-      // Check if the part after the last space exactly matches the suggestion
-      char *arg_part = buffer + prefix_start;
-      return (strcasecmp(arg_part, suggestions[suggestion_index]) == 0);
-    }
-  }
-
-  // Function to update and display suggestions
-  void update_suggestions() {
-    // Free previous suggestions if any
-    if (suggestions) {
-      for (int i = 0; i < suggestion_count; i++) {
-        if (suggestions[i]) free(suggestions[i]);
-      }
-      free(suggestions);
-      suggestions = NULL;
-      suggestion_count = 0;
-    }
-    
-    has_suggestion = 0;
-    
-    // Parse command line
-    prefix_start = 0;
-    
-    // Find the last space to determine where the prefix starts
-    char *last_space = strrchr(buffer, ' ');
-    if (last_space) {
-      // We have a command and partial argument
-      prefix_start = (last_space - buffer) + 1;
-      
-      // Skip additional spaces
-      while (buffer[prefix_start] == ' ' && buffer[prefix_start] != '\0') {
-        prefix_start++;
-      }
-    } else {
-      // Just a command, no arguments
-      prefix_start = 0;
-    }
-    
-    // Build list of suggestions
+    free(suggestions);
     suggestions = NULL;
     suggestion_count = 0;
+  }
+  
+  has_suggestion = 0;
+  
+  // Parse command line
+  prefix_start = 0;
+  
+  // Find the last space to determine where the prefix starts
+  char *last_space = strrchr(buffer, ' ');
+  if (last_space) {
+    // We have a command and partial argument
+    prefix_start = (last_space - buffer) + 1;
     
-    // Get command or file suggestions based on context
-    if (!last_space) {
-      // Command suggestions
-      // First count how many we'll need
-      for (int i = 0; i < lsh_num_builtins(); i++) {
-        if (strncasecmp(builtin_str[i], buffer, strlen(buffer)) == 0) {
+    // Skip additional spaces
+    while (buffer[prefix_start] == ' ' && buffer[prefix_start] != '\0') {
+      prefix_start++;
+    }
+  } else {
+    // Just a command, no arguments
+    prefix_start = 0;
+  }
+  
+  // Build list of suggestions
+  suggestions = NULL;
+  suggestion_count = 0;
+  
+  // Get command or file suggestions based on context
+  if (!last_space) {
+    // Command suggestions
+    // First count how many we'll need
+    for (int i = 0; i < lsh_num_builtins(); i++) {
+      if (strncasecmp(builtin_str[i], buffer, strlen(buffer)) == 0) {
+        suggestion_count++;
+      }
+    }
+    
+    // Add alias count - rough estimate
+    int alias_count;
+    char **aliases = get_alias_names(&alias_count);
+    if (aliases) {
+      for (int i = 0; i < alias_count; i++) {
+        if (strncasecmp(aliases[i], buffer, strlen(buffer)) == 0) {
           suggestion_count++;
         }
       }
       
-      // Add alias count - rough estimate
-      int alias_count;
-      char **aliases = get_alias_names(&alias_count);
-      if (aliases) {
-        for (int i = 0; i < alias_count; i++) {
-          if (strncasecmp(aliases[i], buffer, strlen(buffer)) == 0) {
-            suggestion_count++;
-          }
+      // Free alias names, we'll get them again
+      for (int i = 0; i < alias_count; i++) {
+        free(aliases[i]);
+      }
+      free(aliases);
+    }
+    
+    // Allocate suggestions array
+    if (suggestion_count > 0) {
+      suggestions = (char**)malloc(suggestion_count * sizeof(char*));
+      if (!suggestions) {
+        fprintf(stderr, "Memory allocation error\n");
+        suggestion_count = 0;
+      } else {
+        // Initialize all entries to NULL
+        for (int i = 0; i < suggestion_count; i++) {
+          suggestions[i] = NULL;
+        }
+      }
+    }
+    
+    // Now fill the suggestions array
+    int idx = 0;
+    
+    // Add builtin commands
+    for (int i = 0; i < lsh_num_builtins() && idx < suggestion_count; i++) {
+      if (strncasecmp(builtin_str[i], buffer, strlen(buffer)) == 0) {
+        suggestions[idx++] = strdup(builtin_str[i]);
+      }
+    }
+    
+    // Add aliases
+    aliases = get_alias_names(&alias_count);
+    if (aliases) {
+      for (int i = 0; i < alias_count && idx < suggestion_count; i++) {
+        if (strncasecmp(aliases[i], buffer, strlen(buffer)) == 0) {
+          suggestions[idx++] = strdup(aliases[i]);
+        }
+      }
+      
+      // Free alias names
+      for (int i = 0; i < alias_count; i++) {
+        free(aliases[i]);
+      }
+      free(aliases);
+    }
+    
+    // Update actual suggestion count in case we got fewer than expected
+    suggestion_count = idx;
+  } else {
+    // File/directory suggestions
+    char prefix[PATH_MAX] = "";
+    char dir_path[PATH_MAX] = ".";
+    char name_prefix[PATH_MAX] = "";
+    
+    if (buffer[prefix_start] != '\0') {
+      strncpy(prefix, &buffer[prefix_start], sizeof(prefix) - 1);
+      prefix[sizeof(prefix) - 1] = '\0';
+      
+      // Split path into directory part and name prefix part
+      char *last_slash = strrchr(prefix, '/');
+      if (last_slash) {
+        // Path contains a directory part
+        int dir_len = last_slash - prefix;
+        strncpy(dir_path, prefix, dir_len);
+        dir_path[dir_len] = '\0';
+        
+        // Handle absolute path vs. relative path with subdirectories
+        if (dir_len == 0) {
+          // Handle case where path starts with '/'
+          strcpy(dir_path, "/");
         }
         
-        // Free alias names, we'll get them again
-        for (int i = 0; i < alias_count; i++) {
-          free(aliases[i]);
-        }
-        free(aliases);
+        // Extract the name prefix part (after the last slash)
+        strncpy(name_prefix, last_slash + 1, sizeof(name_prefix) - 1);
+        name_prefix[sizeof(name_prefix) - 1] = '\0';
+      } else {
+        // No directory part, just a name prefix
+        strncpy(name_prefix, prefix, sizeof(name_prefix) - 1);
+        name_prefix[sizeof(name_prefix) - 1] = '\0';
       }
+    }
+    
+    // Count matching files and directories
+    DIR *dir = opendir(dir_path);
+    if (dir) {
+      struct dirent *entry;
+      
+      // First count the number of matching entries
+      while ((entry = readdir(dir)) != NULL) {
+        // Skip "." and ".." if there's a name prefix
+        if (name_prefix[0] != '\0' && 
+            (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)) {
+          continue;
+        }
+        
+        if (strncasecmp(entry->d_name, name_prefix, strlen(name_prefix)) == 0) {
+          suggestion_count++;
+        }
+      }
+      
+      rewinddir(dir);
       
       // Allocate suggestions array
       if (suggestion_count > 0) {
@@ -309,409 +412,376 @@ char *lsh_read_line(void) {
         }
       }
       
-      // Now fill the suggestions array
+      // Fill the suggestions array
       int idx = 0;
-      
-      // Add builtin commands
-      for (int i = 0; i < lsh_num_builtins() && idx < suggestion_count; i++) {
-        if (strncasecmp(builtin_str[i], buffer, strlen(buffer)) == 0) {
-          suggestions[idx++] = strdup(builtin_str[i]);
-        }
-      }
-      
-      // Add aliases
-      aliases = get_alias_names(&alias_count);
-      if (aliases) {
-        for (int i = 0; i < alias_count && idx < suggestion_count; i++) {
-          if (strncasecmp(aliases[i], buffer, strlen(buffer)) == 0) {
-            suggestions[idx++] = strdup(aliases[i]);
-          }
+      while ((entry = readdir(dir)) != NULL && idx < suggestion_count) {
+        // Skip "." and ".." if there's a name prefix
+        if (name_prefix[0] != '\0' && 
+            (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)) {
+          continue;
         }
         
-        // Free alias names
-        for (int i = 0; i < alias_count; i++) {
-          free(aliases[i]);
-        }
-        free(aliases);
-      }
-      
-      // Update actual suggestion count in case we got fewer than expected
-      suggestion_count = idx;
-    } else {
-      // File/directory suggestions
-      char prefix[PATH_MAX] = "";
-      char dir_path[PATH_MAX] = ".";
-      char name_prefix[PATH_MAX] = "";
-      
-      if (buffer[prefix_start] != '\0') {
-        strncpy(prefix, &buffer[prefix_start], sizeof(prefix) - 1);
-        prefix[sizeof(prefix) - 1] = '\0';
-        
-        // Split path into directory part and name prefix part
-        char *last_slash = strrchr(prefix, '/');
-        if (last_slash) {
-          // Path contains a directory part
-          int dir_len = last_slash - prefix;
-          strncpy(dir_path, prefix, dir_len);
-          dir_path[dir_len] = '\0';
+        if (strncasecmp(entry->d_name, name_prefix, strlen(name_prefix)) == 0) {
+          // Create the full path suggestion
+          char full_path[PATH_MAX * 2];
           
-          // Handle absolute path vs. relative path with subdirectories
-          if (dir_len == 0) {
-            // Handle case where path starts with '/'
-            strcpy(dir_path, "/");
-          }
-          
-          // Extract the name prefix part (after the last slash)
-          strncpy(name_prefix, last_slash + 1, sizeof(name_prefix) - 1);
-          name_prefix[sizeof(name_prefix) - 1] = '\0';
-        } else {
-          // No directory part, just a name prefix
-          strncpy(name_prefix, prefix, sizeof(name_prefix) - 1);
-          name_prefix[sizeof(name_prefix) - 1] = '\0';
-        }
-      }
-      
-      // Count matching files and directories
-      DIR *dir = opendir(dir_path);
-      if (dir) {
-        struct dirent *entry;
-        
-        // First count the number of matching entries
-        while ((entry = readdir(dir)) != NULL) {
-          // Skip "." and ".." if there's a name prefix
-          if (name_prefix[0] != '\0' && 
-              (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)) {
-            continue;
-          }
-          
-          if (strncasecmp(entry->d_name, name_prefix, strlen(name_prefix)) == 0) {
-            suggestion_count++;
-          }
-        }
-        
-        rewinddir(dir);
-        
-        // Allocate suggestions array
-        if (suggestion_count > 0) {
-          suggestions = (char**)malloc(suggestion_count * sizeof(char*));
-          if (!suggestions) {
-            fprintf(stderr, "Memory allocation error\n");
-            suggestion_count = 0;
+          if (strcmp(dir_path, ".") == 0) {
+            strncpy(full_path, entry->d_name, sizeof(full_path) - 1);
+          } else if (dir_path[0] == '/' && dir_path[1] == '\0') {
+            snprintf(full_path, sizeof(full_path) - 1, "/%s", entry->d_name);
           } else {
-            // Initialize all entries to NULL
-            for (int i = 0; i < suggestion_count; i++) {
-              suggestions[i] = NULL;
-            }
-          }
-        }
-        
-        // Fill the suggestions array
-        int idx = 0;
-        while ((entry = readdir(dir)) != NULL && idx < suggestion_count) {
-          // Skip "." and ".." if there's a name prefix
-          if (name_prefix[0] != '\0' && 
-              (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)) {
-            continue;
+            snprintf(full_path, sizeof(full_path) - 1, "%s/%s", dir_path, entry->d_name);
           }
           
-          if (strncasecmp(entry->d_name, name_prefix, strlen(name_prefix)) == 0) {
-            // Create the full path suggestion
-            char full_path[PATH_MAX * 2];
-            
-            if (strcmp(dir_path, ".") == 0) {
-              strncpy(full_path, entry->d_name, sizeof(full_path) - 1);
-            } else if (dir_path[0] == '/' && dir_path[1] == '\0') {
-              snprintf(full_path, sizeof(full_path) - 1, "/%s", entry->d_name);
-            } else {
-              snprintf(full_path, sizeof(full_path) - 1, "%s/%s", dir_path, entry->d_name);
-            }
-            
-            // Check if it's a directory and add trailing slash if needed
-            struct stat st;
-            char check_path[PATH_MAX * 2];
-            
-            if (dir_path[0] == '/') {
-              // Absolute path
-              snprintf(check_path, sizeof(check_path) - 1, "%s/%s", dir_path, entry->d_name);
-            } else {
-              // Relative path
-              snprintf(check_path, sizeof(check_path) - 1, "%s/%s", dir_path, entry->d_name);
-            }
-            
-            if (stat(check_path, &st) == 0 && S_ISDIR(st.st_mode)) {
-              strncat(full_path, "/", sizeof(full_path) - strlen(full_path) - 1);
-            }
-            
-            suggestions[idx++] = strdup(full_path);
-          }
-        }
-        
-        // Update actual suggestion count
-        suggestion_count = idx;
-        
-        closedir(dir);
-      }
-    }
-    
-    // If we have suggestions, use the first one
-    if (suggestion_count > 0) {
-      has_suggestion = 1;
-      suggestion_index = 0;
-      
-      // Create the full suggestion string that Enter would accept
-      if (prefix_start > 0) {
-        // We're completing an argument
-        strncpy(full_suggestion, buffer, prefix_start);
-        full_suggestion[prefix_start] = '\0';
-        strncat(full_suggestion, suggestions[suggestion_index], 
-                sizeof(full_suggestion) - strlen(full_suggestion) - 1);
-      } else {
-        // We're completing a command
-        strncpy(full_suggestion, suggestions[suggestion_index], sizeof(full_suggestion) - 1);
-      }
-      full_suggestion[sizeof(full_suggestion) - 1] = '\0';
-      
-      // Determine what part should be in normal text and what part in suggestion color
-      char current_text[LSH_RL_BUFSIZE] = "";
-      char suggestion_text[LSH_RL_BUFSIZE] = "";
-      
-      strncpy(current_text, buffer, position);
-      current_text[position] = '\0';
-      
-      // Extract just the suggestion part (after what user typed)
-      int current_len = 0;
-      
-      if (prefix_start > 0) {
-        char current_arg[LSH_RL_BUFSIZE] = "";
-        strncpy(current_arg, &buffer[prefix_start], position - prefix_start);
-        current_arg[position - prefix_start] = '\0';
-        current_len = strlen(current_arg);
-        
-        if (current_len > 0) {
-          // Find where the current argument ends in the suggestion
-          char *suggestion_part = suggestions[suggestion_index];
-          if (strncasecmp(suggestion_part, current_arg, current_len) == 0) {
-            strncpy(suggestion_text, suggestion_part + current_len, 
-                    sizeof(suggestion_text) - 1);
-          }
-        } else {
-          // Use the entire suggestion
-          strncpy(suggestion_text, suggestions[suggestion_index], 
-                sizeof(suggestion_text) - 1);
-        }
-      } else {
-        // Completing a command
-        if (strlen(buffer) <= strlen(suggestions[suggestion_index]) &&
-            strncasecmp(suggestions[suggestion_index], buffer, strlen(buffer)) == 0) {
-          strncpy(suggestion_text, 
-                suggestions[suggestion_index] + strlen(buffer),
-                sizeof(suggestion_text) - 1);
-        }
-      }
-      
-      // If there's no suggestion text (exact match), then don't show suggestion
-      if (strlen(suggestion_text) == 0) {
-        // Clear the current line
-        printf("\r\033[K");
-        
-        // Display prompt and current text without suggestion
-        printf("\033[1;32m➜\033[0m %s", buffer);
-        fflush(stdout);
-      } else {
-        // Clear the current line
-        printf("\r\033[K");
-        
-        // Display prompt and current text
-        printf("\033[1;32m➜\033[0m %s", current_text);
-        
-        // Display the suggestion part in dim color
-        printf("%s%s%s", SUGGESTION_COLOR, suggestion_text, RESET_COLOR);
-        
-        // Show counter for which suggestion we're on
-        if (suggestion_count > 1) {
-          printf(" %s(%d/%d)%s", COUNTER_COLOR, suggestion_index + 1, suggestion_count, RESET_COLOR);
+          // Check if it's a directory and add trailing slash if needed
+          struct stat st;
+          char check_path[PATH_MAX * 2];
           
-          // Move cursor back to end of actual input (including the counter)
-          char counter_str[20];
-          snprintf(counter_str, sizeof(counter_str), " (%d/%d)", suggestion_index + 1, suggestion_count);
-          int counter_len = strlen(counter_str);
-          int suggestion_len = strlen(suggestion_text);
+          if (dir_path[0] == '/') {
+            // Absolute path
+            snprintf(check_path, sizeof(check_path) - 1, "%s/%s", dir_path, entry->d_name);
+          } else {
+            // Relative path
+            snprintf(check_path, sizeof(check_path) - 1, "%s/%s", dir_path, entry->d_name);
+          }
           
-          for (int i = 0; i < suggestion_len + counter_len; i++) {
-            printf("\b");
+          if (stat(check_path, &st) == 0 && S_ISDIR(st.st_mode)) {
+            strncat(full_path, "/", sizeof(full_path) - strlen(full_path) - 1);
           }
-        } else {
-          // Just move cursor back to end of actual input
-          int suggestion_len = strlen(suggestion_text);
-          for (int i = 0; i < suggestion_len; i++) {
-            printf("\b");
-          }
+          
+          suggestions[idx++] = strdup(full_path);
         }
-        
-        fflush(stdout);
       }
-    } else {
-      // No suggestions, just redraw the current line
-      printf("\r\033[K\033[1;32m➜\033[0m %s", buffer);
-      fflush(stdout);
+      
+      // Update actual suggestion count
+      suggestion_count = idx;
+      
+      closedir(dir);
     }
   }
   
-  // Function to display the current suggestion (used after tab cycling)
-  void display_current_suggestion() {
-    if (has_suggestion && suggestion_count > 0) {
-      // Create the full suggestion string
-      if (prefix_start > 0) {
-        // We're completing an argument
-        strncpy(full_suggestion, buffer, prefix_start);
-        full_suggestion[prefix_start] = '\0';
-        strncat(full_suggestion, suggestions[suggestion_index], 
-                sizeof(full_suggestion) - strlen(full_suggestion) - 1);
-      } else {
-        // We're completing a command
-        strncpy(full_suggestion, suggestions[suggestion_index], sizeof(full_suggestion) - 1);
-      }
-      full_suggestion[sizeof(full_suggestion) - 1] = '\0';
+  // If we have suggestions, use the first one
+  if (suggestion_count > 0) {
+    has_suggestion = 1;
+    suggestion_index = 0;
+    
+    // Create the full suggestion string that would be accepted
+    if (prefix_start > 0) {
+      // We're completing an argument
+      strncpy(full_suggestion, buffer, prefix_start);
+      full_suggestion[prefix_start] = '\0';
+      strncat(full_suggestion, suggestions[suggestion_index], 
+              sizeof(full_suggestion) - strlen(full_suggestion) - 1);
+    } else {
+      // We're completing a command
+      strncpy(full_suggestion, suggestions[suggestion_index], sizeof(full_suggestion) - 1);
+    }
+    full_suggestion[sizeof(full_suggestion) - 1] = '\0';
+  }
+}
+
+/**
+ * Display a single inline suggestion (when not in menu mode)
+ */
+void display_inline_suggestion(const char *prompt_buffer, const char *buffer, int position) {
+  if (has_suggestion && suggestion_count > 0) {
+    // Determine what part should be in normal text and what part in suggestion color
+    char current_text[LSH_RL_BUFSIZE] = "";
+    char suggestion_text[LSH_RL_BUFSIZE] = "";
+    
+    strncpy(current_text, buffer, position);
+    current_text[position] = '\0';
+    
+    // Extract just the suggestion part (after what user typed)
+    int current_len = 0;
+    
+    if (prefix_start > 0) {
+      char current_arg[LSH_RL_BUFSIZE] = "";
+      strncpy(current_arg, &buffer[prefix_start], position - prefix_start);
+      current_arg[position - prefix_start] = '\0';
+      current_len = strlen(current_arg);
       
-      // Determine what part should be in normal text and what part in suggestion color
-      char current_text[LSH_RL_BUFSIZE] = "";
-      char suggestion_text[LSH_RL_BUFSIZE] = "";
-      
-      strncpy(current_text, buffer, position);
-      current_text[position] = '\0';
-      
-      // Extract just the suggestion part (after what user typed)
-      int current_len = 0;
-      
-      if (prefix_start > 0) {
-        char current_arg[LSH_RL_BUFSIZE] = "";
-        strncpy(current_arg, &buffer[prefix_start], position - prefix_start);
-        current_arg[position - prefix_start] = '\0';
-        current_len = strlen(current_arg);
-        
-        if (current_len > 0) {
-          // Find where the current argument ends in the suggestion
-          char *suggestion_part = suggestions[suggestion_index];
-          if (strncasecmp(suggestion_part, current_arg, current_len) == 0) {
-            strncpy(suggestion_text, suggestion_part + current_len, 
-                    sizeof(suggestion_text) - 1);
-          }
-        } else {
-          // Use the entire suggestion
-          strncpy(suggestion_text, suggestions[suggestion_index], 
-                sizeof(suggestion_text) - 1);
+      if (current_len > 0) {
+        // Find where the current argument ends in the suggestion
+        char *suggestion_part = suggestions[suggestion_index];
+        if (strncasecmp(suggestion_part, current_arg, current_len) == 0) {
+          strncpy(suggestion_text, suggestion_part + current_len, 
+                  sizeof(suggestion_text) - 1);
         }
       } else {
-        // Completing a command
-        if (strlen(buffer) <= strlen(suggestions[suggestion_index]) &&
-            strncasecmp(suggestions[suggestion_index], buffer, strlen(buffer)) == 0) {
-          strncpy(suggestion_text, 
-                suggestions[suggestion_index] + strlen(buffer),
-                sizeof(suggestion_text) - 1);
-        }
+        // Use the entire suggestion
+        strncpy(suggestion_text, suggestions[suggestion_index], 
+              sizeof(suggestion_text) - 1);
       }
+    } else {
+      // Completing a command
+      if (strlen(buffer) <= strlen(suggestions[suggestion_index]) &&
+          strncasecmp(suggestions[suggestion_index], buffer, strlen(buffer)) == 0) {
+        strncpy(suggestion_text, 
+              suggestions[suggestion_index] + strlen(buffer),
+              sizeof(suggestion_text) - 1);
+      }
+    }
+    
+    // If there's no suggestion text (exact match), then don't show suggestion
+    if (strlen(suggestion_text) == 0) {
+      // Clear the current line
+      printf("\r\033[K");
       
+      // Display prompt and current text without suggestion
+      printf("%s%s", prompt_buffer, buffer);
+      fflush(stdout);
+    } else {
       // Clear the current line
       printf("\r\033[K");
       
       // Display prompt and current text
-      printf("\033[1;32m➜\033[0m %s", current_text);
+      printf("%s%s", prompt_buffer, current_text);
       
       // Display the suggestion part in dim color
       printf("%s%s%s", SUGGESTION_COLOR, suggestion_text, RESET_COLOR);
       
-      // Show counter for which suggestion we're on
-      if (suggestion_count > 1) {
-        printf(" %s(%d/%d)%s", COUNTER_COLOR, suggestion_index + 1, suggestion_count, RESET_COLOR);
-        
-        // Move cursor back to end of actual input (including the counter)
-        char counter_str[20];
-        snprintf(counter_str, sizeof(counter_str), " (%d/%d)", suggestion_index + 1, suggestion_count);
-        int counter_len = strlen(counter_str);
-        int suggestion_len = strlen(suggestion_text);
-        
-        for (int i = 0; i < suggestion_len + counter_len; i++) {
-          printf("\b");
-        }
-      } else {
-        // Just move cursor back to end of actual input
-        int suggestion_len = strlen(suggestion_text);
-        for (int i = 0; i < suggestion_len; i++) {
-          printf("\b");
-        }
+      // Move cursor back to end of actual input
+      int suggestion_len = strlen(suggestion_text);
+      for (int i = 0; i < suggestion_len; i++) {
+        printf("\b");
       }
       
       fflush(stdout);
     }
+  } else {
+    // No suggestions, just redraw the current line
+    printf("\r\033[K%s%s", prompt_buffer, buffer);
+    fflush(stdout);
   }
+}
 
-  // Flag to track if we're in suggestion mode or execution mode
-  int suggestion_active = 1;  // Start in suggestion mode 
+/**
+ * Function to clear the menu
+ */
+void clear_menu() {
+  if (menu_start_line > 0) {
+    // Save current cursor position
+    printf("\033[s");
+    
+    // Move cursor to where the menu starts (one line below input)
+    printf("\033[1B\r");
+    
+    // Clear each line of the menu
+    for (int i = 0; i < menu_start_line; i++) {
+      printf("\033[K");  // Clear entire line
+      if (i < menu_start_line - 1) {
+        printf("\033[1B\r");  // Move down to next line if not the last
+      }
+    }
+    
+    // Restore cursor position (back to input line)
+    printf("\033[u");
+    fflush(stdout);
+    
+    menu_start_line = 0;
+  }
+}
+
+
+/**
+ * Function to display menu of suggestions
+ */
+
+void display_menu(const char *prompt_buffer, const char *buffer, int position) {
+  if (!has_suggestion || suggestion_count == 0) {
+    // No suggestions to show
+    return;
+  }
+  
+  // First, clear any existing menu
+  clear_menu();
+  
+  // Save current cursor position (should be at end of input)
+  printf("\033[s");
+  
+  // Calculate how many items to show
+  int show_count = suggestion_count;
+  if (show_count > 10) show_count = 10;  // Max 10 items in menu
+  
+  // Move to the beginning of the next line (below input)
+  printf("\n\r");
+  
+  // Display each suggestion on a line
+  for (int i = 0; i < show_count; i++) {
+    if (i > 0) {
+      printf("\n\r");  // New line for each suggestion after the first
+    }
+    
+    if (i == suggestion_index) {
+      // Highlight the selected item
+      printf("%s%s%s", HIGHLIGHT_COLOR, suggestions[i], RESET_COLOR);
+    } else {
+      // Normal color for non-selected items
+      printf("%s%s%s", NORMAL_COLOR, suggestions[i], RESET_COLOR);
+    }
+  }
+  
+  // Store number of menu lines displayed
+  menu_start_line = show_count;
+  
+  // Restore cursor to original position (back to input line)
+  printf("\033[u");
+  fflush(stdout);
+}
+
+
+/**
+ * Function to refresh the display - based on menu mode
+ */
+
+void refresh_display(const char *prompt_buffer, const char *buffer, int position) {
+  // Always clear any existing menu first
+  clear_menu();
+  
+  // Always redraw the command line to ensure prompt is visible
+  printf("\r\033[K%s%s", prompt_buffer, buffer);
+  fflush(stdout);
+  
+  if (menu_mode) {
+    // Show menu of options below the input line
+    display_menu(prompt_buffer, buffer, position);
+  } else {
+    // Show inline suggestion
+    display_inline_suggestion(prompt_buffer, buffer, position);
+  }
+}
+
+/**
+ * Read a line of input from the user
+ *
+ * @return The line read from stdin
+ */
+char *lsh_read_line(void) {
+  int bufsize = LSH_RL_BUFSIZE;
+  int position = 0;
+  char *buffer = malloc(sizeof(char) * bufsize);
+  int c;
+  int history_position = -1;
+  
+  // Prompt buffer for enhanced prompt
+  char prompt_buffer[LSH_RL_BUFSIZE];
+  
+  // Reset menu mode
+  menu_mode = 0;
+  menu_start_line = 0;
+  
+  if (!buffer) {
+    fprintf(stderr, "lsh: allocation error\n");
+    exit(EXIT_FAILURE);
+  }
+  
+  // Clear the buffer
+  buffer[0] = '\0';
+  
+  // Generate enhanced prompt - INLINED CODE
+  {
+    // Get current directory information
+    char cwd[PATH_MAX];
+    char parent_dir[PATH_MAX / 2];
+    char current_dir[PATH_MAX / 2];
+
+    if (getcwd(cwd, sizeof(cwd)) != NULL) {
+      get_path_display(cwd, parent_dir, current_dir, PATH_MAX / 2);
+    } else {
+      strcpy(parent_dir, "unknown");
+      strcpy(current_dir, "dir");
+    }
+
+    // Get Git information
+    char git_display[LSH_RL_BUFSIZE] = {0};
+    char *git_status_info = get_git_status();
+    if (git_status_info != NULL) {
+      // Extract just the branch name from git status info
+      char branch_name[LSH_RL_BUFSIZE] = {0};
+      char *paren_open = strchr(git_status_info, '(');
+      char *paren_close = strchr(git_status_info, ')');
+      
+      if (paren_open && paren_close && paren_close > paren_open) {
+        // Extract content between parentheses - should be the branch name
+        size_t branch_len = paren_close - paren_open - 1;
+        if (branch_len < sizeof(branch_name)) {
+          strncpy(branch_name, paren_open + 1, branch_len);
+          branch_name[branch_len] = '\0';
+          snprintf(git_display, sizeof(git_display), " \033[1;35mgit:(%s)\033[0m", branch_name);
+        } else {
+          // Fallback if branch name is too long
+          snprintf(git_display, sizeof(git_display), " \033[1;35mgit:(?)\033[0m");
+        }
+      } else {
+        // If we can't parse the branch name, just use the whole status
+        snprintf(git_display, sizeof(git_display), " \033[1;35mgit:(%s)\033[0m", git_status_info);
+      }
+      
+      free(git_status_info);
+    }
+
+    // Format the prompt
+    snprintf(prompt_buffer, sizeof(prompt_buffer), "\033[1;36m%s/%s\033[0m%s \033[1;31m✗\033[0m ", 
+             parent_dir, current_dir, git_display);
+  }
+  
+  // Display prompt
+  printf("%s", prompt_buffer);
+  fflush(stdout);
+  
+  // Initialize suggestions
+  update_suggestions(buffer, position);
 
   while (1) {
     c = read_key();
     
     if (c == KEY_ENTER || c == '\n' || c == '\r') {
-      // Check if we have a visible suggestion (not an exact match)
-      if (has_suggestion && suggestion_count > 0) {
-        // Extract just the suggestion part to see if there's anything to complete
-        char suggestion_text[LSH_RL_BUFSIZE] = "";
-        
-        if (prefix_start > 0) {
-          char current_arg[LSH_RL_BUFSIZE] = "";
-          strncpy(current_arg, &buffer[prefix_start], position - prefix_start);
-          current_arg[position - prefix_start] = '\0';
-          
-          if (strncasecmp(suggestions[suggestion_index], current_arg, strlen(current_arg)) == 0) {
-            strncpy(suggestion_text, 
-                   suggestions[suggestion_index] + strlen(current_arg),
-                   sizeof(suggestion_text) - 1);
+      if (menu_mode) {
+        // In menu mode: accept the highlighted suggestion without executing
+        if (has_suggestion && suggestion_count > 0) {
+          // Update buffer with selected suggestion
+          if (prefix_start > 0) {
+            // We're completing an argument
+            char temp[LSH_RL_BUFSIZE];
+            strncpy(temp, buffer, prefix_start);
+            temp[prefix_start] = '\0';
+            strncat(temp, suggestions[suggestion_index], 
+                    LSH_RL_BUFSIZE - strlen(temp) - 1);
+            
+            strncpy(buffer, temp, bufsize - 1);
+          } else {
+            // We're completing a command
+            strncpy(buffer, suggestions[suggestion_index], bufsize - 1);
           }
-        } else {
-          if (strncasecmp(suggestions[suggestion_index], buffer, strlen(buffer)) == 0) {
-            strncpy(suggestion_text, 
-                   suggestions[suggestion_index] + strlen(buffer),
-                   sizeof(suggestion_text) - 1);
-          }
-        }
-        
-        // If there's a non-empty suggestion part and in suggestion mode, accept it
-        if (strlen(suggestion_text) > 0 && suggestion_active) {
-          // First Enter press with an active suggestion: Accept it without executing
-          strncpy(buffer, full_suggestion, bufsize - 1);
           buffer[bufsize - 1] = '\0';
           position = strlen(buffer);
           
-          // Redraw line with full accepted suggestion
-          printf("\r\033[K\033[1;32m➜\033[0m %s", buffer);
+          // Clear the menu
+          clear_menu();
+          menu_mode = 0;
+          
+          // Redraw the line with accepted suggestion
+          printf("\r\033[K%s%s", prompt_buffer, buffer);
           fflush(stdout);
           
-          // Switch to execution mode for next Enter press
-          suggestion_active = 0;
-          
-          // Reset suggestion state since we've accepted it
-          has_suggestion = 0;
-          if (suggestions) {
-            for (int i = 0; i < suggestion_count; i++) {
-              if (suggestions[i]) free(suggestions[i]);
-            }
-            free(suggestions);
-            suggestions = NULL;
-            suggestion_count = 0;
-          }
-        } else {
-          // No visible suggestion or already accepted: Execute
-          buffer[position] = '\0';
-          printf("\n");
-          fflush(stdout);
-          break;
+          // Update suggestions for new state
+          update_suggestions(buffer, position);
+          display_inline_suggestion(prompt_buffer, buffer, position);
         }
       } else {
-        // No suggestion: Execute the command
+        // Not in menu mode: execute the command as is
         buffer[position] = '\0';
         printf("\n");
         fflush(stdout);
         break;
+      }
+    } else if (c == KEY_ESCAPE) {
+      if (menu_mode) {
+        // Exit menu mode
+        menu_mode = 0;
+        clear_menu();
+        display_inline_suggestion(prompt_buffer, buffer, position);
       }
     } else if (c == KEY_BACKSPACE || c == 127) {
       // Handle backspace
@@ -719,33 +789,45 @@ char *lsh_read_line(void) {
         position--;
         buffer[position] = '\0';
         
+        // Exit menu mode when backspacing
+        if (menu_mode) {
+          menu_mode = 0;
+          clear_menu();
+        }
+        
         // Update suggestions after backspace
-        suggestion_active = 1; // Re-enter suggestion mode
-        update_suggestions();
+        update_suggestions(buffer, position);
+        display_inline_suggestion(prompt_buffer, buffer, position);
       }
     } else if (c == KEY_TAB) {
-      // If we have suggestions, cycle to the next one
-      suggestion_active = 1; // Ensure we're in suggestion mode
-      
-      if (suggestion_count == 1) {
-        // Only one suggestion - accept it but don't execute
-        strncpy(buffer, full_suggestion, bufsize - 1);
-        buffer[bufsize - 1] = '\0';
-        position = strlen(buffer);
-        
-        // Redraw line with full accepted suggestion
-        printf("\r\033[K\033[1;32m➜\033[0m %s", buffer);
-        fflush(stdout);
-        
-        // Reset suggestion state to find new suggestions
-        update_suggestions();
-      } else if (suggestion_count > 1) {
-        // Multiple suggestions - cycle to the next one
-        suggestion_index = (suggestion_index + 1) % suggestion_count;
-        display_current_suggestion();
+      if (menu_mode) {
+        // Already in menu mode: cycle to next suggestion
+        if (suggestion_count > 0) {
+          suggestion_index = (suggestion_index + 1) % suggestion_count;
+          refresh_display(prompt_buffer, buffer, position);
+        }
+      } else {
+        // Enter menu mode if we have suggestions
+        if (has_suggestion && suggestion_count > 0) {
+          menu_mode = 1;
+          suggestion_index = 0;  // Start with first suggestion
+          refresh_display(prompt_buffer, buffer, position);
+        }
       }
-    } else if (c == KEY_UP) {
-      // Navigate history upward
+    } else if (c == KEY_UP && menu_mode) {
+      // In menu mode, up arrow goes to previous suggestion
+      if (suggestion_count > 0) {
+        suggestion_index = (suggestion_index + suggestion_count - 1) % suggestion_count;
+        refresh_display(prompt_buffer, buffer, position);
+      }
+    } else if (c == KEY_DOWN && menu_mode) {
+      // In menu mode, down arrow goes to next suggestion
+      if (suggestion_count > 0) {
+        suggestion_index = (suggestion_index + 1) % suggestion_count;
+        refresh_display(prompt_buffer, buffer, position);
+      }
+    } else if (c == KEY_UP && !menu_mode) {
+      // Navigate history upward when not in menu mode
       char *history_entry = get_previous_history_entry(&history_position);
       if (history_entry) {
         // Clear current line
@@ -757,15 +839,15 @@ char *lsh_read_line(void) {
         position = strlen(buffer);
         
         // Display the history entry and update suggestions
-        printf("\033[1;32m➜\033[0m %s", buffer);
+        printf("%s%s", prompt_buffer, buffer);
         fflush(stdout);
         
         // Update suggestions after loading history
-        suggestion_active = 1; // Re-enter suggestion mode
-        update_suggestions();
+        update_suggestions(buffer, position);
+        display_inline_suggestion(prompt_buffer, buffer, position);
       }
-    } else if (c == KEY_DOWN) {
-      // Navigate history downward
+    } else if (c == KEY_DOWN && !menu_mode) {
+      // Navigate history downward when not in menu mode
       char *history_entry = get_next_history_entry(&history_position);
       if (history_entry) {
         // Clear current line
@@ -777,15 +859,15 @@ char *lsh_read_line(void) {
         position = strlen(buffer);
         
         // Display the history entry and update suggestions
-        printf("\033[1;32m➜\033[0m %s", buffer);
+        printf("%s%s", prompt_buffer, buffer);
         fflush(stdout);
         
         // Update suggestions after loading history
-        suggestion_active = 1; // Re-enter suggestion mode
-        update_suggestions();
+        update_suggestions(buffer, position);
+        display_inline_suggestion(prompt_buffer, buffer, position);
       } else {
         // At the end of history, clear the line
-        printf("\r\033[K\033[1;32m➜\033[0m ");
+        printf("\r\033[K%s", prompt_buffer);
         buffer[0] = '\0';
         position = 0;
         
@@ -799,75 +881,7 @@ char *lsh_read_line(void) {
           suggestion_count = 0;
         }
         has_suggestion = 0;
-        suggestion_active = 1; // Re-enter suggestion mode
       }
-    } else if (c == '?') {
-      // Toggle showing command suggestions
-      show_suggestions = !show_suggestions;
-      
-      // Print the ? character
-      if (position >= bufsize - 1) {
-        bufsize += LSH_RL_BUFSIZE;
-        char *new_buffer = realloc(buffer, bufsize);
-        if (!new_buffer) {
-          fprintf(stderr, "lsh: allocation error\n");
-          free(buffer);
-          exit(EXIT_FAILURE);
-        }
-        buffer = new_buffer;
-      }
-      
-      buffer[position] = c;
-      position++;
-      buffer[position] = '\0';
-      printf("%c", c);
-      
-      if (show_suggestions) {
-        // Show command suggestions
-        printf("\nCommand suggestions:\n");
-        
-        // Check history for similar commands
-        int suggestions_shown = 0;
-        char **matching_commands = get_matching_history_entries(buffer);
-        if (matching_commands) {
-          for (int i = 0; matching_commands[i] != NULL && suggestions_shown < 5; i++) {
-            printf("  %s\n", matching_commands[i]);
-            suggestions_shown++;
-          }
-          free_matching_entries(matching_commands);
-        }
-        
-        // Check built-in commands
-        for (int i = 0; i < lsh_num_builtins() && suggestions_shown < 5; i++) {
-          if (strncmp(buffer, builtin_str[i], position) == 0) {
-            printf("  %s\n", builtin_str[i]);
-            suggestions_shown++;
-          }
-        }
-        
-        // If we showed suggestions, redisplay the prompt and buffer
-        if (suggestions_shown > 0) {
-          printf("\033[1;32m➜\033[0m %s", buffer);
-          fflush(stdout);
-        }
-        
-        // Update suggestions after ? mode
-        suggestion_active = 1; // Re-enter suggestion mode
-        update_suggestions();
-      }
-    } else if (c == KEY_RIGHT && has_suggestion) {
-      // Right arrow also accepts the current suggestion (without executing)
-      strncpy(buffer, full_suggestion, bufsize - 1);
-      buffer[bufsize - 1] = '\0';
-      position = strlen(buffer);
-      
-      // Redraw line with full accepted suggestion
-      printf("\r\033[K\033[1;32m➜\033[0m %s", buffer);
-      fflush(stdout);
-      
-      // Reset suggestion state to find new suggestions
-      suggestion_active = 1; // Re-enter suggestion mode
-      update_suggestions();
     } else if (isprint(c)) {
       // Regular character - add it to the buffer
       if (position >= bufsize - 1) {
@@ -885,9 +899,15 @@ char *lsh_read_line(void) {
       position++;
       buffer[position] = '\0';
       
+      // Exit menu mode when typing
+      if (menu_mode) {
+        menu_mode = 0;
+        clear_menu();
+      }
+      
       // Update with the new character and show suggestions
-      suggestion_active = 1; // Re-enter suggestion mode when typing
-      update_suggestions();
+      update_suggestions(buffer, position);
+      display_inline_suggestion(prompt_buffer, buffer, position);
     }
   }
   

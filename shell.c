@@ -265,50 +265,66 @@ void update_status_bar(int fd, const char *git_info) {
 /**
  * Get the name of the parent and current directories from a path
  */
+
 void get_path_display(const char *cwd, char *parent_dir_name,
                      char *current_dir_name, size_t buf_size) {
-    char *last_slash = strrchr(cwd, '/');
+    char path_copy[PATH_MAX];
+    strncpy(path_copy, cwd, PATH_MAX - 1);
+    path_copy[PATH_MAX - 1] = '\0';
     
-    if (last_slash != NULL) {
-        strncpy(current_dir_name, last_slash + 1, buf_size - 1);
-        current_dir_name[buf_size - 1] = '\0';
+    // Default values if we can't parse the path
+    strncpy(parent_dir_name, ".", buf_size - 1);
+    strncpy(current_dir_name, "unknown", buf_size - 1);
+    parent_dir_name[buf_size - 1] = '\0';
+    current_dir_name[buf_size - 1] = '\0';
+    
+    // Handle root directory special case
+    if (strcmp(path_copy, "/") == 0) {
+        strncpy(parent_dir_name, "/", buf_size - 1);
+        strncpy(current_dir_name, "", buf_size - 1);
+        return;
+    }
+    
+    // Remove trailing slash if present
+    size_t len = strlen(path_copy);
+    if (len > 1 && path_copy[len - 1] == '/') {
+        path_copy[len - 1] = '\0';
+    }
+    
+    // Find the last component (current directory)
+    char *last_slash = strrchr(path_copy, '/');
+    if (!last_slash) {
+        // No slash found, must be a relative path with no slashes
+        strncpy(current_dir_name, path_copy, buf_size - 1);
+        return;
+    }
+    
+    // Extract current directory name
+    strncpy(current_dir_name, last_slash + 1, buf_size - 1);
+    
+    // Handle paths directly under root
+    if (last_slash == path_copy) {
+        strncpy(parent_dir_name, "/", buf_size - 1);
+        return;
+    }
+    
+    // Temporarily terminate the string at the last slash
+    *last_slash = '\0';
+    
+    // Find the previous slash to identify parent directory
+    char *prev_slash = strrchr(path_copy, '/');
+    
+    if (prev_slash) {
+        // Extract just the parent directory name
+        strncpy(parent_dir_name, prev_slash + 1, buf_size - 1);
         
-        // If we're in root directory
-        if (last_slash == cwd) {
+        // Special case: parent is root
+        if (prev_slash == path_copy) {
             strncpy(parent_dir_name, "/", buf_size - 1);
-            parent_dir_name[buf_size - 1] = '\0';
-            return;
         }
-        
-        // Find the second-to-last slash for parent directory
-        char *parent_slash = last_slash;
-        while (parent_slash > cwd && *(parent_slash - 1) != '/') {
-            parent_slash--;
-        }
-        
-        if (parent_slash > cwd) {
-            size_t parent_len = parent_slash - cwd - 1;
-            if (parent_len >= buf_size) {
-                parent_len = buf_size - 1;
-            }
-            
-            // If parent is root
-            if (parent_len == 0) {
-                strncpy(parent_dir_name, "/", buf_size - 1);
-            } else {
-                strncpy(parent_dir_name, parent_slash - parent_len, parent_len);
-                parent_dir_name[parent_len] = '\0';
-            }
-        } else {
-            strncpy(parent_dir_name, "/", buf_size - 1);
-        }
-        parent_dir_name[buf_size - 1] = '\0';
     } else {
-        // Fall back if path doesn't contain slashes
-        strncpy(current_dir_name, cwd, buf_size - 1);
-        strncpy(parent_dir_name, ".", buf_size - 1);
-        current_dir_name[buf_size - 1] = '\0';
-        parent_dir_name[buf_size - 1] = '\0';
+        // No previous slash, parent is the remaining part
+        strncpy(parent_dir_name, path_copy, buf_size - 1);
     }
 }
 
@@ -497,7 +513,7 @@ void lsh_loop(void) {
     terminal_fd = init_terminal(&g_orig_termios);
     
     // Initialize the status bar
-    init_status_bar(STDOUT_FILENO);
+    //init_status_bar(STDOUT_FILENO);
     
     // Initialize subsystems
     init_aliases();

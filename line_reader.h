@@ -30,6 +30,8 @@ int read_key(void);
  */
 char *lsh_read_line(void);
 
+void generate_enhanced_prompt(char *prompt_buffer, size_t buffer_size);
+
 /**
  * Split a line into tokens
  *

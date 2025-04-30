@@ -722,12 +722,70 @@ int lsh_gg(char **args) {
         printf("  d - diff\n");
         printf("  b - branch\n");
         printf("  ch - checkout\n");
+        printf("  o - open in GitHub browser\n");
         return 1;
     }
 
     // Execute the appropriate git command based on shorthand
     if (strcmp(args[1], "s") == 0) {
         system("git status");
+    } else if (strcmp(args[1], "b") == 0) {
+        system("git branch");
+    } else if (strcmp(args[1], "o") == 0) {
+        // Get the remote URL
+        FILE *fp;
+        char remote_url[1024] = {0};
+        fp = popen("git config --get remote.origin.url 2>/dev/null", "r");
+        if (fp) {
+            fgets(remote_url, sizeof(remote_url), fp);
+            pclose(fp);
+            
+            // Trim trailing newline
+            char *newline = strchr(remote_url, '\n');
+            if (newline) *newline = '\0';
+            
+            if (strlen(remote_url) > 0) {
+                // Convert SSH URLs to HTTPS
+                char https_url[1024] = {0};
+                if (strstr(remote_url, "git@github.com:")) {
+                    // Convert ssh format (git@github.com:user/repo.git) to https
+                    char *repo_path = strchr(remote_url, ':');
+                    if (repo_path) {
+                        repo_path++; // Skip the colon
+                        // Remove .git suffix if present
+                        char *git_suffix = strstr(repo_path, ".git");
+                        if (git_suffix) *git_suffix = '\0';
+                        
+                        sprintf(https_url, "https://github.com/%s", repo_path);
+                    }
+                } else if (strstr(remote_url, "https://github.com/")) {
+                    // Already HTTPS format
+                    strcpy(https_url, remote_url);
+                    // Remove .git suffix if present
+                    char *git_suffix = strstr(https_url, ".git");
+                    if (git_suffix) *git_suffix = '\0';
+                }
+                
+                if (strlen(https_url) > 0) {
+                    // Open the URL in the default browser
+                    char command[1100];
+                    // Use xdg-open on Linux
+                    sprintf(command, "xdg-open %s >/dev/null 2>&1", https_url);
+                    int result = system(command);
+                    if (result == 0) {
+                        printf("Opening %s in browser\n", https_url);
+                    } else {
+                        printf("Failed to open browser. URL: %s\n", https_url);
+                    }
+                } else {
+                    printf("Could not parse GitHub URL from: %s\n", remote_url);
+                }
+            } else {
+                printf("No remote URL found. Is this a Git repository with a GitHub remote?\n");
+            }
+        } else {
+            printf("Not in a Git repository or no remote configured\n");
+        }
     } else if (strcmp(args[1], "c") == 0) {
         if (args[2] != NULL) {
             char command[1024];

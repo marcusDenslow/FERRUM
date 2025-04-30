@@ -462,21 +462,26 @@ void update_suggestions(const char *buffer, int position) {
   
   // If we have suggestions, use the first one
   if (suggestion_count > 0) {
-    has_suggestion = 1;
-    suggestion_index = 0;
-    
-    // Create the full suggestion string that would be accepted
-    if (prefix_start > 0) {
-      // We're completing an argument
-      strncpy(full_suggestion, buffer, prefix_start);
-      full_suggestion[prefix_start] = '\0';
-      strncat(full_suggestion, suggestions[suggestion_index], 
-              sizeof(full_suggestion) - strlen(full_suggestion) - 1);
+    // Skip showing "./" suggestions as they're often not useful
+    if (strcmp(suggestions[0], "./") == 0) {
+      has_suggestion = 0;
     } else {
-      // We're completing a command
-      strncpy(full_suggestion, suggestions[suggestion_index], sizeof(full_suggestion) - 1);
+      has_suggestion = 1;
+      suggestion_index = 0;
+      
+      // Create the full suggestion string that would be accepted
+      if (prefix_start > 0) {
+        // We're completing an argument
+        strncpy(full_suggestion, buffer, prefix_start);
+        full_suggestion[prefix_start] = '\0';
+        strncat(full_suggestion, suggestions[suggestion_index], 
+                sizeof(full_suggestion) - strlen(full_suggestion) - 1);
+      } else {
+        // We're completing a command
+        strncpy(full_suggestion, suggestions[suggestion_index], sizeof(full_suggestion) - 1);
+      }
+      full_suggestion[sizeof(full_suggestion) - 1] = '\0';
     }
-    full_suggestion[sizeof(full_suggestion) - 1] = '\0';
   }
 }
 
@@ -639,16 +644,12 @@ void refresh_display(const char *prompt_buffer, const char *buffer, int position
   // Always clear any existing menu first
   clear_menu();
   
-  // Always redraw the command line to ensure prompt is visible
-  printf("\r\033[K%s%s", prompt_buffer, buffer);
-  fflush(stdout);
+  // Always show inline suggestion - even in menu mode
+  display_inline_suggestion(prompt_buffer, buffer, position);
   
   if (menu_mode) {
-    // Show menu of options below the input line
+    // Also show menu of options below the input line
     display_menu(prompt_buffer, buffer, position);
-  } else {
-    // Show inline suggestion
-    display_inline_suggestion(prompt_buffer, buffer, position);
   }
 }
 
@@ -765,9 +766,10 @@ char *lsh_read_line(void) {
           printf("\r\033[K%s%s", prompt_buffer, buffer);
           fflush(stdout);
           
-          // Update suggestions for new state
-          update_suggestions(buffer, position);
-          display_inline_suggestion(prompt_buffer, buffer, position);
+          // Don't immediately show a new suggestion after accepting one
+          // The user likely wants to execute the command first
+          // update_suggestions(buffer, position);
+          // display_inline_suggestion(prompt_buffer, buffer, position);
         }
       } else {
         // Not in menu mode: execute the command as is
@@ -804,11 +806,48 @@ char *lsh_read_line(void) {
         // Already in menu mode: cycle to next suggestion
         if (suggestion_count > 0) {
           suggestion_index = (suggestion_index + 1) % suggestion_count;
+          
+          // Update full_suggestion with the newly selected suggestion
+          if (prefix_start > 0) {
+            // We're completing an argument
+            strncpy(full_suggestion, buffer, prefix_start);
+            full_suggestion[prefix_start] = '\0';
+            strncat(full_suggestion, suggestions[suggestion_index], 
+                    sizeof(full_suggestion) - strlen(full_suggestion) - 1);
+          } else {
+            // We're completing a command
+            strncpy(full_suggestion, suggestions[suggestion_index], sizeof(full_suggestion) - 1);
+          }
+          full_suggestion[sizeof(full_suggestion) - 1] = '\0';
+          
           refresh_display(prompt_buffer, buffer, position);
         }
       } else {
-        // Enter menu mode if we have suggestions
-        if (has_suggestion && suggestion_count > 0) {
+        // If there's only one suggestion, accept it directly
+        if (has_suggestion && suggestion_count == 1) {
+          // Update buffer with the single suggestion
+          if (prefix_start > 0) {
+            // We're completing an argument
+            char temp[LSH_RL_BUFSIZE];
+            strncpy(temp, buffer, prefix_start);
+            temp[prefix_start] = '\0';
+            strncat(temp, suggestions[suggestion_index], 
+                    LSH_RL_BUFSIZE - strlen(temp) - 1);
+            
+            strncpy(buffer, temp, bufsize - 1);
+          } else {
+            // We're completing a command
+            strncpy(buffer, suggestions[suggestion_index], bufsize - 1);
+          }
+          buffer[bufsize - 1] = '\0';
+          position = strlen(buffer);
+          
+          // Redraw the line with accepted suggestion
+          printf("\r\033[K%s%s", prompt_buffer, buffer);
+          fflush(stdout);
+        } 
+        // Otherwise enter menu mode if we have multiple suggestions
+        else if (has_suggestion && suggestion_count > 1) {
           menu_mode = 1;
           suggestion_index = 0;  // Start with first suggestion
           refresh_display(prompt_buffer, buffer, position);
@@ -818,12 +857,40 @@ char *lsh_read_line(void) {
       // In menu mode, up arrow goes to previous suggestion
       if (suggestion_count > 0) {
         suggestion_index = (suggestion_index + suggestion_count - 1) % suggestion_count;
+        
+        // Update full_suggestion with the newly selected suggestion
+        if (prefix_start > 0) {
+          // We're completing an argument
+          strncpy(full_suggestion, buffer, prefix_start);
+          full_suggestion[prefix_start] = '\0';
+          strncat(full_suggestion, suggestions[suggestion_index], 
+                  sizeof(full_suggestion) - strlen(full_suggestion) - 1);
+        } else {
+          // We're completing a command
+          strncpy(full_suggestion, suggestions[suggestion_index], sizeof(full_suggestion) - 1);
+        }
+        full_suggestion[sizeof(full_suggestion) - 1] = '\0';
+        
         refresh_display(prompt_buffer, buffer, position);
       }
     } else if (c == KEY_DOWN && menu_mode) {
       // In menu mode, down arrow goes to next suggestion
       if (suggestion_count > 0) {
         suggestion_index = (suggestion_index + 1) % suggestion_count;
+        
+        // Update full_suggestion with the newly selected suggestion
+        if (prefix_start > 0) {
+          // We're completing an argument
+          strncpy(full_suggestion, buffer, prefix_start);
+          full_suggestion[prefix_start] = '\0';
+          strncat(full_suggestion, suggestions[suggestion_index], 
+                  sizeof(full_suggestion) - strlen(full_suggestion) - 1);
+        } else {
+          // We're completing a command
+          strncpy(full_suggestion, suggestions[suggestion_index], sizeof(full_suggestion) - 1);
+        }
+        full_suggestion[sizeof(full_suggestion) - 1] = '\0';
+        
         refresh_display(prompt_buffer, buffer, position);
       }
     } else if (c == KEY_UP && !menu_mode) {

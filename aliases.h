@@ -1,5 +1,5 @@
 /**
- * aliases.h halla
+ * aliases.h 
  * Definitions for shell alias functionality
  */
 

@@ -425,13 +425,9 @@ void update_suggestions(const char *buffer, int position) {
           // Create the full path suggestion
           char full_path[PATH_MAX * 2];
           
-          if (strcmp(dir_path, ".") == 0) {
-            strncpy(full_path, entry->d_name, sizeof(full_path) - 1);
-          } else if (dir_path[0] == '/' && dir_path[1] == '\0') {
-            snprintf(full_path, sizeof(full_path) - 1, "/%s", entry->d_name);
-          } else {
-            snprintf(full_path, sizeof(full_path) - 1, "%s/%s", dir_path, entry->d_name);
-          }
+          // For subdirectory paths, just store the entry name
+          // (we already handled path splitting earlier in this function)
+          strncpy(full_path, entry->d_name, sizeof(full_path) - 1);
           
           // Check if it's a directory and add trailing slash if needed
           struct stat st;
@@ -507,11 +503,30 @@ void display_inline_suggestion(const char *prompt_buffer, const char *buffer, in
       current_len = strlen(current_arg);
       
       if (current_len > 0) {
-        // Find where the current argument ends in the suggestion
-        char *suggestion_part = suggestions[suggestion_index];
-        if (strncasecmp(suggestion_part, current_arg, current_len) == 0) {
-          strncpy(suggestion_text, suggestion_part + current_len, 
-                  sizeof(suggestion_text) - 1);
+        // Handle nested paths with subdirectories
+        char *last_slash = strrchr(current_arg, '/');
+        if (last_slash) {
+          // We're in a subdirectory path
+          char *filename_part = last_slash + 1;
+          int filename_len = strlen(filename_part);
+          
+          // When dealing with a path like "cd shelltest/ha", we need to match "ha" against
+          // the entry in the suggestions array (which would be e.g. "halla")
+          
+          // Check if the filename part is a prefix of the suggestions entry
+          if (strncasecmp(suggestions[suggestion_index], filename_part, filename_len) == 0) {
+            // Copy the suggestion text starting from where the user input ends
+            strncpy(suggestion_text, suggestions[suggestion_index] + filename_len, 
+                    sizeof(suggestion_text) - 1);
+          }
+        } else {
+          // Regular path (no subdirectories)
+          // Find where the current argument ends in the suggestion
+          char *suggestion_part = suggestions[suggestion_index];
+          if (strncasecmp(suggestion_part, current_arg, current_len) == 0) {
+            strncpy(suggestion_text, suggestion_part + current_len, 
+                    sizeof(suggestion_text) - 1);
+          }
         }
       } else {
         // Use the entire suggestion
@@ -745,10 +760,33 @@ char *lsh_read_line(void) {
           if (prefix_start > 0) {
             // We're completing an argument
             char temp[LSH_RL_BUFSIZE];
-            strncpy(temp, buffer, prefix_start);
-            temp[prefix_start] = '\0';
-            strncat(temp, suggestions[suggestion_index], 
-                    LSH_RL_BUFSIZE - strlen(temp) - 1);
+            char path_part[LSH_RL_BUFSIZE] = "";
+            
+            // Extract the existing path part
+            strncpy(path_part, &buffer[prefix_start], position - prefix_start);
+            path_part[position - prefix_start] = '\0';
+            
+            // Find last slash in the existing path_part
+            char *last_slash = strrchr(path_part, '/');
+            
+            if (last_slash) {
+              // Get the directory part up to the last slash (including the slash)
+              int dir_part_len = (last_slash - path_part) + 1;
+              char dir_part[LSH_RL_BUFSIZE] = "";
+              strncpy(dir_part, path_part, dir_part_len);
+              dir_part[dir_part_len] = '\0';
+              
+              // Construct the complete path by keeping the command and directory part
+              strncpy(temp, buffer, prefix_start);
+              temp[prefix_start] = '\0';
+              strncat(temp, dir_part, LSH_RL_BUFSIZE - strlen(temp) - 1);
+              strncat(temp, suggestions[suggestion_index], LSH_RL_BUFSIZE - strlen(temp) - 1);
+            } else {
+              // No slash in current argument, normal behavior
+              strncpy(temp, buffer, prefix_start);
+              temp[prefix_start] = '\0';
+              strncat(temp, suggestions[suggestion_index], LSH_RL_BUFSIZE - strlen(temp) - 1);
+            }
             
             strncpy(buffer, temp, bufsize - 1);
           } else {
@@ -766,10 +804,16 @@ char *lsh_read_line(void) {
           printf("\r\033[K%s%s", prompt_buffer, buffer);
           fflush(stdout);
           
-          // Don't immediately show a new suggestion after accepting one
-          // The user likely wants to execute the command first
-          // update_suggestions(buffer, position);
-          // display_inline_suggestion(prompt_buffer, buffer, position);
+          // Check if the accepted suggestion is a directory
+          if (strlen(buffer) > 0 && buffer[strlen(buffer) - 1] == '/') {
+            // It's a directory, update suggestions to show its contents
+            update_suggestions(buffer, position);
+            display_inline_suggestion(prompt_buffer, buffer, position);
+          }
+          
+          // Update suggestions after accepting the directory suggestion
+          update_suggestions(buffer, position);
+          display_inline_suggestion(prompt_buffer, buffer, position);
         }
       } else {
         // Not in menu mode: execute the command as is
@@ -810,10 +854,33 @@ char *lsh_read_line(void) {
           // Update full_suggestion with the newly selected suggestion
           if (prefix_start > 0) {
             // We're completing an argument
-            strncpy(full_suggestion, buffer, prefix_start);
-            full_suggestion[prefix_start] = '\0';
-            strncat(full_suggestion, suggestions[suggestion_index], 
-                    sizeof(full_suggestion) - strlen(full_suggestion) - 1);
+            char path_part[LSH_RL_BUFSIZE] = "";
+            
+            // Extract the existing path part
+            strncpy(path_part, &buffer[prefix_start], position - prefix_start);
+            path_part[position - prefix_start] = '\0';
+            
+            // Find last slash in the existing path_part
+            char *last_slash = strrchr(path_part, '/');
+            
+            if (last_slash) {
+              // Get the directory part up to the last slash (including the slash)
+              int dir_part_len = (last_slash - path_part) + 1;
+              char dir_part[LSH_RL_BUFSIZE] = "";
+              strncpy(dir_part, path_part, dir_part_len);
+              dir_part[dir_part_len] = '\0';
+              
+              // Construct the complete path by keeping the command and directory part
+              strncpy(full_suggestion, buffer, prefix_start);
+              full_suggestion[prefix_start] = '\0';
+              strncat(full_suggestion, dir_part, sizeof(full_suggestion) - strlen(full_suggestion) - 1);
+              strncat(full_suggestion, suggestions[suggestion_index], sizeof(full_suggestion) - strlen(full_suggestion) - 1);
+            } else {
+              // No slash in current argument, normal behavior
+              strncpy(full_suggestion, buffer, prefix_start);
+              full_suggestion[prefix_start] = '\0';
+              strncat(full_suggestion, suggestions[suggestion_index], sizeof(full_suggestion) - strlen(full_suggestion) - 1);
+            }
           } else {
             // We're completing a command
             strncpy(full_suggestion, suggestions[suggestion_index], sizeof(full_suggestion) - 1);
@@ -829,10 +896,33 @@ char *lsh_read_line(void) {
           if (prefix_start > 0) {
             // We're completing an argument
             char temp[LSH_RL_BUFSIZE];
-            strncpy(temp, buffer, prefix_start);
-            temp[prefix_start] = '\0';
-            strncat(temp, suggestions[suggestion_index], 
-                    LSH_RL_BUFSIZE - strlen(temp) - 1);
+            char path_part[LSH_RL_BUFSIZE] = "";
+            
+            // Extract the existing path part
+            strncpy(path_part, &buffer[prefix_start], position - prefix_start);
+            path_part[position - prefix_start] = '\0';
+            
+            // Find last slash in the existing path_part
+            char *last_slash = strrchr(path_part, '/');
+            
+            if (last_slash) {
+              // Get the directory part up to the last slash (including the slash)
+              int dir_part_len = (last_slash - path_part) + 1;
+              char dir_part[LSH_RL_BUFSIZE] = "";
+              strncpy(dir_part, path_part, dir_part_len);
+              dir_part[dir_part_len] = '\0';
+              
+              // Construct the complete path by keeping the command and directory part
+              strncpy(temp, buffer, prefix_start);
+              temp[prefix_start] = '\0';
+              strncat(temp, dir_part, LSH_RL_BUFSIZE - strlen(temp) - 1);
+              strncat(temp, suggestions[suggestion_index], LSH_RL_BUFSIZE - strlen(temp) - 1);
+            } else {
+              // No slash in current argument, normal behavior
+              strncpy(temp, buffer, prefix_start);
+              temp[prefix_start] = '\0';
+              strncat(temp, suggestions[suggestion_index], LSH_RL_BUFSIZE - strlen(temp) - 1);
+            }
             
             strncpy(buffer, temp, bufsize - 1);
           } else {
@@ -845,6 +935,17 @@ char *lsh_read_line(void) {
           // Redraw the line with accepted suggestion
           printf("\r\033[K%s%s", prompt_buffer, buffer);
           fflush(stdout);
+          
+          // Check if the accepted suggestion is a directory
+          if (strlen(buffer) > 0 && buffer[strlen(buffer) - 1] == '/') {
+            // It's a directory, update suggestions to show its contents
+            update_suggestions(buffer, position);
+            display_inline_suggestion(prompt_buffer, buffer, position);
+          } else {
+            // Also update suggestions for other completions
+            update_suggestions(buffer, position);
+            display_inline_suggestion(prompt_buffer, buffer, position);
+          }
         } 
         // Otherwise enter menu mode if we have multiple suggestions
         else if (has_suggestion && suggestion_count > 1) {
@@ -861,10 +962,33 @@ char *lsh_read_line(void) {
         // Update full_suggestion with the newly selected suggestion
         if (prefix_start > 0) {
           // We're completing an argument
-          strncpy(full_suggestion, buffer, prefix_start);
-          full_suggestion[prefix_start] = '\0';
-          strncat(full_suggestion, suggestions[suggestion_index], 
-                  sizeof(full_suggestion) - strlen(full_suggestion) - 1);
+          char path_part[LSH_RL_BUFSIZE] = "";
+            
+          // Extract the existing path part
+          strncpy(path_part, &buffer[prefix_start], position - prefix_start);
+          path_part[position - prefix_start] = '\0';
+          
+          // Find last slash in the existing path_part
+          char *last_slash = strrchr(path_part, '/');
+          
+          if (last_slash) {
+            // Get the directory part up to the last slash (including the slash)
+            int dir_part_len = (last_slash - path_part) + 1;
+            char dir_part[LSH_RL_BUFSIZE] = "";
+            strncpy(dir_part, path_part, dir_part_len);
+            dir_part[dir_part_len] = '\0';
+            
+            // Construct the complete path by keeping the command and directory part
+            strncpy(full_suggestion, buffer, prefix_start);
+            full_suggestion[prefix_start] = '\0';
+            strncat(full_suggestion, dir_part, sizeof(full_suggestion) - strlen(full_suggestion) - 1);
+            strncat(full_suggestion, suggestions[suggestion_index], sizeof(full_suggestion) - strlen(full_suggestion) - 1);
+          } else {
+            // No slash in current argument, normal behavior
+            strncpy(full_suggestion, buffer, prefix_start);
+            full_suggestion[prefix_start] = '\0';
+            strncat(full_suggestion, suggestions[suggestion_index], sizeof(full_suggestion) - strlen(full_suggestion) - 1);
+          }
         } else {
           // We're completing a command
           strncpy(full_suggestion, suggestions[suggestion_index], sizeof(full_suggestion) - 1);
@@ -881,10 +1005,33 @@ char *lsh_read_line(void) {
         // Update full_suggestion with the newly selected suggestion
         if (prefix_start > 0) {
           // We're completing an argument
-          strncpy(full_suggestion, buffer, prefix_start);
-          full_suggestion[prefix_start] = '\0';
-          strncat(full_suggestion, suggestions[suggestion_index], 
-                  sizeof(full_suggestion) - strlen(full_suggestion) - 1);
+          char path_part[LSH_RL_BUFSIZE] = "";
+            
+          // Extract the existing path part
+          strncpy(path_part, &buffer[prefix_start], position - prefix_start);
+          path_part[position - prefix_start] = '\0';
+          
+          // Find last slash in the existing path_part
+          char *last_slash = strrchr(path_part, '/');
+          
+          if (last_slash) {
+            // Get the directory part up to the last slash (including the slash)
+            int dir_part_len = (last_slash - path_part) + 1;
+            char dir_part[LSH_RL_BUFSIZE] = "";
+            strncpy(dir_part, path_part, dir_part_len);
+            dir_part[dir_part_len] = '\0';
+            
+            // Construct the complete path by keeping the command and directory part
+            strncpy(full_suggestion, buffer, prefix_start);
+            full_suggestion[prefix_start] = '\0';
+            strncat(full_suggestion, dir_part, sizeof(full_suggestion) - strlen(full_suggestion) - 1);
+            strncat(full_suggestion, suggestions[suggestion_index], sizeof(full_suggestion) - strlen(full_suggestion) - 1);
+          } else {
+            // No slash in current argument, normal behavior
+            strncpy(full_suggestion, buffer, prefix_start);
+            full_suggestion[prefix_start] = '\0';
+            strncat(full_suggestion, suggestions[suggestion_index], sizeof(full_suggestion) - strlen(full_suggestion) - 1);
+          }
         } else {
           // We're completing a command
           strncpy(full_suggestion, suggestions[suggestion_index], sizeof(full_suggestion) - 1);

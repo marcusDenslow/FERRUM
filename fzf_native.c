@@ -1,5 +1,5 @@
 /**
- * fzf_native.c halla balla
+ * fzf_native
  * Wrapper for the native fzf command-line fuzzy finder
  */
 

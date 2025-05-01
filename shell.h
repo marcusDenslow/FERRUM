@@ -31,6 +31,22 @@ int lsh_execute(char **args);
 int lsh_execute_piped(char ***commands);
 
 /**
+ * Create a TableData structure from an ls command
+ *
+ * @param args Command arguments
+ * @return TableData pointer (must be freed by caller) or NULL on error
+ */
+TableData* create_ls_table(char **args);
+
+/**
+ * Parse input line into an array of commands (for pipelines)
+ *
+ * @param line Input command line
+ * @return Null-terminated array of command arrays
+ */
+char*** lsh_split_commands(char *line);
+
+/**
  * Launch an external program
  *
  * @param args Null-terminated array of command arguments

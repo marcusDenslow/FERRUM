@@ -22,13 +22,15 @@
 #include <termios.h>
 #include <sys/ioctl.h>
 #include <signal.h>
+#include <dirent.h> // For DIR, opendir, readdir
+#include <sys/stat.h> // For stat
 
 // Global variables for status bar
 static int g_console_width = 80;
 static int g_status_line = 0;
-static WORD g_normal_attributes = 7; // Default white on black
-static WORD g_status_attributes = 12; // Red
-static BOOL g_status_bar_enabled = FALSE; // Flag to track if status bar is enabled
+static int g_normal_attributes = 7; // Default white on black
+static int g_status_attributes = 12; // Red
+static int g_status_bar_enabled = 0; // Flag to track if status bar is enabled
 static struct termios g_orig_termios; // Original terminal settings
 
 /**
@@ -160,7 +162,7 @@ int init_status_bar(int fd) {
     
     g_console_width = width;
     g_status_line = height;
-    g_status_bar_enabled = TRUE;
+    g_status_bar_enabled = 1;
     
     // Clear status line
     printf(ANSI_SAVE_CURSOR);
@@ -329,6 +331,205 @@ void get_path_display(const char *cwd, char *parent_dir_name,
 }
 
 /**
+ * Create a TableData structure from an ls command
+ */
+TableData* create_ls_table(char **args) {
+    DIR *dir;
+    struct dirent *entry;
+    struct stat file_stat;
+    char cwd[PATH_MAX];
+    char file_path[PATH_MAX];
+    
+    // Create table headers
+    char *headers[] = {"Name", "Size", "Type", "Modified"};
+    TableData *table = create_table(headers, 4);
+    if (!table) {
+        fprintf(stderr, "lsh: failed to create table\n");
+        return NULL;
+    }
+    
+    if (getcwd(cwd, sizeof(cwd)) == NULL) {
+        perror("lsh: getcwd");
+        free_table(table);
+        return NULL;
+    }
+    
+    dir = opendir(cwd);
+    if (dir == NULL) {
+        perror("lsh: opendir");
+        free_table(table);
+        return NULL;
+    }
+    
+    // Collect all entries
+    while ((entry = readdir(dir)) != NULL) {
+        // Skip . and .. entries
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+        
+        snprintf(file_path, sizeof(file_path), "%s/%s", cwd, entry->d_name);
+        if (stat(file_path, &file_stat) == 0) {
+            // Create a new row
+            DataValue *row = (DataValue*)malloc(4 * sizeof(DataValue));
+            if (!row) {
+                fprintf(stderr, "lsh: allocation error\n");
+                continue;
+            }
+            
+            // Name column
+            row[0].type = TYPE_STRING;
+            row[0].value.str_val = strdup(entry->d_name);
+            row[0].is_highlighted = S_ISDIR(file_stat.st_mode); // Highlight directories
+            
+            // Size column
+            row[1].type = TYPE_SIZE;
+            row[1].value.str_val = malloc(32);
+            if (S_ISDIR(file_stat.st_mode)) {
+                strcpy(row[1].value.str_val, "<DIR>");
+            } else if (file_stat.st_size < 1024) {
+                snprintf(row[1].value.str_val, 32, "%d B", (int)file_stat.st_size);
+            } else if (file_stat.st_size < 1024 * 1024) {
+                snprintf(row[1].value.str_val, 32, "%.1f KB", file_stat.st_size / 1024.0);
+            } else {
+                snprintf(row[1].value.str_val, 32, "%.1f MB", file_stat.st_size / (1024.0 * 1024.0));
+            }
+            row[1].is_highlighted = 0;
+            
+            // Type column
+            row[2].type = TYPE_STRING;
+            if (S_ISDIR(file_stat.st_mode)) {
+                row[2].value.str_val = strdup("Directory");
+            } else if (S_ISREG(file_stat.st_mode)) {
+                // Try to determine file type by extension
+                char *ext = strrchr(entry->d_name, '.');
+                if (ext != NULL) {
+                    ext++; // Skip the dot
+                    if (strcasecmp(ext, "c") == 0 || strcasecmp(ext, "cpp") == 0 || 
+                        strcasecmp(ext, "h") == 0 || strcasecmp(ext, "hpp") == 0) {
+                        row[2].value.str_val = strdup("Source");
+                    } else if (strcasecmp(ext, "exe") == 0 || strcasecmp(ext, "bat") == 0 || 
+                              strcasecmp(ext, "sh") == 0 || strcasecmp(ext, "com") == 0) {
+                        row[2].value.str_val = strdup("Executable");
+                    } else if (strcasecmp(ext, "txt") == 0 || strcasecmp(ext, "md") == 0 || 
+                              strcasecmp(ext, "log") == 0) {
+                        row[2].value.str_val = strdup("Text");
+                    } else if (strcasecmp(ext, "jpg") == 0 || strcasecmp(ext, "png") == 0 || 
+                              strcasecmp(ext, "gif") == 0 || strcasecmp(ext, "bmp") == 0) {
+                        row[2].value.str_val = strdup("Image");
+                    } else {
+                        row[2].value.str_val = strdup("File");
+                    }
+                } else {
+                    row[2].value.str_val = strdup("File");
+                }
+            } else {
+                row[2].value.str_val = strdup("Special");
+            }
+            row[2].is_highlighted = 0;
+            
+            // Modified date column
+            row[3].type = TYPE_STRING;
+            row[3].value.str_val = malloc(32);
+            struct tm *tm_info = localtime(&file_stat.st_mtime);
+            strftime(row[3].value.str_val, 32, "%Y-%m-%d %H:%M", tm_info);
+            row[3].is_highlighted = 0;
+            
+            // Add row to table
+            add_table_row(table, row);
+        }
+    }
+    
+    closedir(dir);
+    return table;
+}
+
+/**
+ * Parse input line into an array of commands (for pipelines)
+ */
+char*** lsh_split_commands(char *line) {
+    char ***commands = NULL;
+    char **command = NULL;
+    char *cmd_str, *token, *saveptr1, *saveptr2;
+    int cmd_count = 0, cmd_capacity = 10;
+    int token_count = 0, token_capacity = 10;
+    
+    // Allocate initial commands array
+    commands = malloc(cmd_capacity * sizeof(char**));
+    if (!commands) {
+        perror("lsh: allocation error");
+        return NULL;
+    }
+    
+    // Split by pipe symbol '|'
+    cmd_str = strtok_r(line, "|", &saveptr1);
+    while (cmd_str != NULL) {
+        // Trim whitespace
+        while (*cmd_str && isspace(*cmd_str)) cmd_str++;
+        
+        // Allocate command token array
+        command = malloc(token_capacity * sizeof(char*));
+        if (!command) {
+            perror("lsh: allocation error");
+            // Free previous allocations
+            for (int i = 0; i < cmd_count; i++) {
+                for (int j = 0; commands[i][j] != NULL; j++) {
+                    free(commands[i][j]);
+                }
+                free(commands[i]);
+            }
+            free(commands);
+            return NULL;
+        }
+        
+        // Split command into tokens
+        token_count = 0;
+        token = strtok_r(cmd_str, " \t\r\n\a", &saveptr2);
+        while (token != NULL) {
+            // Check if we need to resize tokens array
+            if (token_count >= token_capacity - 1) {
+                token_capacity *= 2;
+                command = realloc(command, token_capacity * sizeof(char*));
+                if (!command) {
+                    perror("lsh: allocation error");
+                    // Free previous allocations
+                    for (int i = 0; i < cmd_count; i++) {
+                        for (int j = 0; commands[i][j] != NULL; j++) {
+                            free(commands[i][j]);
+                        }
+                        free(commands[i]);
+                    }
+                    free(commands);
+                    return NULL;
+                }
+            }
+            
+            command[token_count] = strdup(token);
+            token_count++;
+            token = strtok_r(NULL, " \t\r\n\a", &saveptr2);
+        }
+        command[token_count] = NULL; // Null-terminate the tokens array
+        
+        // Check if we need to resize commands array
+        if (cmd_count >= cmd_capacity - 1) {
+            cmd_capacity *= 2;
+            commands = realloc(commands, cmd_capacity * sizeof(char**));
+            if (!commands) {
+                perror("lsh: allocation error");
+                return NULL;
+            }
+        }
+        
+        commands[cmd_count] = command;
+        cmd_count++;
+        cmd_str = strtok_r(NULL, "|", &saveptr1);
+    }
+    
+    commands[cmd_count] = NULL; // Null-terminate the commands array
+    return commands;
+}
+
+/**
  * Launch an external program
  */
 int lsh_launch(char **args) {
@@ -400,6 +601,51 @@ int lsh_execute_piped(char ***commands) {
     
     if (cmd_count == 0) {
         return 1; // Nothing to execute
+    }
+    
+    // Check if this is a table operation starting with ls/dir
+    if (strcmp(commands[0][0], "ls") == 0 || strcmp(commands[0][0], "dir") == 0) {
+        // Create a table from ls command
+        TableData *table = create_ls_table(commands[0]);
+        if (!table) {
+            return 1; // Error already printed
+        }
+        
+        // Apply filters from the pipeline
+        for (int i = 1; commands[i] != NULL; i++) {
+            // Find the filter command
+            char *filter_cmd = commands[i][0];
+            int filter_idx = -1;
+            
+            for (int j = 0; j < filter_count; j++) {
+                if (strcmp(filter_cmd, filter_str[j]) == 0) {
+                    filter_idx = j;
+                    break;
+                }
+            }
+            
+            if (filter_idx == -1) {
+                fprintf(stderr, "lsh: unknown filter command: %s\n", filter_cmd);
+                free_table(table);
+                return 1;
+            }
+            
+            // Apply the filter
+            TableData *filtered_table = filter_func[filter_idx](table, &commands[i][1]);
+            free_table(table); // Free the old table
+            
+            if (!filtered_table) {
+                return 1; // Error already printed
+            }
+            
+            table = filtered_table;
+        }
+        
+        // Print the final table
+        print_table(table);
+        free_table(table);
+        
+        return 1;
     }
     
     if (cmd_count == 1) {
@@ -562,7 +808,7 @@ void lsh_loop(void) {
         
         // Check for pipes and parse into multiple commands if present
         if (strchr(line, '|') != NULL) {
-            commands = lsh_split_piped_line(line);
+            commands = lsh_split_commands(line);
             status = lsh_execute_piped(commands);
             free_commands(commands);
         } else {

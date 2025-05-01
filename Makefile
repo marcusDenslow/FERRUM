@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -g
+CFLAGS = -Wextra -g
 LIBS = -lm
 
 # Get all .c files

@@ -36,7 +36,7 @@ char *builtin_str[] = {
     "bookmark", "bookmarks", "goto",     "unbookmark", "focus_timer",
     "weather", "grep",     "grep-text", "ripgrep", "fzf",
     "clip",    "echo",     "theme",     "loc",     "git_status",
-    "gg"};
+    "gg", "ls",};
 
 // Array of function pointers to built-in command implementations
 int (*builtin_func[])(char **) = {
@@ -47,7 +47,7 @@ int (*builtin_func[])(char **) = {
     &lsh_bookmark, &lsh_bookmarks, &lsh_goto,     &lsh_unbookmark, &lsh_focus_timer,
     &lsh_weather, &lsh_grep,     &lsh_actual_grep, &lsh_ripgrep, &lsh_fzf_native,
     &lsh_clip,    &lsh_echo,     &lsh_theme,     &lsh_loc,     &lsh_git_status,
-    &lsh_gg};
+    &lsh_gg, lsh_dir,};
 
 /**
  * Set the console text color
@@ -184,142 +184,125 @@ int lsh_exit(char **args) { return 0; }
  * Lists files in the current directory
  */
 int lsh_dir(char **args) {
-    DIR *dir;
-    struct dirent *entry;
-    struct stat file_stat;
-    char cwd[PATH_MAX];
-    char file_path[PATH_MAX];
-    int count = 0;
-    int detailed = 0;
+      DIR *dir;
+      struct dirent *entry;
+      struct stat file_stat;
+      char cwd[PATH_MAX];
+      char file_path[PATH_MAX];
+      int detailed = 0;
 
-    // Check if we should show detailed listing
-    if (args[1] != NULL && (strcmp(args[1], "-l") == 0 || strcmp(args[1], "--long") == 0)) {
-        detailed = 1;
-    }
+      // Create table headers
+      char *headers[] = {"Name", "Size", "Type", "Modified"};
+      TableData *table = create_table(headers, 4);
+      if (!table) {
+          fprintf(stderr, "lsh: failed to create table\n");
+          return 1;
+      }
 
-    if (getcwd(cwd, sizeof(cwd)) == NULL) {
-        perror("lsh: getcwd");
-        return 1;
-    }
+      if (getcwd(cwd, sizeof(cwd)) == NULL) {
+          perror("lsh: getcwd");
+          free_table(table);
+          return 1;
+      }
 
-    dir = opendir(cwd);
-    if (dir == NULL) {
-        perror("lsh: opendir");
-        return 1;
-    }
+      dir = opendir(cwd);
+      if (dir == NULL) {
+          perror("lsh: opendir");
+          free_table(table);
+          return 1;
+      }
 
-    if (detailed) {
-        printf("Mode       Size       Modified            Name\n");
-        printf("----------------------------------------------------\n");
-    }
+      // Collect all entries
+      while ((entry = readdir(dir)) != NULL) {
+          // Skip . and .. entries
+          if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+              continue;
+          }
 
-    // First collect all entries
-    typedef struct {
-        char name[256];
-        struct stat stat;
-        int is_dir;
-    } DirEntry;
+          snprintf(file_path, sizeof(file_path), "%s/%s", cwd, entry->d_name);
+          if (stat(file_path, &file_stat) == 0) {
+              // Create a new row
+              DataValue *row = (DataValue*)malloc(4 * sizeof(DataValue));
+              if (!row) {
+                  fprintf(stderr, "lsh: allocation error\n");
+                  continue;
+              }
 
-    DirEntry *entries = malloc(1000 * sizeof(DirEntry)); // Arbitrary limit
-    int entry_count = 0;
+              // Name column
+              row[0].type = TYPE_STRING;
+              row[0].value.str_val = strdup(entry->d_name);
+              row[0].is_highlighted = S_ISDIR(file_stat.st_mode); // Highlight directories
 
-    while ((entry = readdir(dir)) != NULL && entry_count < 1000) {
-        // Skip . and .. entries
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
-            continue;
-        }
+              // Size column
+              row[1].type = TYPE_SIZE;
+              row[1].value.str_val = malloc(32);
+              if (S_ISDIR(file_stat.st_mode)) {
+                  strcpy(row[1].value.str_val, "<DIR>");
+              } else if (file_stat.st_size < 1024) {
+                  snprintf(row[1].value.str_val, 32, "%d B", (int)file_stat.st_size);
+              } else if (file_stat.st_size < 1024 * 1024) {
+                  snprintf(row[1].value.str_val, 32, "%.1f KB", file_stat.st_size / 1024.0);
+              } else {
+                  snprintf(row[1].value.str_val, 32, "%.1f MB", file_stat.st_size / (1024.0 *
+  1024.0));
+              }
+              row[1].is_highlighted = 0;
 
-        snprintf(file_path, sizeof(file_path), "%s/%s", cwd, entry->d_name);
-        if (stat(file_path, &file_stat) == 0) {
-            strcpy(entries[entry_count].name, entry->d_name);
-            entries[entry_count].stat = file_stat;
-            entries[entry_count].is_dir = S_ISDIR(file_stat.st_mode);
-            entry_count++;
-        }
-    }
+              // Type column
+              row[2].type = TYPE_STRING;
+              if (S_ISDIR(file_stat.st_mode)) {
+                  row[2].value.str_val = strdup("Directory");
+              } else if (S_ISREG(file_stat.st_mode)) {
+                  // Try to determine file type by extension
+                  char *ext = strrchr(entry->d_name, '.');
+                  if (ext != NULL) {
+                      ext++; // Skip the dot
+                      if (strcasecmp(ext, "c") == 0 || strcasecmp(ext, "cpp") == 0 ||
+                          strcasecmp(ext, "h") == 0 || strcasecmp(ext, "hpp") == 0) {
+                          row[2].value.str_val = strdup("Source");
+                      } else if (strcasecmp(ext, "exe") == 0 || strcasecmp(ext, "bat") == 0 ||
+                                strcasecmp(ext, "sh") == 0 || strcasecmp(ext, "com") == 0) {
+                          row[2].value.str_val = strdup("Executable");
+                      } else if (strcasecmp(ext, "txt") == 0 || strcasecmp(ext, "md") == 0 ||
+                                strcasecmp(ext, "log") == 0) {
+                          row[2].value.str_val = strdup("Text");
+                      } else if (strcasecmp(ext, "jpg") == 0 || strcasecmp(ext, "png") == 0 ||
+                                strcasecmp(ext, "gif") == 0 || strcasecmp(ext, "bmp") == 0) {
+                          row[2].value.str_val = strdup("Image");
+                      } else {
+                          row[2].value.str_val = strdup("File");
+                      }
+                  } else {
+                      row[2].value.str_val = strdup("File");
+                  }
+              } else {
+                  row[2].value.str_val = strdup("Special");
+              }
+              row[2].is_highlighted = 0;
 
-    closedir(dir);
+              // Modified date column
+              row[3].type = TYPE_STRING;
+              row[3].value.str_val = malloc(32);
+              struct tm *tm_info = localtime(&file_stat.st_mtime);
+              strftime(row[3].value.str_val, 32, "%Y-%m-%d %H:%M", tm_info);
+              row[3].is_highlighted = 0;
 
-    // Sort entries - directories first then files
-    for (int i = 0; i < entry_count - 1; i++) {
-        for (int j = i + 1; j < entry_count; j++) {
-            if (entries[i].is_dir < entries[j].is_dir ||
-                (entries[i].is_dir == entries[j].is_dir &&
-                 strcmp(entries[i].name, entries[j].name) > 0)) {
-                DirEntry temp = entries[i];
-                entries[i] = entries[j];
-                entries[j] = temp;
-            }
-        }
-    }
+              // Add row to table
+              add_table_row(table, row);
+          }
+      }
 
-    // Display entries
-    for (int i = 0; i < entry_count; i++) {
-        if (detailed) {
-            // Format mode (simplified)
-            char mode[11] = "----------";
-            if (entries[i].is_dir) mode[0] = 'd';
-            if (entries[i].stat.st_mode & S_IRUSR) mode[1] = 'r';
-            if (entries[i].stat.st_mode & S_IWUSR) mode[2] = 'w';
-            if (entries[i].stat.st_mode & S_IXUSR) mode[3] = 'x';
-            if (entries[i].stat.st_mode & S_IRGRP) mode[4] = 'r';
-            if (entries[i].stat.st_mode & S_IWGRP) mode[5] = 'w';
-            if (entries[i].stat.st_mode & S_IXGRP) mode[6] = 'x';
-            if (entries[i].stat.st_mode & S_IROTH) mode[7] = 'r';
-            if (entries[i].stat.st_mode & S_IWOTH) mode[8] = 'w';
-            if (entries[i].stat.st_mode & S_IXOTH) mode[9] = 'x';
+      closedir(dir);
 
-            // Format size
-            char size_str[20];
-            if (entries[i].stat.st_size < 1024) {
-                snprintf(size_str, sizeof(size_str), "%d B", (int)entries[i].stat.st_size);
-            } else if (entries[i].stat.st_size < 1024 * 1024) {
-                snprintf(size_str, sizeof(size_str), "%.1f KB",
-                         entries[i].stat.st_size / 1024.0);
-            } else {
-                snprintf(size_str, sizeof(size_str), "%.1f MB",
-                         entries[i].stat.st_size / (1024.0 * 1024.0));
-            }
+      // Print the table
+      print_table(table);
 
-            // Format time
-            char time_str[20];
-            struct tm *tm_info = localtime(&entries[i].stat.st_mtime);
-            strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M", tm_info);
+      // Free the table
+      free_table(table);
 
-            // Print entry with colors
-            printf("%s %-10s %-17s ", mode, size_str, time_str);
-            
-            if (entries[i].is_dir) {
-                printf(ANSI_COLOR_BLUE "%s" ANSI_COLOR_RESET "\n", entries[i].name);
-            } else if (entries[i].stat.st_mode & S_IXUSR) {
-                printf(ANSI_COLOR_GREEN "%s" ANSI_COLOR_RESET "\n", entries[i].name);
-            } else {
-                printf("%s\n", entries[i].name);
-            }
-        } else {
-            count++;
-            if (entries[i].is_dir) {
-                printf(ANSI_COLOR_BLUE "%-20s" ANSI_COLOR_RESET, entries[i].name);
-            } else if (entries[i].stat.st_mode & S_IXUSR) {
-                printf(ANSI_COLOR_GREEN "%-20s" ANSI_COLOR_RESET, entries[i].name);
-            } else {
-                printf("%-20s", entries[i].name);
-            }
-            
-            if (count % 4 == 0) {
-                printf("\n");
-            }
-        }
-    }
+      return 1;
+  }
 
-    free(entries);
-    
-    if (!detailed && count % 4 != 0) {
-        printf("\n");
-    }
-
-    return 1;
-}
 
 /**
  * Built-in command: clear

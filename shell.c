@@ -448,21 +448,58 @@ TableData* create_ls_table(char **args) {
  * Parse input line into an array of commands (for pipelines)
  */
 char*** lsh_split_commands(char *line) {
+    char **cmd_groups = NULL;
+    char *cmd_group, *saveptr0;
+    int group_count = 0, group_capacity = 10;
     char ***commands = NULL;
     char **command = NULL;
     char *cmd_str, *token, *saveptr1, *saveptr2;
     int cmd_count = 0, cmd_capacity = 10;
     int token_count = 0, token_capacity = 10;
+
+
+    // Allocate initial command groups array
+    cmd_groups = malloc(group_capacity * sizeof(char*));
+    if (!cmd_groups) {
+        perror("lsh: allocation error");
+        return NULL;
+    }
+
+    // Split by && symbol
+    cmd_group = strtok_r(line, "&&", &saveptr0);
+    while (cmd_group != NULL) {
+        // Trim whitespace
+        while (*cmd_group && isspace(*cmd_group)) cmd_group++;
+        cmd_groups[group_count] = strdup(cmd_group);
+        group_count++;
+
+        if (group_count >= group_capacity - 1) {
+            group_capacity *= 2;
+            cmd_groups = realloc(cmd_groups, group_capacity * sizeof(char*));
+            if (!cmd_groups) {
+                perror("lsh: allocation error");
+                return NULL;
+            }
+        }
+        cmd_group = strtok_r(NULL, "&&", &saveptr0);
+    }
+    cmd_groups[group_count] = NULL;
+
+    char *current_cmd = cmd_groups[0];
     
     // Allocate initial commands array
     commands = malloc(cmd_capacity * sizeof(char**));
     if (!commands) {
         perror("lsh: allocation error");
+        for (int i = 0; i < group_count; i++) {
+            free(cmd_groups[i]);
+        }
+        free(cmd_groups);
         return NULL;
     }
     
     // Split by pipe symbol '|'
-    cmd_str = strtok_r(line, "|", &saveptr1);
+    cmd_str = strtok_r(current_cmd, "|", &saveptr1);
     while (cmd_str != NULL) {
         // Trim whitespace
         while (*cmd_str && isspace(*cmd_str)) cmd_str++;
@@ -479,6 +516,10 @@ char*** lsh_split_commands(char *line) {
                 free(commands[i]);
             }
             free(commands);
+            for (int i = 0; i < group_count; i++) {
+                free(cmd_groups[i]);
+            }
+            free(cmd_groups);
             return NULL;
         }
         
@@ -526,6 +567,80 @@ char*** lsh_split_commands(char *line) {
     }
     
     commands[cmd_count] = NULL; // Null-terminate the commands array
+    
+    // Store the remaining command groups in the last position (if any)
+    if (group_count > 1) {
+        // Create a special command array for the command groups marker
+        char **marker = malloc(sizeof(char*) * 2);
+        if (!marker) {
+            perror("lsh: allocation error");
+            for (int i = 0; i < group_count; i++) {
+                free(cmd_groups[i]);
+            }
+            free(cmd_groups);
+            return NULL;
+        }
+        marker[0] = strdup("&&_COMMAND_GROUPS");
+        marker[1] = NULL;
+        
+        // Create a special command array for the remaining groups
+        char **cmd_group_array = malloc(sizeof(char*) * group_count);
+        if (!cmd_group_array) {
+            perror("lsh: allocation error");
+            free(marker[0]);
+            free(marker);
+            for (int i = 0; i < group_count; i++) {
+                free(cmd_groups[i]);
+            }
+            free(cmd_groups);
+            return NULL;
+        }
+        
+        // Copy all remaining command groups
+        for (int i = 1; i < group_count; i++) {
+            cmd_group_array[i-1] = strdup(cmd_groups[i]);
+        }
+        cmd_group_array[group_count-1] = NULL;
+        
+        // Allocate space for cmd_count + 2 commands
+        // (original commands + cmd_group_array + marker)
+        char ***new_commands = malloc((cmd_count + 3) * sizeof(char**));
+        if (!new_commands) {
+            perror("lsh: allocation error");
+            for (int i = 0; cmd_group_array[i] != NULL; i++) {
+                free(cmd_group_array[i]);
+            }
+            free(cmd_group_array);
+            free(marker[0]);
+            free(marker);
+            for (int i = 0; i < group_count; i++) {
+                free(cmd_groups[i]);
+            }
+            free(cmd_groups);
+            return NULL;
+        }
+        
+        // Copy original commands
+        for (int i = 0; i < cmd_count; i++) {
+            new_commands[i] = commands[i];
+        }
+        
+        // Add the command groups and marker
+        new_commands[cmd_count] = cmd_group_array;
+        new_commands[cmd_count+1] = marker;
+        new_commands[cmd_count+2] = NULL;
+        
+        // Free the old commands array but not its contents
+        free(commands);
+        commands = new_commands;
+    }
+    
+    // Free the command groups array
+    for (int i = 0; i < group_count; i++) {
+        free(cmd_groups[i]);
+    }
+    free(cmd_groups);
+    
     return commands;
 }
 
@@ -806,10 +921,110 @@ void lsh_loop(void) {
         // Add line to persistent history
         add_to_history(line);
         
-        // Check for pipes and parse into multiple commands if present
-        if (strchr(line, '|') != NULL) {
+        // Check for pipes or && and parse into multiple commands if present
+        if (strchr(line, '|') != NULL || strchr(line, '&') != NULL) {
             commands = lsh_split_commands(line);
+            
+            // Find if there are command groups (&&)
+            int has_cmd_groups = 0;
+            char **remaining_cmd_groups = NULL;
+            char **marker = NULL;
+            int cmd_count = 0;
+            
+            // Count commands and check for the special command groups marker
+            while (commands[cmd_count] != NULL) {
+                cmd_count++;
+            }
+            
+            // We need at least 2 positions for command groups:
+            // 1. The groups themselves
+            // 2. The marker with "&&_COMMAND_GROUPS"
+            if (cmd_count > 1) {
+                // Get the last non-null command
+                marker = commands[cmd_count-1];
+                
+                // Check if it's the marker
+                if (marker != NULL && marker[0] != NULL && 
+                    strcmp(marker[0], "&&_COMMAND_GROUPS") == 0) {
+                    
+                    has_cmd_groups = 1;
+                    
+                    // Get the command groups from the previous position
+                    remaining_cmd_groups = commands[cmd_count-2];
+                    
+                    // Set these positions to NULL so they don't get processed
+                    // as regular commands
+                    commands[cmd_count-1] = NULL;
+                    commands[cmd_count-2] = NULL;
+                }
+            }
+            
+            // Execute the first command or pipeline
             status = lsh_execute_piped(commands);
+            
+            // If successful and we have command groups, execute them sequentially
+            if (status && has_cmd_groups && remaining_cmd_groups != NULL) {
+                for (int i = 0; remaining_cmd_groups[i] != NULL; i++) {
+                    char *cmd_group = remaining_cmd_groups[i];
+                    
+                    // Parse this command group
+                    char *cmd_copy = strdup(cmd_group);
+                    
+                    // Check if it contains pipes
+                    if (strchr(cmd_copy, '|') != NULL) {
+                        char ***cmd_commands = lsh_split_commands(cmd_copy);
+                        if (cmd_commands) {
+                            status = lsh_execute_piped(cmd_commands);
+                            free_commands(cmd_commands);
+                        }
+                    } else {
+                        // Simple command without pipes
+                        char **args = lsh_split_line(cmd_copy);
+                        
+                        // Check for corrections before executing
+                        char **corrected_args = check_for_corrections(args);
+                        if (corrected_args != NULL) {
+                            for (int j = 0; args[j] != NULL; j++) {
+                                free(args[j]);
+                            }
+                            free(args);
+                            args = corrected_args;
+                        }
+                        
+                        // Execute command
+                        status = lsh_execute(args);
+                        
+                        // Free allocated memory
+                        for (int j = 0; args[j] != NULL; j++) {
+                            free(args[j]);
+                        }
+                        free(args);
+                    }
+                    
+                    free(cmd_copy);
+                    
+                    // If a command failed, stop execution
+                    if (!status) {
+                        break;
+                    }
+                }
+            }
+            
+            // Clean up marker and command groups if they exist
+            if (has_cmd_groups && marker) {
+                // Free marker
+                if (marker[0]) free(marker[0]);
+                free(marker);
+                
+                // Free command groups
+                if (remaining_cmd_groups) {
+                    for (int i = 0; remaining_cmd_groups[i] != NULL; i++) {
+                        free(remaining_cmd_groups[i]);
+                    }
+                    free(remaining_cmd_groups);
+                }
+            }
+            
             free_commands(commands);
         } else {
             // Normal command parsing

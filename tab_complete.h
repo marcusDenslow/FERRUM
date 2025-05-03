@@ -44,10 +44,23 @@ typedef struct {
   char *command;         // Command name
   ArgumentType arg_type; // Expected argument type
   char *description;     // Optional description
+  int strict_match;      // If 1, only show suggestions of the expected type
+                         // If 0, show suggestions of expected type but also allow other matches
 } CommandArgInfo;
 
-// Main tab completion function
+/**
+ * Structure for returning multiple suggestions
+ */
+typedef struct {
+  char **items;         // Array of suggestion strings
+  int count;            // Number of suggestions
+  int current_index;    // Current index for cycling through suggestions
+} SuggestionList;
+
+// Tab completion functions
 char *get_tab_completion(const char *buffer);
+SuggestionList *get_suggestion_list(const char *buffer, const char *prefix);
+void free_suggestion_list(SuggestionList *list);
 
 // Initialize tab completion system
 void init_tab_completion(void);

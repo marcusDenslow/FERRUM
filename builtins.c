@@ -16,11 +16,13 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <stddef.h>
+#include <stdio.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <unistd.h>
 #include <time.h>
+#include <unistd.h>
 
 // History variables
 HistoryEntry command_history[HISTORY_SIZE];
@@ -29,49 +31,68 @@ int history_index = 0;
 
 // String array of built-in command names
 char *builtin_str[] = {
-    "cd",      "help",     "exit",      "dir",     "clear",
-    "mkdir",   "rmdir",    "del",       "touch",   "pwd",
-    "cat",     "history",  "copy",      "move",    "paste",
-    "ps",      "news",     "alias",     "unalias", "aliases",
-    "bookmark", "bookmarks", "goto",     "unbookmark", "focus_timer",
-    "weather", "grep",     "grep-text", "ripgrep", "fzf",
-    "clip",    "echo",     "theme",     "loc",     "git_status",
-    "gg", "ls",};
+    "cd",       "help",      "exit",      "dir",        "clear",
+    "mkdir",    "rmdir",     "del",       "touch",      "pwd",
+    "cat",      "history",   "copy",      "move",       "paste",
+    "ps",       "news",      "alias",     "unalias",    "aliases",
+    "bookmark", "bookmarks", "goto",      "unbookmark", "focus_timer",
+    "weather",  "grep",      "grep-text", "ripgrep",    "fzf",
+    "clip",     "echo",      "theme",     "loc",        "git_status",
+    "gg",       "ls",
+};
 
 // Array of function pointers to built-in command implementations
 int (*builtin_func[])(char **) = {
-    &lsh_cd,      &lsh_help,     &lsh_exit,      &lsh_dir,     &lsh_clear,
-    &lsh_mkdir,   &lsh_rmdir,    &lsh_del,       &lsh_touch,   &lsh_pwd,
-    &lsh_cat,     &lsh_history,  &lsh_copy,      &lsh_move,    &lsh_paste,
-    &lsh_ps,      &lsh_news,     &lsh_alias,     &lsh_unalias, &lsh_aliases,
-    &lsh_bookmark, &lsh_bookmarks, &lsh_goto,     &lsh_unbookmark, &lsh_focus_timer,
-    &lsh_weather, &lsh_grep,     &lsh_actual_grep, &lsh_ripgrep, &lsh_fzf_native,
-    &lsh_clip,    &lsh_echo,     &lsh_theme,     &lsh_loc,     &lsh_git_status,
-    &lsh_gg, lsh_dir,};
+    &lsh_cd,          &lsh_help,       &lsh_exit,       &lsh_dir,
+    &lsh_clear,       &lsh_mkdir,      &lsh_rmdir,      &lsh_del,
+    &lsh_touch,       &lsh_pwd,        &lsh_cat,        &lsh_history,
+    &lsh_copy,        &lsh_move,       &lsh_paste,      &lsh_ps,
+    &lsh_news,        &lsh_alias,      &lsh_unalias,    &lsh_aliases,
+    &lsh_bookmark,    &lsh_bookmarks,  &lsh_goto,       &lsh_unbookmark,
+    &lsh_focus_timer, &lsh_weather,    &lsh_grep,       &lsh_actual_grep,
+    &lsh_ripgrep,     &lsh_fzf_native, &lsh_clip,       &lsh_echo,
+    &lsh_theme,       &lsh_loc,        &lsh_git_status, &lsh_gg,
+    lsh_dir,
+};
 
 /**
  * Set the console text color
  */
 void set_color(int color) {
-    switch(color) {
-        case 0:  printf(ANSI_COLOR_RESET); break;
-        case 1:  printf(ANSI_COLOR_RED); break;
-        case 2:  printf(ANSI_COLOR_GREEN); break;
-        case 3:  printf(ANSI_COLOR_YELLOW); break;
-        case 4:  printf(ANSI_COLOR_BLUE); break;
-        case 5:  printf(ANSI_COLOR_MAGENTA); break;
-        case 6:  printf(ANSI_COLOR_CYAN); break;
-        case 7:  printf(ANSI_COLOR_WHITE); break;
-        default: printf(ANSI_COLOR_RESET);
-    }
+  switch (color) {
+  case 0:
+    printf(ANSI_COLOR_RESET);
+    break;
+  case 1:
+    printf(ANSI_COLOR_RED);
+    break;
+  case 2:
+    printf(ANSI_COLOR_GREEN);
+    break;
+  case 3:
+    printf(ANSI_COLOR_YELLOW);
+    break;
+  case 4:
+    printf(ANSI_COLOR_BLUE);
+    break;
+  case 5:
+    printf(ANSI_COLOR_MAGENTA);
+    break;
+  case 6:
+    printf(ANSI_COLOR_CYAN);
+    break;
+  case 7:
+    printf(ANSI_COLOR_WHITE);
+    break;
+  default:
+    printf(ANSI_COLOR_RESET);
+  }
 }
 
 /**
  * Reset console color to default
  */
-void reset_color() {
-    printf(ANSI_COLOR_RESET);
-}
+void reset_color() { printf(ANSI_COLOR_RESET); }
 
 /**
  * Get the number of built-in commands
@@ -82,26 +103,26 @@ int lsh_num_builtins() { return sizeof(builtin_str) / sizeof(char *); }
  * Add a command to the history
  */
 void lsh_add_to_history(const char *command) {
-    // Don't add empty commands or duplicates of the last command
-    if (!command || *command == '\0' ||
-        (history_count > 0 &&
-         strcmp(command_history[history_index - 1].command, command) == 0)) {
-        return;
-    }
+  // Don't add empty commands or duplicates of the last command
+  if (!command || *command == '\0' ||
+      (history_count > 0 &&
+       strcmp(command_history[history_index - 1].command, command) == 0)) {
+    return;
+  }
 
-    // Free the oldest entry if we're overwriting it
-    if (history_count == HISTORY_SIZE) {
-        free(command_history[history_index].command);
-    } else {
-        history_count++;
-    }
+  // Free the oldest entry if we're overwriting it
+  if (history_count == HISTORY_SIZE) {
+    free(command_history[history_index].command);
+  } else {
+    history_count++;
+  }
 
-    // Add the new command
-    command_history[history_index].command = strdup(command);
-    command_history[history_index].timestamp = time(NULL);
+  // Add the new command
+  command_history[history_index].command = strdup(command);
+  command_history[history_index].timestamp = time(NULL);
 
-    // Update the index
-    history_index = (history_index + 1) % HISTORY_SIZE;
+  // Update the index
+  history_index = (history_index + 1) % HISTORY_SIZE;
 }
 
 /**
@@ -109,22 +130,22 @@ void lsh_add_to_history(const char *command) {
  * Changes the current directory
  */
 int lsh_cd(char **args) {
-    if (args[1] == NULL) {
-        // No argument provided, change to home directory
-        char *home_dir = getenv("HOME");
-        if (home_dir == NULL) {
-            fprintf(stderr, "lsh: HOME environment variable not set\n");
-            return 1;
-        }
-        if (chdir(home_dir) != 0) {
-            perror("lsh: cd");
-        }
-    } else {
-        if (chdir(args[1]) != 0) {
-            perror("lsh: cd");
-        }
+  if (args[1] == NULL) {
+    // No argument provided, change to home directory
+    char *home_dir = getenv("HOME");
+    if (home_dir == NULL) {
+      fprintf(stderr, "lsh: HOME environment variable not set\n");
+      return 1;
     }
-    return 1;
+    if (chdir(home_dir) != 0) {
+      perror("lsh: cd");
+    }
+  } else {
+    if (chdir(args[1]) != 0) {
+      perror("lsh: cd");
+    }
+  }
+  return 1;
 }
 
 /**
@@ -132,45 +153,46 @@ int lsh_cd(char **args) {
  * Displays help information
  */
 int lsh_help(char **args) {
-    printf("LSH Shell - A lightweight shell with modern features\n");
-    printf("Type a command and press Enter to execute it.\n");
-    printf("The following built-in commands are available:\n\n");
+  printf("LSH Shell - A lightweight shell with modern features\n");
+  printf("Type a command and press Enter to execute it.\n");
+  printf("The following built-in commands are available:\n\n");
 
-    // Sort commands alphabetically
-    char *sorted_commands[lsh_num_builtins()];
-    for (int i = 0; i < lsh_num_builtins(); i++) {
-        sorted_commands[i] = builtin_str[i];
+  // Sort commands alphabetically
+  char *sorted_commands[lsh_num_builtins()];
+  for (int i = 0; i < lsh_num_builtins(); i++) {
+    sorted_commands[i] = builtin_str[i];
+  }
+
+  for (int i = 0; i < lsh_num_builtins() - 1; i++) {
+    for (int j = i + 1; j < lsh_num_builtins(); j++) {
+      if (strcmp(sorted_commands[i], sorted_commands[j]) > 0) {
+        char *temp = sorted_commands[i];
+        sorted_commands[i] = sorted_commands[j];
+        sorted_commands[j] = temp;
+      }
     }
+  }
 
-    for (int i = 0; i < lsh_num_builtins() - 1; i++) {
-        for (int j = i + 1; j < lsh_num_builtins(); j++) {
-            if (strcmp(sorted_commands[i], sorted_commands[j]) > 0) {
-                char *temp = sorted_commands[i];
-                sorted_commands[i] = sorted_commands[j];
-                sorted_commands[j] = temp;
-            }
-        }
+  // Print commands in columns
+  int columns = 4;
+  int rows = (lsh_num_builtins() + columns - 1) / columns;
+  for (int i = 0; i < rows; i++) {
+    for (int j = 0; j < columns; j++) {
+      int index = j * rows + i;
+      if (index < lsh_num_builtins()) {
+        printf("%-15s", sorted_commands[index]);
+      }
     }
+    printf("\n");
+  }
 
-    // Print commands in columns
-    int columns = 4;
-    int rows = (lsh_num_builtins() + columns - 1) / columns;
-    for (int i = 0; i < rows; i++) {
-        for (int j = 0; j < columns; j++) {
-            int index = j * rows + i;
-            if (index < lsh_num_builtins()) {
-                printf("%-15s", sorted_commands[index]);
-            }
-        }
-        printf("\n");
-    }
+  printf(
+      "\nFor more information on specific commands, type 'help <command>'\n");
+  printf("Use tab completion for commands and file paths\n");
+  printf("Use arrow keys to navigate command history\n");
+  printf("Type a partial command followed by '?' for suggestions\n");
 
-    printf("\nFor more information on specific commands, type 'help <command>'\n");
-    printf("Use tab completion for commands and file paths\n");
-    printf("Use arrow keys to navigate command history\n");
-    printf("Type a partial command followed by '?' for suggestions\n");
-
-    return 1;
+  return 1;
 }
 
 /**
@@ -184,134 +206,140 @@ int lsh_exit(char **args) { return 0; }
  * Lists files in the current directory
  */
 int lsh_dir(char **args) {
-      DIR *dir;
-      struct dirent *entry;
-      struct stat file_stat;
-      char cwd[PATH_MAX];
-      char file_path[PATH_MAX];
-      int detailed = 0;
+  DIR *dir;
+  struct dirent *entry;
+  struct stat file_stat;
+  char cwd[PATH_MAX];
+  char file_path[PATH_MAX];
+  int detailed = 0;
 
-      // Create table headers
-      char *headers[] = {"Name", "Size", "Type", "Modified"};
-      TableData *table = create_table(headers, 4);
-      if (!table) {
-          fprintf(stderr, "lsh: failed to create table\n");
-          return 1;
-      }
-
-      if (getcwd(cwd, sizeof(cwd)) == NULL) {
-          perror("lsh: getcwd");
-          free_table(table);
-          return 1;
-      }
-
-      dir = opendir(cwd);
-      if (dir == NULL) {
-          perror("lsh: opendir");
-          free_table(table);
-          return 1;
-      }
-
-      // Collect all entries
-      while ((entry = readdir(dir)) != NULL) {
-          // Skip . and .. entries
-          if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
-              continue;
-          }
-
-          snprintf(file_path, sizeof(file_path), "%s/%s", cwd, entry->d_name);
-          if (stat(file_path, &file_stat) == 0) {
-              // Create a new row
-              DataValue *row = (DataValue*)malloc(4 * sizeof(DataValue));
-              if (!row) {
-                  fprintf(stderr, "lsh: allocation error\n");
-                  continue;
-              }
-
-              // Name column
-              row[0].type = TYPE_STRING;
-              row[0].value.str_val = strdup(entry->d_name);
-              row[0].is_highlighted = S_ISDIR(file_stat.st_mode); // Highlight directories
-
-              // Size column
-              row[1].type = TYPE_SIZE;
-              row[1].value.str_val = malloc(32);
-              if (S_ISDIR(file_stat.st_mode)) {
-                  strcpy(row[1].value.str_val, "<DIR>");
-              } else if (file_stat.st_size < 1024) {
-                  snprintf(row[1].value.str_val, 32, "%d B", (int)file_stat.st_size);
-              } else if (file_stat.st_size < 1024 * 1024) {
-                  snprintf(row[1].value.str_val, 32, "%.1f KB", file_stat.st_size / 1024.0);
-              } else {
-                  snprintf(row[1].value.str_val, 32, "%.1f MB", file_stat.st_size / (1024.0 *
-  1024.0));
-              }
-              row[1].is_highlighted = 0;
-
-              // Type column
-              row[2].type = TYPE_STRING;
-              if (S_ISDIR(file_stat.st_mode)) {
-                  row[2].value.str_val = strdup("Directory");
-              } else if (S_ISREG(file_stat.st_mode)) {
-                  // Try to determine file type by extension
-                  char *ext = strrchr(entry->d_name, '.');
-                  if (ext != NULL) {
-                      ext++; // Skip the dot
-                      if (strcasecmp(ext, "c") == 0 || strcasecmp(ext, "cpp") == 0 ||
-                          strcasecmp(ext, "h") == 0 || strcasecmp(ext, "hpp") == 0) {
-                          row[2].value.str_val = strdup("Source");
-                      } else if (strcasecmp(ext, "exe") == 0 || strcasecmp(ext, "bat") == 0 ||
-                                strcasecmp(ext, "sh") == 0 || strcasecmp(ext, "com") == 0) {
-                          row[2].value.str_val = strdup("Executable");
-                      } else if (strcasecmp(ext, "txt") == 0 || strcasecmp(ext, "md") == 0 ||
-                                strcasecmp(ext, "log") == 0) {
-                          row[2].value.str_val = strdup("Text");
-                      } else if (strcasecmp(ext, "jpg") == 0 || strcasecmp(ext, "png") == 0 ||
-                                strcasecmp(ext, "gif") == 0 || strcasecmp(ext, "bmp") == 0) {
-                          row[2].value.str_val = strdup("Image");
-                      } else {
-                          row[2].value.str_val = strdup("File");
-                      }
-                  } else {
-                      row[2].value.str_val = strdup("File");
-                  }
-              } else {
-                  row[2].value.str_val = strdup("Special");
-              }
-              row[2].is_highlighted = 0;
-
-              // Modified date column
-              row[3].type = TYPE_STRING;
-              row[3].value.str_val = malloc(32);
-              struct tm *tm_info = localtime(&file_stat.st_mtime);
-              strftime(row[3].value.str_val, 32, "%Y-%m-%d %H:%M", tm_info);
-              row[3].is_highlighted = 0;
-
-              // Add row to table
-              add_table_row(table, row);
-          }
-      }
-
-      closedir(dir);
-
-      // Print the table
-      print_table(table);
-
-      // Free the table
-      free_table(table);
-
-      return 1;
+  // Create table headers
+  char *headers[] = {"Name", "Size", "Type", "Modified"};
+  TableData *table = create_table(headers, 4);
+  if (!table) {
+    fprintf(stderr, "lsh: failed to create table\n");
+    return 1;
   }
 
+  if (getcwd(cwd, sizeof(cwd)) == NULL) {
+    perror("lsh: getcwd");
+    free_table(table);
+    return 1;
+  }
+
+  dir = opendir(cwd);
+  if (dir == NULL) {
+    perror("lsh: opendir");
+    free_table(table);
+    return 1;
+  }
+
+  // Collect all entries
+  while ((entry = readdir(dir)) != NULL) {
+    // Skip . and .. entries
+    if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+      continue;
+    }
+
+    snprintf(file_path, sizeof(file_path), "%s/%s", cwd, entry->d_name);
+    if (stat(file_path, &file_stat) == 0) {
+      // Create a new row
+      DataValue *row = (DataValue *)malloc(4 * sizeof(DataValue));
+      if (!row) {
+        fprintf(stderr, "lsh: allocation error\n");
+        continue;
+      }
+
+      // Name column
+      row[0].type = TYPE_STRING;
+      row[0].value.str_val = strdup(entry->d_name);
+      row[0].is_highlighted =
+          S_ISDIR(file_stat.st_mode); // Highlight directories
+
+      // Size column
+      row[1].type = TYPE_SIZE;
+      row[1].value.str_val = malloc(32);
+      if (S_ISDIR(file_stat.st_mode)) {
+        strcpy(row[1].value.str_val, "<DIR>");
+      } else if (file_stat.st_size < 1024) {
+        snprintf(row[1].value.str_val, 32, "%d B", (int)file_stat.st_size);
+      } else if (file_stat.st_size < 1024 * 1024) {
+        snprintf(row[1].value.str_val, 32, "%.1f KB",
+                 file_stat.st_size / 1024.0);
+      } else {
+        snprintf(row[1].value.str_val, 32, "%.1f MB",
+                 file_stat.st_size / (1024.0 * 1024.0));
+      }
+      row[1].is_highlighted = 0;
+
+      // Type column
+      row[2].type = TYPE_STRING;
+      if (S_ISDIR(file_stat.st_mode)) {
+        row[2].value.str_val = strdup("Directory");
+      } else if (S_ISREG(file_stat.st_mode)) {
+        // Try to determine file type by extension
+        char *ext = strrchr(entry->d_name, '.');
+        if (ext != NULL) {
+          ext++; // Skip the dot
+          if (strcasecmp(ext, "c") == 0 || strcasecmp(ext, "cpp") == 0 ||
+              strcasecmp(ext, "h") == 0 || strcasecmp(ext, "hpp") == 0) {
+            row[2].value.str_val = strdup("Source");
+          } else if (strcasecmp(ext, "exe") == 0 ||
+                     strcasecmp(ext, "bat") == 0 ||
+                     strcasecmp(ext, "sh") == 0 ||
+                     strcasecmp(ext, "com") == 0) {
+            row[2].value.str_val = strdup("Executable");
+          } else if (strcasecmp(ext, "txt") == 0 ||
+                     strcasecmp(ext, "md") == 0 ||
+                     strcasecmp(ext, "log") == 0) {
+            row[2].value.str_val = strdup("Text");
+          } else if (strcasecmp(ext, "jpg") == 0 ||
+                     strcasecmp(ext, "png") == 0 ||
+                     strcasecmp(ext, "gif") == 0 ||
+                     strcasecmp(ext, "bmp") == 0) {
+            row[2].value.str_val = strdup("Image");
+          } else {
+            row[2].value.str_val = strdup("File");
+          }
+        } else {
+          row[2].value.str_val = strdup("File");
+        }
+      } else {
+        row[2].value.str_val = strdup("Special");
+      }
+      row[2].is_highlighted = 0;
+
+      // Modified date column
+      row[3].type = TYPE_STRING;
+      row[3].value.str_val = malloc(32);
+      struct tm *tm_info = localtime(&file_stat.st_mtime);
+      strftime(row[3].value.str_val, 32, "%Y-%m-%d %H:%M", tm_info);
+      row[3].is_highlighted = 0;
+
+      // Add row to table
+      add_table_row(table, row);
+    }
+  }
+
+  closedir(dir);
+
+  // Print the table
+  print_table(table);
+
+  // Free the table
+  free_table(table);
+
+  return 1;
+}
 
 /**
  * Built-in command: clear
  * Clears the screen
  */
 int lsh_clear(char **args) {
-    printf(ANSI_CLEAR_SCREEN);
-    printf(ANSI_CURSOR_HOME);
-    return 1;
+  printf(ANSI_CLEAR_SCREEN);
+  printf(ANSI_CURSOR_HOME);
+  return 1;
 }
 
 /**
@@ -319,14 +347,14 @@ int lsh_clear(char **args) {
  * Creates a new directory
  */
 int lsh_mkdir(char **args) {
-    if (args[1] == NULL) {
-        fprintf(stderr, "lsh: expected argument to \"mkdir\"\n");
-    } else {
-        if (mkdir(args[1], 0755) != 0) {
-            perror("lsh: mkdir");
-        }
+  if (args[1] == NULL) {
+    fprintf(stderr, "lsh: expected argument to \"mkdir\"\n");
+  } else {
+    if (mkdir(args[1], 0755) != 0) {
+      perror("lsh: mkdir");
     }
-    return 1;
+  }
+  return 1;
 }
 
 /**
@@ -334,14 +362,14 @@ int lsh_mkdir(char **args) {
  * Removes a directory
  */
 int lsh_rmdir(char **args) {
-    if (args[1] == NULL) {
-        fprintf(stderr, "lsh: expected argument to \"rmdir\"\n");
-    } else {
-        if (rmdir(args[1]) != 0) {
-            perror("lsh: rmdir");
-        }
+  if (args[1] == NULL) {
+    fprintf(stderr, "lsh: expected argument to \"rmdir\"\n");
+  } else {
+    if (rmdir(args[1]) != 0) {
+      perror("lsh: rmdir");
     }
-    return 1;
+  }
+  return 1;
 }
 
 /**
@@ -349,14 +377,14 @@ int lsh_rmdir(char **args) {
  * Deletes a file
  */
 int lsh_del(char **args) {
-    if (args[1] == NULL) {
-        fprintf(stderr, "lsh: expected argument to \"del\"\n");
-    } else {
-        if (unlink(args[1]) != 0) {
-            perror("lsh: del");
-        }
+  if (args[1] == NULL) {
+    fprintf(stderr, "lsh: expected argument to \"del\"\n");
+  } else {
+    if (unlink(args[1]) != 0) {
+      perror("lsh: del");
     }
-    return 1;
+  }
+  return 1;
 }
 
 /**
@@ -364,17 +392,17 @@ int lsh_del(char **args) {
  * Creates a new file or updates timestamp of existing file
  */
 int lsh_touch(char **args) {
-    if (args[1] == NULL) {
-        fprintf(stderr, "lsh: expected argument to \"touch\"\n");
+  if (args[1] == NULL) {
+    fprintf(stderr, "lsh: expected argument to \"touch\"\n");
+  } else {
+    int fd = open(args[1], O_CREAT | O_WRONLY | O_APPEND, 0644);
+    if (fd == -1) {
+      perror("lsh: touch");
     } else {
-        int fd = open(args[1], O_CREAT | O_WRONLY | O_APPEND, 0644);
-        if (fd == -1) {
-            perror("lsh: touch");
-        } else {
-            close(fd);
-        }
+      close(fd);
     }
-    return 1;
+  }
+  return 1;
 }
 
 /**
@@ -382,13 +410,13 @@ int lsh_touch(char **args) {
  * Prints the current working directory
  */
 int lsh_pwd(char **args) {
-    char cwd[PATH_MAX];
-    if (getcwd(cwd, sizeof(cwd)) != NULL) {
-        printf("%s\n", cwd);
-    } else {
-        perror("lsh: getcwd");
-    }
-    return 1;
+  char cwd[PATH_MAX];
+  if (getcwd(cwd, sizeof(cwd)) != NULL) {
+    printf("%s\n", cwd);
+  } else {
+    perror("lsh: getcwd");
+  }
+  return 1;
 }
 
 /**
@@ -396,24 +424,24 @@ int lsh_pwd(char **args) {
  * Displays the contents of a file
  */
 int lsh_cat(char **args) {
-    if (args[1] == NULL) {
-        fprintf(stderr, "lsh: expected argument to \"cat\"\n");
-        return 1;
-    }
-
-    FILE *fp = fopen(args[1], "r");
-    if (fp == NULL) {
-        perror("lsh: cat");
-        return 1;
-    }
-
-    char buffer[1024];
-    while (fgets(buffer, sizeof(buffer), fp) != NULL) {
-        printf("%s", buffer);
-    }
-
-    fclose(fp);
+  if (args[1] == NULL) {
+    fprintf(stderr, "lsh: expected argument to \"cat\"\n");
     return 1;
+  }
+
+  FILE *fp = fopen(args[1], "r");
+  if (fp == NULL) {
+    perror("lsh: cat");
+    return 1;
+  }
+
+  char buffer[1024];
+  while (fgets(buffer, sizeof(buffer), fp) != NULL) {
+    printf("%s", buffer);
+  }
+
+  fclose(fp);
+  return 1;
 }
 
 /**
@@ -421,21 +449,21 @@ int lsh_cat(char **args) {
  * Displays command history
  */
 int lsh_history(char **args) {
-    char time_str[20];
-    struct tm *tm_info;
+  char time_str[20];
+  struct tm *tm_info;
 
-    printf("Command History:\n");
-    printf("----------------\n");
+  printf("Command History:\n");
+  printf("----------------\n");
 
-    // Display history in chronological order
-    for (int i = 0; i < history_count; i++) {
-        int idx = (history_index - history_count + i + HISTORY_SIZE) % HISTORY_SIZE;
-        tm_info = localtime(&command_history[idx].timestamp);
-        strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", tm_info);
-        printf("%3d: [%s] %s\n", i + 1, time_str, command_history[idx].command);
-    }
+  // Display history in chronological order
+  for (int i = 0; i < history_count; i++) {
+    int idx = (history_index - history_count + i + HISTORY_SIZE) % HISTORY_SIZE;
+    tm_info = localtime(&command_history[idx].timestamp);
+    strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", tm_info);
+    printf("%3d: [%s] %s\n", i + 1, time_str, command_history[idx].command);
+  }
 
-    return 1;
+  return 1;
 }
 
 /**
@@ -443,34 +471,35 @@ int lsh_history(char **args) {
  * Copies a file
  */
 int lsh_copy(char **args) {
-    if (args[1] == NULL || args[2] == NULL) {
-        fprintf(stderr, "lsh: expected source and destination arguments to \"copy\"\n");
-        return 1;
-    }
-
-    FILE *source = fopen(args[1], "rb");
-    if (source == NULL) {
-        perror("lsh: copy (source)");
-        return 1;
-    }
-
-    FILE *dest = fopen(args[2], "wb");
-    if (dest == NULL) {
-        fclose(source);
-        perror("lsh: copy (destination)");
-        return 1;
-    }
-
-    char buffer[4096];
-    size_t bytes_read;
-    while ((bytes_read = fread(buffer, 1, sizeof(buffer), source)) > 0) {
-        fwrite(buffer, 1, bytes_read, dest);
-    }
-
-    fclose(source);
-    fclose(dest);
-    printf("Copied %s to %s\n", args[1], args[2]);
+  if (args[1] == NULL || args[2] == NULL) {
+    fprintf(stderr,
+            "lsh: expected source and destination arguments to \"copy\"\n");
     return 1;
+  }
+
+  FILE *source = fopen(args[1], "rb");
+  if (source == NULL) {
+    perror("lsh: copy (source)");
+    return 1;
+  }
+
+  FILE *dest = fopen(args[2], "wb");
+  if (dest == NULL) {
+    fclose(source);
+    perror("lsh: copy (destination)");
+    return 1;
+  }
+
+  char buffer[4096];
+  size_t bytes_read;
+  while ((bytes_read = fread(buffer, 1, sizeof(buffer), source)) > 0) {
+    fwrite(buffer, 1, bytes_read, dest);
+  }
+
+  fclose(source);
+  fclose(dest);
+  printf("Copied %s to %s\n", args[1], args[2]);
+  return 1;
 }
 
 /**
@@ -478,18 +507,19 @@ int lsh_copy(char **args) {
  * Moves a file
  */
 int lsh_move(char **args) {
-    if (args[1] == NULL || args[2] == NULL) {
-        fprintf(stderr, "lsh: expected source and destination arguments to \"move\"\n");
-        return 1;
-    }
-
-    if (rename(args[1], args[2]) != 0) {
-        perror("lsh: move");
-        return 1;
-    }
-
-    printf("Moved %s to %s\n", args[1], args[2]);
+  if (args[1] == NULL || args[2] == NULL) {
+    fprintf(stderr,
+            "lsh: expected source and destination arguments to \"move\"\n");
     return 1;
+  }
+
+  if (rename(args[1], args[2]) != 0) {
+    perror("lsh: move");
+    return 1;
+  }
+
+  printf("Moved %s to %s\n", args[1], args[2]);
+  return 1;
 }
 
 /**
@@ -497,8 +527,8 @@ int lsh_move(char **args) {
  * Placeholder for paste functionality
  */
 int lsh_paste(char **args) {
-    printf("Paste functionality not implemented yet\n");
-    return 1;
+  printf("Paste functionality not implemented yet\n");
+  return 1;
 }
 
 /**
@@ -506,29 +536,165 @@ int lsh_paste(char **args) {
  * Lists running processes
  */
 int lsh_ps(char **args) {
-    FILE *fp = popen("ps -ef", "r");
-    if (fp == NULL) {
-        perror("lsh: ps");
-        return 1;
-    }
-
-    char buffer[1024];
-    while (fgets(buffer, sizeof(buffer), fp) != NULL) {
-        printf("%s", buffer);
-    }
-
-    pclose(fp);
+  FILE *fp = popen("ps -ef", "r");
+  if (fp == NULL) {
+    perror("lsh: ps");
     return 1;
+  }
+
+  char buffer[1024];
+  while (fgets(buffer, sizeof(buffer), fp) != NULL) {
+    printf("%s", buffer);
+  }
+
+  pclose(fp);
+  return 1;
 }
 
-/**
- * Built-in command: news
- * Placeholder for news functionality
- */
 int lsh_news(char **args) {
-    printf("Fetching news feed...\n");
-    printf("News functionality not fully implemented yet\n");
+  printf("Fetching latest updates from shelltestLinux repository...\n\n");
+
+  // Use GitHub API to get the latest commit from the main branch
+  const char *api_url =
+      "https://api.github.com/repos/marcusDenslow/shelltestLinux/commits/main";
+  char command[1024];
+  snprintf(command, sizeof(command),
+           "curl -s -H \"Accept: application/vnd.github.v3+json\" \"%s\"",
+           api_url);
+
+  FILE *fp = popen(command, "r");
+  if (!fp) {
+    fprintf(
+        stderr,
+        "Failed to fetch updates. Please check your internet connection.\n");
     return 1;
+  }
+
+  // Read the entire response
+  char response[8192] = "";
+  size_t total_read = 0;
+  size_t chunk_size;
+
+  while ((chunk_size = fread(response + total_read, 1,
+                             sizeof(response) - total_read - 1, fp)) > 0) {
+    total_read += chunk_size;
+    if (total_read >= sizeof(response) - 1)
+      break;
+  }
+  response[total_read] = '\0';
+  pclose(fp);
+
+  // Check if we got an error response
+  if (strstr(response, "\"message\":") &&
+      strstr(response, "\"documentation_url\":")) {
+    fprintf(stderr, "Failed to fetch updates from GitHub. The repository might "
+                    "be private or there might be a connection issue.\n");
+    return 1;
+  }
+
+  // Extract commit information from JSON
+  char *sha = extract_json_string(response, "sha");
+  char *message = extract_json_string(response, "message");
+  char *author_name = NULL;
+  char *author_email = NULL;
+  char *date = NULL;
+
+  // Find author object
+  char *author_start = strstr(response, "\"author\":");
+  if (author_start) {
+    author_name = extract_json_string(author_start, "name");
+    author_email = extract_json_string(author_start, "email");
+    date = extract_json_string(author_start, "date");
+  }
+
+  // Format the date if we have it
+  char formatted_date[64] = "Unknown date";
+  if (date) {
+    // Parse the ISO date (e.g., "2024-01-20T15:30:45Z")
+    struct tm tm_info = {0};
+    if (sscanf(date, "%d-%d-%dT%d:%d:%d", &tm_info.tm_year, &tm_info.tm_mon,
+               &tm_info.tm_mday, &tm_info.tm_hour, &tm_info.tm_min,
+               &tm_info.tm_sec) == 6) {
+      tm_info.tm_year -= 1900; // tm_year is years since 1900
+      tm_info.tm_mon -= 1;     // tm_mon is 0-based
+
+      time_t commit_time = mktime(&tm_info);
+      time_t now = time(NULL);
+      double diff_seconds = difftime(now, commit_time);
+
+      // Format as relative time
+      if (diff_seconds < 60) {
+        snprintf(formatted_date, sizeof(formatted_date), "just now");
+      } else if (diff_seconds < 3600) {
+        int minutes = (int)(diff_seconds / 60);
+        snprintf(formatted_date, sizeof(formatted_date), "%d minute%s ago",
+                 minutes, minutes == 1 ? "" : "s");
+      } else if (diff_seconds < 86400) {
+        int hours = (int)(diff_seconds / 3600);
+        snprintf(formatted_date, sizeof(formatted_date), "%d hour%s ago", hours,
+                 hours == 1 ? "" : "s");
+      } else if (diff_seconds < 604800) {
+        int days = (int)(diff_seconds / 86400);
+        snprintf(formatted_date, sizeof(formatted_date), "%d day%s ago", days,
+                 days == 1 ? "" : "s");
+      } else {
+        // Format as absolute date
+        strftime(formatted_date, sizeof(formatted_date), "%Y-%m-%d %H:%M",
+                 &tm_info);
+      }
+    }
+  }
+
+  // Display the information
+  printf(ANSI_COLOR_CYAN "Latest Update - shelltestLinux\n" ANSI_COLOR_RESET);
+  printf("════════════════════════════════════════════════════════════\n\n");
+
+  if (sha && message) {
+    // Shorten SHA to first 7 characters
+    char short_sha[8] = "";
+    strncpy(short_sha, sha, 7);
+    short_sha[7] = '\0';
+
+    printf(ANSI_COLOR_GREEN "Commit:" ANSI_COLOR_RESET " %s\n", short_sha);
+    printf(ANSI_COLOR_GREEN "Date:" ANSI_COLOR_RESET "   %s\n", formatted_date);
+
+    if (author_name) {
+      printf(ANSI_COLOR_GREEN "Author:" ANSI_COLOR_RESET " %s", author_name);
+      if (author_email) {
+        printf(" <%s>", author_email);
+      }
+      printf("\n");
+    }
+
+    printf("\n" ANSI_COLOR_YELLOW "Message:" ANSI_COLOR_RESET "\n");
+    printf("  %s\n\n", message);
+
+    printf("────────────────────────────────────────────────────────────\n");
+    printf("Repository: " ANSI_COLOR_CYAN
+           "https://github.com/marcusDenslow/shelltestLinux" ANSI_COLOR_RESET
+           "\n");
+    printf("View commit: "
+           "https://github.com/marcusDenslow/shelltestLinux/commit/%s\n",
+           short_sha);
+
+  } else {
+    fprintf(stderr, "Failed to parse update information. The GitHub API "
+                    "response format might have changed.\n");
+  }
+
+  // Free allocated strings
+  if (sha)
+    free(sha);
+  if (message)
+    free(message);
+  if (author_name)
+    free(author_name);
+  if (author_email)
+    free(author_email);
+  if (date)
+    free(date);
+
+  return 1;
 }
 
 /**
@@ -536,8 +702,8 @@ int lsh_news(char **args) {
  * Placeholder for clipboard functionality
  */
 int lsh_clip(char **args) {
-    printf("Clipboard functionality not implemented yet\n");
-    return 1;
+  printf("Clipboard functionality not implemented yet\n");
+  return 1;
 }
 
 /**
@@ -545,19 +711,19 @@ int lsh_clip(char **args) {
  * Echoes arguments to stdout
  */
 int lsh_echo(char **args) {
-    if (args[1] == NULL) {
-        printf("\n");
-        return 1;
-    }
-
-    for (int i = 1; args[i] != NULL; i++) {
-        printf("%s", args[i]);
-        if (args[i + 1] != NULL) {
-            printf(" ");
-        }
-    }
+  if (args[1] == NULL) {
     printf("\n");
     return 1;
+  }
+
+  for (int i = 1; args[i] != NULL; i++) {
+    printf("%s", args[i]);
+    if (args[i + 1] != NULL) {
+      printf(" ");
+    }
+  }
+  printf("\n");
+  return 1;
 }
 
 /**
@@ -565,111 +731,117 @@ int lsh_echo(char **args) {
  * Counts lines of code
  */
 int lsh_loc(char **args) {
-    if (args[1] == NULL) {
-        fprintf(stderr, "lsh: expected file or directory argument to \"loc\"\n");
-        return 1;
-    }
-
-    struct stat st;
-    if (stat(args[1], &st) != 0) {
-        perror("lsh: loc");
-        return 1;
-    }
-
-    if (S_ISREG(st.st_mode)) {
-        // Count lines in a single file
-        FILE *file = fopen(args[1], "r");
-        if (!file) {
-            perror("lsh: loc");
-            return 1;
-        }
-
-        int lines = 0, code_lines = 0, blank_lines = 0, comment_lines = 0;
-        char line[1024];
-        int in_comment_block = 0;
-
-        while (fgets(line, sizeof(line), file)) {
-            lines++;
-            char *trimmed = line;
-            while (*trimmed && isspace(*trimmed)) trimmed++;
-
-            if (*trimmed == '\0') {
-                blank_lines++;
-            } else if (strncmp(trimmed, "//", 2) == 0) {
-                comment_lines++;
-            } else if (strncmp(trimmed, "/*", 2) == 0) {
-                comment_lines++;
-                in_comment_block = 1;
-                if (strstr(trimmed, "*/")) {
-                    in_comment_block = 0;
-                }
-            } else if (in_comment_block) {
-                comment_lines++;
-                if (strstr(trimmed, "*/")) {
-                    in_comment_block = 0;
-                }
-            } else {
-                code_lines++;
-            }
-        }
-
-        fclose(file);
-
-        printf("File: %s\n", args[1]);
-        printf("Total lines: %d\n", lines);
-        printf("Code lines: %d\n", code_lines);
-        printf("Comment lines: %d\n", comment_lines);
-        printf("Blank lines: %d\n", blank_lines);
-
-    } else if (S_ISDIR(st.st_mode)) {
-        printf("Directory LOC counting not implemented yet\n");
-    } else {
-        fprintf(stderr, "lsh: %s is not a file or directory\n", args[1]);
-    }
-
+  if (args[1] == NULL) {
+    fprintf(stderr, "lsh: expected file or directory argument to \"loc\"\n");
     return 1;
+  }
+
+  struct stat st;
+  if (stat(args[1], &st) != 0) {
+    perror("lsh: loc");
+    return 1;
+  }
+
+  if (S_ISREG(st.st_mode)) {
+    // Count lines in a single file
+    FILE *file = fopen(args[1], "r");
+    if (!file) {
+      perror("lsh: loc");
+      return 1;
+    }
+
+    int lines = 0, code_lines = 0, blank_lines = 0, comment_lines = 0;
+    char line[1024];
+    int in_comment_block = 0;
+
+    while (fgets(line, sizeof(line), file)) {
+      lines++;
+      char *trimmed = line;
+      while (*trimmed && isspace(*trimmed))
+        trimmed++;
+
+      if (*trimmed == '\0') {
+        blank_lines++;
+      } else if (strncmp(trimmed, "//", 2) == 0) {
+        comment_lines++;
+      } else if (strncmp(trimmed, "/*", 2) == 0) {
+        comment_lines++;
+        in_comment_block = 1;
+        if (strstr(trimmed, "*/")) {
+          in_comment_block = 0;
+        }
+      } else if (in_comment_block) {
+        comment_lines++;
+        if (strstr(trimmed, "*/")) {
+          in_comment_block = 0;
+        }
+      } else {
+        code_lines++;
+      }
+    }
+
+    fclose(file);
+
+    printf("File: %s\n", args[1]);
+    printf("Total lines: %d\n", lines);
+    printf("Code lines: %d\n", code_lines);
+    printf("Comment lines: %d\n", comment_lines);
+    printf("Blank lines: %d\n", blank_lines);
+
+  } else if (S_ISDIR(st.st_mode)) {
+    printf("Directory LOC counting not implemented yet\n");
+  } else {
+    fprintf(stderr, "lsh: %s is not a file or directory\n", args[1]);
+  }
+
+  return 1;
 }
 
 /**
  * Helper function to extract a string value from a JSON response
  */
 char *extract_json_string(const char *json, const char *key) {
-    char search_key[100];
-    sprintf(search_key, "\"%s\":", key);
-    
-    char *key_pos = strstr(json, search_key);
-    if (!key_pos) return NULL;
-    
-    key_pos += strlen(search_key);
-    
-    // Skip whitespace
-    while (*key_pos && isspace(*key_pos)) key_pos++;
-    
-    if (*key_pos != '"') return NULL;
-    
-    key_pos++; // Skip opening quote
-    
-    // Find closing quote
-    char *end = key_pos;
-    while (*end && *end != '"') {
-        if (*end == '\\' && *(end + 1)) {
-            end += 2; // Skip escaped character
-        } else {
-            end++;
-        }
+  char search_key[100];
+  sprintf(search_key, "\"%s\":", key);
+
+  char *key_pos = strstr(json, search_key);
+  if (!key_pos)
+    return NULL;
+
+  key_pos += strlen(search_key);
+
+  // Skip whitespace
+  while (*key_pos && isspace(*key_pos))
+    key_pos++;
+
+  if (*key_pos != '"')
+    return NULL;
+
+  key_pos++; // Skip opening quote
+
+  // Find closing quote
+  char *end = key_pos;
+  while (*end && *end != '"') {
+    if (*end == '\\' && *(end + 1)) {
+      end += 2; // Skip escaped character
+    } else {
+      end++;
     }
-    
-    if (!*end) return NULL;
-    
-    // Allocate and copy the string value
-    int len = end - key_pos;
-    char *result = malloc(len + 1);
-    if (!result) return NULL;
-    
-    strncpy(result, key_pos, len);
-    result[len] = '\0';
-    
-    return result;
+  }
+
+  if (!*end)
+    return NULL;
+
+  // Allocate and copy the string value
+  int len = end - key_pos;
+  char *result = malloc(len + 1);
+  if (!result)
+    return NULL;
+
+  strncpy(result, key_pos, len);
+  result[len] = '\0';
+
+  return result;
 }
 
 /**
@@ -677,15 +849,15 @@ char *extract_json_string(const char *json, const char *key) {
  * Displays the Git status of the current repo
  */
 int lsh_git_status(char **args) {
-    // Show current Git status
-    char *git_status = get_git_status();
-    if (git_status) {
-        printf("Git Status: %s\n", git_status);
-        free(git_status);
-    } else {
-        printf("Not in a Git repository or Git not available\n");
-    }
-    return 1;
+  // Show current Git status
+  char *git_status = get_git_status();
+  if (git_status) {
+    printf("Git Status: %s\n", git_status);
+    free(git_status);
+  } else {
+    printf("Not in a Git repository or Git not available\n");
+  }
+  return 1;
 }
 
 /**
@@ -693,113 +865,117 @@ int lsh_git_status(char **args) {
  * Quick access to Git commands
  */
 int lsh_gg(char **args) {
-    if (args[1] == NULL) {
-        printf("Usage: gg <command>\n");
-        printf("Available commands:\n");
-        printf("  s - status\n");
-        printf("  c - commit\n");
-        printf("  p - pull\n");
-        printf("  ps - push\n");
-        printf("  a - add .\n");
-        printf("  l - log\n");
-        printf("  d - diff\n");
-        printf("  b - branch\n");
-        printf("  ch - checkout\n");
-        printf("  o - open in GitHub browser\n");
-        return 1;
-    }
-
-    // Execute the appropriate git command based on shorthand
-    if (strcmp(args[1], "s") == 0) {
-        system("git status");
-    } else if (strcmp(args[1], "b") == 0) {
-        system("git branch");
-    } else if (strcmp(args[1], "o") == 0) {
-        // Get the remote URL
-        FILE *fp;
-        char remote_url[1024] = {0};
-        fp = popen("git config --get remote.origin.url 2>/dev/null", "r");
-        if (fp) {
-            fgets(remote_url, sizeof(remote_url), fp);
-            pclose(fp);
-            
-            // Trim trailing newline
-            char *newline = strchr(remote_url, '\n');
-            if (newline) *newline = '\0';
-            
-            if (strlen(remote_url) > 0) {
-                // Convert SSH URLs to HTTPS
-                char https_url[1024] = {0};
-                if (strstr(remote_url, "git@github.com:")) {
-                    // Convert ssh format (git@github.com:user/repo.git) to https
-                    char *repo_path = strchr(remote_url, ':');
-                    if (repo_path) {
-                        repo_path++; // Skip the colon
-                        // Remove .git suffix if present
-                        char *git_suffix = strstr(repo_path, ".git");
-                        if (git_suffix) *git_suffix = '\0';
-                        
-                        sprintf(https_url, "https://github.com/%s", repo_path);
-                    }
-                } else if (strstr(remote_url, "https://github.com/")) {
-                    // Already HTTPS format
-                    strcpy(https_url, remote_url);
-                    // Remove .git suffix if present
-                    char *git_suffix = strstr(https_url, ".git");
-                    if (git_suffix) *git_suffix = '\0';
-                }
-                
-                if (strlen(https_url) > 0) {
-                    // Open the URL in the default browser
-                    char command[1100];
-                    // Use xdg-open on Linux
-                    sprintf(command, "xdg-open %s >/dev/null 2>&1", https_url);
-                    int result = system(command);
-                    if (result == 0) {
-                        printf("Opening %s in browser\n", https_url);
-                    } else {
-                        printf("Failed to open browser. URL: %s\n", https_url);
-                    }
-                } else {
-                    printf("Could not parse GitHub URL from: %s\n", remote_url);
-                }
-            } else {
-                printf("No remote URL found. Is this a Git repository with a GitHub remote?\n");
-            }
-        } else {
-            printf("Not in a Git repository or no remote configured\n");
-        }
-    } else if (strcmp(args[1], "c") == 0) {
-        if (args[2] != NULL) {
-            char command[1024];
-            sprintf(command, "git commit -m \"%s\"", args[2]);
-            system(command);
-        } else {
-            system("git commit");
-        }
-    } else if (strcmp(args[1], "p") == 0) {
-        system("git pull");
-    } else if (strcmp(args[1], "ps") == 0) {
-        system("git push");
-    } else if (strcmp(args[1], "a") == 0) {
-        system("git add .");
-    } else if (strcmp(args[1], "l") == 0) {
-        system("git log --oneline -10");
-    } else if (strcmp(args[1], "d") == 0) {
-        system("git diff");
-    } else if (strcmp(args[1], "b") == 0) {
-        system("git branch");
-    } else if (strcmp(args[1], "ch") == 0) {
-        if (args[2] != NULL) {
-            char command[1024];
-            sprintf(command, "git checkout %s", args[2]);
-            system(command);
-        } else {
-            printf("Please specify a branch to checkout\n");
-        }
-    } else {
-        printf("Unknown git command shorthand: %s\n", args[1]);
-    }
-
+  if (args[1] == NULL) {
+    printf("Usage: gg <command>\n");
+    printf("Available commands:\n");
+    printf("  s - status\n");
+    printf("  c - commit\n");
+    printf("  p - pull\n");
+    printf("  ps - push\n");
+    printf("  a - add .\n");
+    printf("  l - log\n");
+    printf("  d - diff\n");
+    printf("  b - branch\n");
+    printf("  ch - checkout\n");
+    printf("  o - open in GitHub browser\n");
     return 1;
+  }
+
+  // Execute the appropriate git command based on shorthand
+  if (strcmp(args[1], "s") == 0) {
+    system("git status");
+  } else if (strcmp(args[1], "b") == 0) {
+    system("git branch");
+  } else if (strcmp(args[1], "o") == 0) {
+    // Get the remote URL
+    FILE *fp;
+    char remote_url[1024] = {0};
+    fp = popen("git config --get remote.origin.url 2>/dev/null", "r");
+    if (fp) {
+      fgets(remote_url, sizeof(remote_url), fp);
+      pclose(fp);
+
+      // Trim trailing newline
+      char *newline = strchr(remote_url, '\n');
+      if (newline)
+        *newline = '\0';
+
+      if (strlen(remote_url) > 0) {
+        // Convert SSH URLs to HTTPS
+        char https_url[1024] = {0};
+        if (strstr(remote_url, "git@github.com:")) {
+          // Convert ssh format (git@github.com:user/repo.git) to https
+          char *repo_path = strchr(remote_url, ':');
+          if (repo_path) {
+            repo_path++; // Skip the colon
+            // Remove .git suffix if present
+            char *git_suffix = strstr(repo_path, ".git");
+            if (git_suffix)
+              *git_suffix = '\0';
+
+            sprintf(https_url, "https://github.com/%s", repo_path);
+          }
+        } else if (strstr(remote_url, "https://github.com/")) {
+          // Already HTTPS format
+          strcpy(https_url, remote_url);
+          // Remove .git suffix if present
+          char *git_suffix = strstr(https_url, ".git");
+          if (git_suffix)
+            *git_suffix = '\0';
+        }
+
+        if (strlen(https_url) > 0) {
+          // Open the URL in the default browser
+          char command[1100];
+          // Use xdg-open on Linux
+          sprintf(command, "xdg-open %s >/dev/null 2>&1", https_url);
+          int result = system(command);
+          if (result == 0) {
+            printf("Opening %s in browser\n", https_url);
+          } else {
+            printf("Failed to open browser. URL: %s\n", https_url);
+          }
+        } else {
+          printf("Could not parse GitHub URL from: %s\n", remote_url);
+        }
+      } else {
+        printf("No remote URL found. Is this a Git repository with a GitHub "
+               "remote?\n");
+      }
+    } else {
+      printf("Not in a Git repository or no remote configured\n");
+    }
+  } else if (strcmp(args[1], "c") == 0) {
+    if (args[2] != NULL) {
+      char command[1024];
+      sprintf(command, "git commit -m \"%s\"", args[2]);
+      system(command);
+    } else {
+      system("git commit");
+    }
+  } else if (strcmp(args[1], "p") == 0) {
+    system("git pull");
+  } else if (strcmp(args[1], "ps") == 0) {
+    system("git push");
+  } else if (strcmp(args[1], "a") == 0) {
+    system("git add .");
+  } else if (strcmp(args[1], "l") == 0) {
+    system("git log --oneline -10");
+  } else if (strcmp(args[1], "d") == 0) {
+    system("git diff");
+  } else if (strcmp(args[1], "b") == 0) {
+    system("git branch");
+  } else if (strcmp(args[1], "ch") == 0) {
+    if (args[2] != NULL) {
+      char command[1024];
+      sprintf(command, "git checkout %s", args[2]);
+      system(command);
+    } else {
+      printf("Please specify a branch to checkout\n");
+    }
+  } else {
+    printf("Unknown git command shorthand: %s\n", args[1]);
+  }
+
+  return 1;
 }

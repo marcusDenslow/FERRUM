@@ -33,6 +33,8 @@ static char full_suggestion[LSH_RL_BUFSIZE] = {0};
 static int prefix_start = 0;
 static int menu_mode = 0;
 static int menu_start_line = 0;
+static int cycling_mode = 0;
+static char cycle_prefix[LSH_RL_BUFSIZE] = {0};
 
 // Define colors for suggestions
 #define SUGGESTION_COLOR "\033[2;37m"  // Dim white color for suggestions
@@ -271,213 +273,57 @@ void update_suggestions(const char *buffer, int position) {
     prefix_start = 0;
   }
   
-  // Build list of suggestions
-  suggestions = NULL;
-  suggestion_count = 0;
-  
-  // Get command or file suggestions based on context
-  if (!last_space) {
-    // Command suggestions
-    // First count how many we'll need
-    for (int i = 0; i < lsh_num_builtins(); i++) {
-      if (strncasecmp(builtin_str[i], buffer, strlen(buffer)) == 0) {
-        suggestion_count++;
-      }
-    }
-    
-    // Add alias count - rough estimate
-    int alias_count;
-    char **aliases = get_alias_names(&alias_count);
-    if (aliases) {
-      for (int i = 0; i < alias_count; i++) {
-        if (strncasecmp(aliases[i], buffer, strlen(buffer)) == 0) {
-          suggestion_count++;
-        }
-      }
-      
-      // Free alias names, we'll get them again
-      for (int i = 0; i < alias_count; i++) {
-        free(aliases[i]);
-      }
-      free(aliases);
-    }
-    
-    // Allocate suggestions array
-    if (suggestion_count > 0) {
-      suggestions = (char**)malloc(suggestion_count * sizeof(char*));
-      if (!suggestions) {
-        fprintf(stderr, "Memory allocation error\n");
-        suggestion_count = 0;
-      } else {
-        // Initialize all entries to NULL
-        for (int i = 0; i < suggestion_count; i++) {
-          suggestions[i] = NULL;
-        }
-      }
-    }
-    
-    // Now fill the suggestions array
-    int idx = 0;
-    
-    // Add builtin commands
-    for (int i = 0; i < lsh_num_builtins() && idx < suggestion_count; i++) {
-      if (strncasecmp(builtin_str[i], buffer, strlen(buffer)) == 0) {
-        suggestions[idx++] = strdup(builtin_str[i]);
-      }
-    }
-    
-    // Add aliases
-    aliases = get_alias_names(&alias_count);
-    if (aliases) {
-      for (int i = 0; i < alias_count && idx < suggestion_count; i++) {
-        if (strncasecmp(aliases[i], buffer, strlen(buffer)) == 0) {
-          suggestions[idx++] = strdup(aliases[i]);
-        }
-      }
-      
-      // Free alias names
-      for (int i = 0; i < alias_count; i++) {
-        free(aliases[i]);
-      }
-      free(aliases);
-    }
-    
-    // Update actual suggestion count in case we got fewer than expected
-    suggestion_count = idx;
-  } else {
-    // File/directory suggestions
-    char prefix[PATH_MAX] = "";
-    char dir_path[PATH_MAX] = ".";
-    char name_prefix[PATH_MAX] = "";
-    
-    if (buffer[prefix_start] != '\0') {
-      strncpy(prefix, &buffer[prefix_start], sizeof(prefix) - 1);
-      prefix[sizeof(prefix) - 1] = '\0';
-      
-      // Split path into directory part and name prefix part
-      char *last_slash = strrchr(prefix, '/');
-      if (last_slash) {
-        // Path contains a directory part
-        int dir_len = last_slash - prefix;
-        strncpy(dir_path, prefix, dir_len);
-        dir_path[dir_len] = '\0';
-        
-        // Handle absolute path vs. relative path with subdirectories
-        if (dir_len == 0) {
-          // Handle case where path starts with '/'
-          strcpy(dir_path, "/");
-        }
-        
-        // Extract the name prefix part (after the last slash)
-        strncpy(name_prefix, last_slash + 1, sizeof(name_prefix) - 1);
-        name_prefix[sizeof(name_prefix) - 1] = '\0';
-      } else {
-        // No directory part, just a name prefix
-        strncpy(name_prefix, prefix, sizeof(name_prefix) - 1);
-        name_prefix[sizeof(name_prefix) - 1] = '\0';
-      }
-    }
-    
-    // Count matching files and directories
-    DIR *dir = opendir(dir_path);
-    if (dir) {
-      struct dirent *entry;
-      
-      // First count the number of matching entries
-      while ((entry = readdir(dir)) != NULL) {
-        // Skip "." and ".." if there's a name prefix
-        if (name_prefix[0] != '\0' && 
-            (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)) {
-          continue;
-        }
-        
-        if (strncasecmp(entry->d_name, name_prefix, strlen(name_prefix)) == 0) {
-          suggestion_count++;
-        }
-      }
-      
-      rewinddir(dir);
-      
-      // Allocate suggestions array
-      if (suggestion_count > 0) {
-        suggestions = (char**)malloc(suggestion_count * sizeof(char*));
-        if (!suggestions) {
-          fprintf(stderr, "Memory allocation error\n");
-          suggestion_count = 0;
-        } else {
-          // Initialize all entries to NULL
-          for (int i = 0; i < suggestion_count; i++) {
-            suggestions[i] = NULL;
-          }
-        }
-      }
-      
-      // Fill the suggestions array
-      int idx = 0;
-      while ((entry = readdir(dir)) != NULL && idx < suggestion_count) {
-        // Skip "." and ".." if there's a name prefix
-        if (name_prefix[0] != '\0' && 
-            (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)) {
-          continue;
-        }
-        
-        if (strncasecmp(entry->d_name, name_prefix, strlen(name_prefix)) == 0) {
-          // Create the full path suggestion
-          char full_path[PATH_MAX * 2];
-          
-          // For subdirectory paths, just store the entry name
-          // (we already handled path splitting earlier in this function)
-          strncpy(full_path, entry->d_name, sizeof(full_path) - 1);
-          
-          // Check if it's a directory and add trailing slash if needed
-          struct stat st;
-          char check_path[PATH_MAX * 2];
-          
-          if (dir_path[0] == '/') {
-            // Absolute path
-            snprintf(check_path, sizeof(check_path) - 1, "%s/%s", dir_path, entry->d_name);
-          } else {
-            // Relative path
-            snprintf(check_path, sizeof(check_path) - 1, "%s/%s", dir_path, entry->d_name);
-          }
-          
-          if (stat(check_path, &st) == 0 && S_ISDIR(st.st_mode)) {
-            strncat(full_path, "/", sizeof(full_path) - strlen(full_path) - 1);
-          }
-          
-          suggestions[idx++] = strdup(full_path);
-        }
-      }
-      
-      // Update actual suggestion count
-      suggestion_count = idx;
-      
-      closedir(dir);
-    }
+  // Extract the current argument or command
+  char current_token[LSH_RL_BUFSIZE] = "";
+  if (prefix_start < position) {
+    strncpy(current_token, buffer + prefix_start, position - prefix_start);
+    current_token[position - prefix_start] = '\0';
   }
   
-  // If we have suggestions, use the first one
-  if (suggestion_count > 0) {
-    // Skip showing "./" suggestions as they're often not useful
-    if (strcmp(suggestions[0], "./") == 0) {
-      has_suggestion = 0;
-    } else {
-      has_suggestion = 1;
-      suggestion_index = 0;
-      
-      // Create the full suggestion string that would be accepted
-      if (prefix_start > 0) {
-        // We're completing an argument
-        strncpy(full_suggestion, buffer, prefix_start);
-        full_suggestion[prefix_start] = '\0';
-        strncat(full_suggestion, suggestions[suggestion_index], 
-                sizeof(full_suggestion) - strlen(full_suggestion) - 1);
-      } else {
-        // We're completing a command
-        strncpy(full_suggestion, suggestions[suggestion_index], sizeof(full_suggestion) - 1);
-      }
-      full_suggestion[sizeof(full_suggestion) - 1] = '\0';
+  // Get suggestions from the tab completion engine
+  SuggestionList *suggestion_list = get_suggestion_list(buffer, cycling_mode ? cycle_prefix : current_token);
+  
+  if (suggestion_list && suggestion_list->count > 0) {
+    // Copy suggestions from the list to our global state
+    suggestion_count = suggestion_list->count;
+    suggestions = (char**)malloc(suggestion_count * sizeof(char*));
+    
+    if (!suggestions) {
+      fprintf(stderr, "Memory allocation error\n");
+      suggestion_count = 0;
+      free_suggestion_list(suggestion_list);
+      return;
     }
+    
+    // Copy suggestion items
+    for (int i = 0; i < suggestion_count; i++) {
+      suggestions[i] = strdup(suggestion_list->items[i]);
+    }
+    
+    // Initialize suggestion index for cycling
+    suggestion_index = suggestion_list->current_index;
+    
+    // Free the suggestion list
+    free_suggestion_list(suggestion_list);
+    
+    // Set flag to indicate we have suggestions
+    has_suggestion = 1;
+    
+    // Create the full suggestion string that would be accepted
+    if (prefix_start > 0) {
+      // We're completing an argument
+      strncpy(full_suggestion, buffer, prefix_start);
+      full_suggestion[prefix_start] = '\0';
+      strncat(full_suggestion, suggestions[suggestion_index], 
+              sizeof(full_suggestion) - strlen(full_suggestion) - 1);
+    } else {
+      // We're completing a command
+      strncpy(full_suggestion, suggestions[suggestion_index], sizeof(full_suggestion) - 1);
+    }
+    full_suggestion[sizeof(full_suggestion) - 1] = '\0';
+  } else if (suggestion_list) {
+    // We got an empty suggestion list, free it
+    free_suggestion_list(suggestion_list);
   }
 }
 
@@ -683,9 +529,11 @@ char *lsh_read_line(void) {
   // Prompt buffer for enhanced prompt
   char prompt_buffer[LSH_RL_BUFSIZE];
   
-  // Reset menu mode
+  // Reset menu and cycling modes
   menu_mode = 0;
   menu_start_line = 0;
+  cycling_mode = 0;
+  strcpy(cycle_prefix, "");
   
   if (!buffer) {
     fprintf(stderr, "lsh: allocation error\n");
@@ -841,12 +689,62 @@ char *lsh_read_line(void) {
           clear_menu();
         }
         
+        // Exit cycling mode when backspacing
+        if (cycling_mode) {
+          cycling_mode = 0;
+        }
+        
         // Update suggestions after backspace
         update_suggestions(buffer, position);
         display_inline_suggestion(prompt_buffer, buffer, position);
       }
     } else if (c == KEY_TAB) {
-      if (menu_mode) {
+      // Check if we're at the beginning of an argument (no input in current token)
+      // or if we're already in cycling mode
+      if ((prefix_start == position) || cycling_mode) {
+        // Empty token (just typing a command or space followed by tab)
+        // or already in cycling mode
+        
+        if (!cycling_mode) {
+          // First time entering cycling mode
+          cycling_mode = 1;
+          strcpy(cycle_prefix, ""); // Empty prefix to match anything
+          
+          // Get suggestions for the empty prefix (all options)
+          update_suggestions(buffer, position);
+        }
+        
+        if (has_suggestion && suggestion_count > 0) {
+          // Cycle to the next suggestion
+          suggestion_index = (suggestion_index + 1) % suggestion_count;
+          
+          // Replace the current token with the selected suggestion
+          if (prefix_start > 0) {
+            // We're cycling arguments
+            char temp[LSH_RL_BUFSIZE];
+            
+            // Keep everything up to the prefix start
+            strncpy(temp, buffer, prefix_start);
+            temp[prefix_start] = '\0';
+            
+            // Add the current suggestion
+            strncat(temp, suggestions[suggestion_index], LSH_RL_BUFSIZE - strlen(temp) - 1);
+            
+            // Update the buffer
+            strncpy(buffer, temp, bufsize - 1);
+          } else {
+            // We're cycling commands
+            strncpy(buffer, suggestions[suggestion_index], bufsize - 1);
+          }
+          buffer[bufsize - 1] = '\0';
+          position = strlen(buffer);
+          
+          // Redraw with the current suggestion
+          printf("\r\033[K%s%s", prompt_buffer, buffer);
+          fflush(stdout);
+        }
+      }
+      else if (menu_mode) {
         // Already in menu mode: cycle to next suggestion
         if (suggestion_count > 0) {
           suggestion_index = (suggestion_index + 1) % suggestion_count;
@@ -1117,6 +1015,11 @@ char *lsh_read_line(void) {
       if (menu_mode) {
         menu_mode = 0;
         clear_menu();
+      }
+      
+      // Exit cycling mode when typing
+      if (cycling_mode) {
+        cycling_mode = 0;
       }
       
       // Update with the new character and show suggestions

@@ -551,6 +551,56 @@ int lsh_ps(char **args) {
   return 1;
 }
 
+char *unescape_json_string(const char *str) {
+  if (!str)
+    return NULL;
+
+  size_t len = strlen(str);
+  char *result = malloc(len + 1);
+  if (!result)
+    return NULL;
+
+  size_t j = 0;
+  for (size_t i = 0; i < len; i++) {
+    if (str[i] == '\\' && i + 1 < len) {
+      switch (str[i + 1]) {
+      case 'n':
+        result[j++] = '\n';
+        i++; // Skip the next character
+        break;
+      case 't':
+        result[j++] = '\t';
+        i++;
+        break;
+      case 'r':
+        result[j++] = '\r';
+        i++;
+        break;
+      case '\\':
+        result[j++] = '\\';
+        i++;
+        break;
+      case '"':
+        result[j++] = '"';
+        i++;
+        break;
+      default:
+        // Keep the backslash if it's not a recognized escape sequence
+        result[j++] = str[i];
+      }
+    } else {
+      result[j++] = str[i];
+    }
+  }
+  result[j] = '\0';
+
+  return result;
+}
+
+/**
+ * Built-in command: news
+ * Displays information about the last push to the shelltest GitHub repository
+ */
 int lsh_news(char **args) {
   printf("Fetching latest updates from shelltestLinux repository...\n\n");
 
@@ -594,7 +644,13 @@ int lsh_news(char **args) {
 
   // Extract commit information from JSON
   char *sha = extract_json_string(response, "sha");
-  char *message = extract_json_string(response, "message");
+  char *message_raw = extract_json_string(response, "message");
+  char *message = NULL;
+  if (message_raw) {
+    message = unescape_json_string(message_raw);
+    free(message_raw);
+  }
+
   char *author_name = NULL;
   char *author_email = NULL;
   char *date = NULL;
@@ -667,9 +723,29 @@ int lsh_news(char **args) {
     }
 
     printf("\n" ANSI_COLOR_YELLOW "Message:" ANSI_COLOR_RESET "\n");
-    printf("  %s\n\n", message);
 
-    printf("────────────────────────────────────────────────────────────\n");
+    // Split the message into title and description
+    char *first_newline = strchr(message, '\n');
+    if (first_newline) {
+      // We have a title and description
+      *first_newline = '\0'; // Temporarily terminate the title
+      printf("  " ANSI_COLOR_CYAN "%s" ANSI_COLOR_RESET "\n\n", message);
+
+      // Print the description
+      char *description = first_newline + 1;
+      // Skip any leading newlines in the description
+      while (*description == '\n')
+        description++;
+
+      if (*description) {
+        printf("  %s\n", description);
+      }
+    } else {
+      // Just a title, no description
+      printf("  " ANSI_COLOR_CYAN "%s" ANSI_COLOR_RESET "\n", message);
+    }
+
+    printf("\n────────────────────────────────────────────────────────────\n");
     printf("Repository: " ANSI_COLOR_CYAN
            "https://github.com/marcusDenslow/shelltestLinux" ANSI_COLOR_RESET
            "\n");

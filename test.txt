@@ -1,0 +1,5 @@
+hello world
+This is a test file for the grep command
+It contains multiple lines
+Boyer-Moore algorithm
+testing the grep

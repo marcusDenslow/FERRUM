@@ -34,6 +34,7 @@ static char full_suggestion[LSH_RL_BUFSIZE] = {0};
 static int prefix_start = 0;
 static int menu_mode = 0;
 static int menu_start_line = 0;
+static int max_menu_lines = 0;
 static int cycling_mode = 0;
 static char cycle_prefix[LSH_RL_BUFSIZE] = {0};
 
@@ -122,7 +123,7 @@ int is_valid_command(const char *cmd) {
 
     // Format the prompt
     snprintf(prompt_buffer, buffer_size,
-             "\033[1;36m%s/%s\033[0m%s \033[1;31m✗\033[0m ",  parent_dir,
+             "\033[1;36m%s/%s\033[0m%s \033[1;31m✗\033[0m ", parent_dir,
              current_dir, git_display);
   }
 
@@ -229,6 +230,8 @@ int read_key(void) {
           return KEY_RIGHT;
         case 'D':
           return KEY_LEFT;
+        case 'Z':
+          return KEY_SHIFT_TAB; // Shift+Tab sequence
         }
       }
 
@@ -448,17 +451,20 @@ void display_inline_suggestion(const char *prompt_buffer, const char *buffer,
  * Function to clear the menu
  */
 void clear_menu() {
-  if (menu_start_line > 0) {
+  if (max_menu_lines > 0) {
     // Save current cursor position
     printf("\033[s");
 
     // Move cursor to where the menu starts (one line below input)
     printf("\033[1B\r");
 
-    // Clear each line of the menu
-    for (int i = 0; i < menu_start_line; i++) {
+    // Clear a generous number of lines to ensure we get everything
+    // Add extra buffer to handle spacing and indicators
+    int lines_to_clear = max_menu_lines + 5; // Extra buffer for safety
+    
+    for (int i = 0; i < lines_to_clear; i++) {
       printf("\033[K"); // Clear entire line
-      if (i < menu_start_line - 1) {
+      if (i < lines_to_clear - 1) {
         printf("\033[1B\r"); // Move down to next line if not the last
       }
     }
@@ -487,17 +493,35 @@ void display_menu(const char *prompt_buffer, const char *buffer, int position) {
   // Save current cursor position (should be at end of input)
   printf("\033[s");
 
-  // Calculate how many items to show
-  int show_count = suggestion_count;
-  if (show_count > 10)
-    show_count = 10; // Max 10 items in menu
+  // Calculate scrolling window
+
+  int max_display = 10;
+  int start_idx = 0;
+  int end_idx = suggestion_count;
+
+  if (suggestion_count > max_display) {
+    start_idx = suggestion_index - max_display / 2;
+    if (start_idx < 0)
+      start_idx = 0;
+    if (start_idx + max_display > suggestion_count) {
+      start_idx = suggestion_count - max_display;
+    }
+    end_idx = start_idx + max_display;
+  }
+
+  int show_count = end_idx - start_idx;
 
   // Move to the beginning of the next line (below input)
-  printf("\n\r");
+  printf("\n\n\r");
 
-  // Display each suggestion on a line
-  for (int i = 0; i < show_count; i++) {
-    if (i > 0) {
+  // Show "above" indicator if needed
+  if (suggestion_count > max_display && start_idx > 0) {
+    printf("\033[2m(%d above)\033[0m\n\r", start_idx);
+  }
+
+  // Display each suggestion in the visible window
+  for (int i = start_idx; i < end_idx; i++) {
+    if (i > start_idx) {
       printf("\n\r"); // New line for each suggestion after the first
     }
 
@@ -510,8 +534,38 @@ void display_menu(const char *prompt_buffer, const char *buffer, int position) {
     }
   }
 
+  // Show "below" indicator if needed
+  if (suggestion_count > max_display && end_idx < suggestion_count) {
+    int below_count = suggestion_count - end_idx;
+    printf("\n\r\033[2m(%d below)\033[0m", below_count);
+  }
+
   // Store number of menu lines displayed
   menu_start_line = show_count;
+  
+  // Calculate total lines used by the menu (including all spacing and indicators)
+  int total_lines = 0;
+  
+  // Initial spacing (2 lines)
+  total_lines += 2;
+  
+  // "Above" indicator and its spacing
+  if (suggestion_count > max_display && start_idx > 0) {
+    total_lines += 2; // indicator line + spacing line
+  }
+  
+  // Menu items
+  total_lines += show_count;
+  
+  // "Below" indicator and its spacing  
+  if (suggestion_count > max_display && end_idx < suggestion_count) {
+    total_lines += 2; // spacing line + indicator line
+  }
+  
+  // Update max_menu_lines if this is larger
+  if (total_lines > max_menu_lines) {
+    max_menu_lines = total_lines;
+  }
 
   // Restore cursor to original position (back to input line)
   printf("\033[u");
@@ -554,6 +608,7 @@ char *lsh_read_line(void) {
   // Reset menu and cycling modes
   menu_mode = 0;
   menu_start_line = 0;
+  max_menu_lines = 0;
   cycling_mode = 0;
   strcpy(cycle_prefix, "");
 
@@ -612,7 +667,7 @@ char *lsh_read_line(void) {
 
     // Format the prompt
     snprintf(prompt_buffer, sizeof(prompt_buffer),
-             "\033[1;36m%s/%s\033[0m%s \033[1;31m✗\033[0m ",  parent_dir,
+             "\033[1;36m%s/%s\033[0m%s \033[1;31m✗\033[0m ", parent_dir,
              current_dir, git_display);
   }
 
@@ -705,6 +760,7 @@ char *lsh_read_line(void) {
         // Exit menu mode
         menu_mode = 0;
         clear_menu();
+        max_menu_lines = 0; // Reset max menu lines when exiting menu mode
         display_inline_suggestion(prompt_buffer, buffer, position);
       }
     } else if (c == KEY_BACKSPACE || c == 127) {
@@ -713,11 +769,8 @@ char *lsh_read_line(void) {
         position--;
         buffer[position] = '\0';
 
-        // Exit menu mode when backspacing
-        if (menu_mode) {
-          menu_mode = 0;
-          clear_menu();
-        }
+        // Store whether we were in menu mode
+        int was_in_menu_mode = menu_mode;
 
         // Exit cycling mode when backspacing
         if (cycling_mode) {
@@ -726,7 +779,22 @@ char *lsh_read_line(void) {
 
         // Update suggestions after backspace
         update_suggestions(buffer, position);
-        display_inline_suggestion(prompt_buffer, buffer, position);
+        
+        // If we were in menu mode and still have suggestions, stay in menu mode
+        if (was_in_menu_mode && has_suggestion && suggestion_count > 1) {
+          menu_mode = 1;
+          suggestion_index = 0; // Reset to first suggestion
+          refresh_display(prompt_buffer, buffer, position);
+        } else if (was_in_menu_mode) {
+          // No suggestions or only one - exit menu mode
+          menu_mode = 0;
+          clear_menu();
+          max_menu_lines = 0; // Reset max menu lines when exiting menu mode
+          display_inline_suggestion(prompt_buffer, buffer, position);
+        } else {
+          // Wasn't in menu mode - just show inline suggestion
+          display_inline_suggestion(prompt_buffer, buffer, position);
+        }
       }
     } else if (c == KEY_TAB) {
       // Check if we're at the beginning of an argument (no input in current
@@ -892,6 +960,61 @@ char *lsh_read_line(void) {
           refresh_display(prompt_buffer, buffer, position);
         }
       }
+    } else if (c == KEY_SHIFT_TAB) {
+      // Shift+Tab: cycle backwards in menu mode, or enter menu mode and go to last item
+      if (menu_mode) {
+        // Already in menu mode: cycle to previous suggestion
+        if (suggestion_count > 0) {
+          suggestion_index = (suggestion_index + suggestion_count - 1) % suggestion_count;
+
+          // Update full_suggestion with the newly selected suggestion
+          if (prefix_start > 0) {
+            // We're completing an argument
+            char path_part[LSH_RL_BUFSIZE] = "";
+
+            // Extract the existing path part
+            strncpy(path_part, &buffer[prefix_start], position - prefix_start);
+            path_part[position - prefix_start] = '\0';
+
+            // Find last slash in the existing path_part
+            char *last_slash = strrchr(path_part, '/');
+
+            if (last_slash) {
+              // Get the directory part up to the last slash (including the slash)
+              int dir_part_len = (last_slash - path_part) + 1;
+              char dir_part[LSH_RL_BUFSIZE] = "";
+              strncpy(dir_part, path_part, dir_part_len);
+              dir_part[dir_part_len] = '\0';
+
+              // Construct the complete path by keeping the command and directory part
+              strncpy(full_suggestion, buffer, prefix_start);
+              full_suggestion[prefix_start] = '\0';
+              strncat(full_suggestion, dir_part,
+                      sizeof(full_suggestion) - strlen(full_suggestion) - 1);
+              strncat(full_suggestion, suggestions[suggestion_index],
+                      sizeof(full_suggestion) - strlen(full_suggestion) - 1);
+            } else {
+              // No slash in current argument, normal behavior
+              strncpy(full_suggestion, buffer, prefix_start);
+              full_suggestion[prefix_start] = '\0';
+              strncat(full_suggestion, suggestions[suggestion_index],
+                      sizeof(full_suggestion) - strlen(full_suggestion) - 1);
+            }
+          } else {
+            // We're completing a command
+            strncpy(full_suggestion, suggestions[suggestion_index],
+                    sizeof(full_suggestion) - 1);
+          }
+          full_suggestion[sizeof(full_suggestion) - 1] = '\0';
+
+          refresh_display(prompt_buffer, buffer, position);
+        }
+      } else if (has_suggestion && suggestion_count > 1) {
+        // Enter menu mode and select the last item
+        menu_mode = 1;
+        suggestion_index = suggestion_count - 1; // Start with last suggestion
+        refresh_display(prompt_buffer, buffer, position);
+      }
     } else if (c == KEY_UP && menu_mode) {
       // In menu mode, up arrow goes to previous suggestion
       if (suggestion_count > 0) {
@@ -1009,6 +1132,71 @@ char *lsh_read_line(void) {
         update_suggestions(buffer, position);
         display_inline_suggestion(prompt_buffer, buffer, position);
       }
+    } else if (c == KEY_RIGHT && !menu_mode) {
+      // Accept inline suggestion with right arrow
+      if (has_suggestion && suggestion_count > 0) {
+        // Update buffer with the inline suggestion
+        if (prefix_start > 0) {
+          // We're completing an argument
+          char temp[LSH_RL_BUFSIZE];
+          char path_part[LSH_RL_BUFSIZE] = "";
+
+          // Extract the existing path part
+          strncpy(path_part, &buffer[prefix_start], position - prefix_start);
+          path_part[position - prefix_start] = '\0';
+
+          // Find last slash in the existing path_part
+          char *last_slash = strrchr(path_part, '/');
+
+          if (last_slash) {
+            // Get the directory part up to the last slash (including the slash)
+            int dir_part_len = (last_slash - path_part) + 1;
+            char dir_part[LSH_RL_BUFSIZE] = "";
+            strncpy(dir_part, path_part, dir_part_len);
+            dir_part[dir_part_len] = '\0';
+
+            // Construct the complete path by keeping the command and directory part
+            strncpy(temp, buffer, prefix_start);
+            temp[prefix_start] = '\0';
+            strncat(temp, dir_part, LSH_RL_BUFSIZE - strlen(temp) - 1);
+            strncat(temp, suggestions[suggestion_index], LSH_RL_BUFSIZE - strlen(temp) - 1);
+          } else {
+            // No slash in current argument, normal behavior
+            strncpy(temp, buffer, prefix_start);
+            temp[prefix_start] = '\0';
+            strncat(temp, suggestions[suggestion_index], LSH_RL_BUFSIZE - strlen(temp) - 1);
+          }
+
+          strncpy(buffer, temp, bufsize - 1);
+        } else {
+          // We're completing a command
+          strncpy(buffer, suggestions[suggestion_index], bufsize - 1);
+        }
+        buffer[bufsize - 1] = '\0';
+        position = strlen(buffer);
+
+        // Redraw the line with accepted suggestion
+        printf("\r\033[K%s%s", prompt_buffer, buffer);
+        fflush(stdout);
+
+        // Check if the accepted suggestion is a directory
+        if (strlen(buffer) > 0 && buffer[strlen(buffer) - 1] == '/') {
+          // It's a directory, update suggestions to show its contents
+          update_suggestions(buffer, position);
+          display_inline_suggestion(prompt_buffer, buffer, position);
+        } else {
+          // Clear suggestions after accepting non-directory
+          if (suggestions) {
+            for (int i = 0; i < suggestion_count; i++) {
+              if (suggestions[i]) free(suggestions[i]);
+            }
+            free(suggestions);
+            suggestions = NULL;
+            suggestion_count = 0;
+          }
+          has_suggestion = 0;
+        }
+      }
     } else if (c == KEY_DOWN && !menu_mode) {
       // Navigate history downward when not in menu mode
       char *history_entry = get_next_history_entry(&history_position);
@@ -1063,11 +1251,8 @@ char *lsh_read_line(void) {
       position++;
       buffer[position] = '\0';
 
-      // Exit menu mode when typing
-      if (menu_mode) {
-        menu_mode = 0;
-        clear_menu();
-      }
+      // Store whether we were in menu mode
+      int was_in_menu_mode = menu_mode;
 
       // Exit cycling mode when typing
       if (cycling_mode) {
@@ -1076,7 +1261,21 @@ char *lsh_read_line(void) {
 
       // Update with the new character and show suggestions
       update_suggestions(buffer, position);
-      display_inline_suggestion(prompt_buffer, buffer, position);
+      
+      // If we were in menu mode and still have suggestions, stay in menu mode
+      if (was_in_menu_mode && has_suggestion && suggestion_count > 1) {
+        menu_mode = 1;
+        suggestion_index = 0; // Reset to first suggestion
+        refresh_display(prompt_buffer, buffer, position);
+      } else if (was_in_menu_mode) {
+        // No suggestions or only one - exit menu mode
+        menu_mode = 0;
+        clear_menu();
+        display_inline_suggestion(prompt_buffer, buffer, position);
+      } else {
+        // Wasn't in menu mode - just show inline suggestion
+        display_inline_suggestion(prompt_buffer, buffer, position);
+      }
     }
   }
 

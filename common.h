@@ -72,6 +72,7 @@
 #define KEY_LEFT  1002
 #define KEY_RIGHT 1003
 #define KEY_SHIFT_ENTER 1010
+#define KEY_SHIFT_TAB 1011
 
 // Typedefs for compatibility
 typedef unsigned int UINT;

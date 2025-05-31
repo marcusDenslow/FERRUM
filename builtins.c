@@ -38,7 +38,7 @@ char *builtin_str[] = {
     "bookmark", "bookmarks", "goto",      "unbookmark", "focus_timer",
     "weather",  "grep",      "grep-text", "ripgrep",    "fzf",
     "clip",     "echo",      "theme",     "loc",        "git_status",
-    "gg",       "ls",        "stats",
+    "gg",       "ls",        "stats",     "monitor",
 };
 
 // Array of function pointers to built-in command implementations
@@ -53,7 +53,7 @@ int (*builtin_func[])(char **) = {
     &lsh_ripgrep,     &lsh_fzf_native, &lsh_clip,       &lsh_echo,
     &lsh_theme,       &lsh_loc,        &lsh_git_status, &lsh_gg,
     lsh_dir,
-    &lsh_stats,
+    &lsh_stats,       &builtin_monitor,
 };
 
 /**

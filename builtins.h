@@ -7,6 +7,7 @@
 #define BUILTINS_H
 
 #include "common.h"
+#include "system_monitor.h"
 #include <time.h>
 
 // Syntax highlighting definitions using ANSI colors
@@ -85,9 +86,8 @@ void lsh_add_to_history(const char *command);
 // Get number of builtin commands
 int lsh_num_builtins(void);
 
-
-    // Expose the builtin command strings and function pointers
-    extern char *builtin_str[];
+// Expose the builtin command strings and function pointers
+extern char *builtin_str[];
 extern int (*builtin_func[])(char **);
 
 /**

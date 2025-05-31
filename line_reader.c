@@ -461,7 +461,7 @@ void clear_menu() {
     // Clear a generous number of lines to ensure we get everything
     // Add extra buffer to handle spacing and indicators
     int lines_to_clear = max_menu_lines + 5; // Extra buffer for safety
-    
+
     for (int i = 0; i < lines_to_clear; i++) {
       printf("\033[K"); // Clear entire line
       if (i < lines_to_clear - 1) {
@@ -476,6 +476,7 @@ void clear_menu() {
     menu_start_line = 0;
   }
 }
+// this is a test
 
 /**
  * Function to display menu of suggestions
@@ -542,26 +543,27 @@ void display_menu(const char *prompt_buffer, const char *buffer, int position) {
 
   // Store number of menu lines displayed
   menu_start_line = show_count;
-  
-  // Calculate total lines used by the menu (including all spacing and indicators)
+
+  // Calculate total lines used by the menu (including all spacing and
+  // indicators)
   int total_lines = 0;
-  
+
   // Initial spacing (2 lines)
   total_lines += 2;
-  
+
   // "Above" indicator and its spacing
   if (suggestion_count > max_display && start_idx > 0) {
     total_lines += 2; // indicator line + spacing line
   }
-  
+
   // Menu items
   total_lines += show_count;
-  
-  // "Below" indicator and its spacing  
+
+  // "Below" indicator and its spacing
   if (suggestion_count > max_display && end_idx < suggestion_count) {
     total_lines += 2; // spacing line + indicator line
   }
-  
+
   // Update max_menu_lines if this is larger
   if (total_lines > max_menu_lines) {
     max_menu_lines = total_lines;
@@ -779,7 +781,7 @@ char *lsh_read_line(void) {
 
         // Update suggestions after backspace
         update_suggestions(buffer, position);
-        
+
         // If we were in menu mode and still have suggestions, stay in menu mode
         if (was_in_menu_mode && has_suggestion && suggestion_count > 1) {
           menu_mode = 1;
@@ -961,11 +963,13 @@ char *lsh_read_line(void) {
         }
       }
     } else if (c == KEY_SHIFT_TAB) {
-      // Shift+Tab: cycle backwards in menu mode, or enter menu mode and go to last item
+      // Shift+Tab: cycle backwards in menu mode, or enter menu mode and go to
+      // last item
       if (menu_mode) {
         // Already in menu mode: cycle to previous suggestion
         if (suggestion_count > 0) {
-          suggestion_index = (suggestion_index + suggestion_count - 1) % suggestion_count;
+          suggestion_index =
+              (suggestion_index + suggestion_count - 1) % suggestion_count;
 
           // Update full_suggestion with the newly selected suggestion
           if (prefix_start > 0) {
@@ -980,13 +984,15 @@ char *lsh_read_line(void) {
             char *last_slash = strrchr(path_part, '/');
 
             if (last_slash) {
-              // Get the directory part up to the last slash (including the slash)
+              // Get the directory part up to the last slash (including the
+              // slash)
               int dir_part_len = (last_slash - path_part) + 1;
               char dir_part[LSH_RL_BUFSIZE] = "";
               strncpy(dir_part, path_part, dir_part_len);
               dir_part[dir_part_len] = '\0';
 
-              // Construct the complete path by keeping the command and directory part
+              // Construct the complete path by keeping the command and
+              // directory part
               strncpy(full_suggestion, buffer, prefix_start);
               full_suggestion[prefix_start] = '\0';
               strncat(full_suggestion, dir_part,
@@ -1155,16 +1161,19 @@ char *lsh_read_line(void) {
             strncpy(dir_part, path_part, dir_part_len);
             dir_part[dir_part_len] = '\0';
 
-            // Construct the complete path by keeping the command and directory part
+            // Construct the complete path by keeping the command and directory
+            // part
             strncpy(temp, buffer, prefix_start);
             temp[prefix_start] = '\0';
             strncat(temp, dir_part, LSH_RL_BUFSIZE - strlen(temp) - 1);
-            strncat(temp, suggestions[suggestion_index], LSH_RL_BUFSIZE - strlen(temp) - 1);
+            strncat(temp, suggestions[suggestion_index],
+                    LSH_RL_BUFSIZE - strlen(temp) - 1);
           } else {
             // No slash in current argument, normal behavior
             strncpy(temp, buffer, prefix_start);
             temp[prefix_start] = '\0';
-            strncat(temp, suggestions[suggestion_index], LSH_RL_BUFSIZE - strlen(temp) - 1);
+            strncat(temp, suggestions[suggestion_index],
+                    LSH_RL_BUFSIZE - strlen(temp) - 1);
           }
 
           strncpy(buffer, temp, bufsize - 1);
@@ -1188,7 +1197,8 @@ char *lsh_read_line(void) {
           // Clear suggestions after accepting non-directory
           if (suggestions) {
             for (int i = 0; i < suggestion_count; i++) {
-              if (suggestions[i]) free(suggestions[i]);
+              if (suggestions[i])
+                free(suggestions[i]);
             }
             free(suggestions);
             suggestions = NULL;
@@ -1261,7 +1271,7 @@ char *lsh_read_line(void) {
 
       // Update with the new character and show suggestions
       update_suggestions(buffer, position);
-      
+
       // If we were in menu mode and still have suggestions, stay in menu mode
       if (was_in_menu_mode && has_suggestion && suggestion_count > 1) {
         menu_mode = 1;

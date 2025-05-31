@@ -12,16 +12,17 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <ctype.h>
 
 // Global variables for persistent history
-static PersistentHistoryEntry *history_entries = NULL;
-static int history_size = 0;
+PersistentHistoryEntry *history_entries = NULL;
+int history_size = 0;
 static int history_capacity = 0;
 static int history_position = 0;
 
 // Global variables for frequency tracking
-static CommandFrequency *command_frequencies = NULL;
-static int frequency_count = 0;
+CommandFrequency *command_frequencies = NULL;
+int frequency_count = 0;
 static int frequency_capacity = 0;
 
 // Paths for history and frequency files

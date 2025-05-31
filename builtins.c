@@ -38,7 +38,7 @@ char *builtin_str[] = {
     "bookmark", "bookmarks", "goto",      "unbookmark", "focus_timer",
     "weather",  "grep",      "grep-text", "ripgrep",    "fzf",
     "clip",     "echo",      "theme",     "loc",        "git_status",
-    "gg",       "ls",
+    "gg",       "ls",        "stats",
 };
 
 // Array of function pointers to built-in command implementations
@@ -53,6 +53,7 @@ int (*builtin_func[])(char **) = {
     &lsh_ripgrep,     &lsh_fzf_native, &lsh_clip,       &lsh_echo,
     &lsh_theme,       &lsh_loc,        &lsh_git_status, &lsh_gg,
     lsh_dir,
+    &lsh_stats,
 };
 
 /**
@@ -1054,4 +1055,71 @@ int lsh_gg(char **args) {
   }
 
   return 1;
+}
+
+int lsh_stats(char **args) {
+  printf("Command Statistics\n");
+  printf("=================\n\n");
+
+  if (frequency_count == 0) {
+    printf("No command history available\n");
+    return 1;
+  }
+
+  typedef struct {
+    char *command;
+    int count;
+    double score;
+  } CommandStat;
+
+  CommandStat *stats = malloc(frequency_count * sizeof(CommandStat));
+  if (!stats)
+    return 1;
+
+  time_t current_time = time(NULL);
+  for (int i = 0; i < frequency_count; i++) {
+    stats[i].command = command_frequencies[i].command;
+    stats[i].count = command_frequencies[i].count;
+
+    time_t most_recent = 0;
+    for (int j = history_size - 1; j >= 0; j--) {
+      if (strcmp(history_entries[j].command, stats[i].command) == 0) {
+        most_recent = history_entries[j].timestamp;
+        break;
+      }
+    }
+
+    double hours_ago = (current_time - most_recent) / 3600.0;
+    double recency_weight = hours_ago > 0 ? 1.0 / (1.0 + hours_ago * 0.1) : 1.0;
+
+    stats[i].score = stats[i].count * recency_weight;
+    
+  }
+
+  for (int i = 0; i < frequency_count - 1; i++) {
+    for (int j = i + 1; j < frequency_count; j++) {
+      if (stats[j].score > stats[i].score) {
+        CommandStat temp = stats[i];
+        stats[i] = stats[j];
+        stats[j] = temp;
+      }
+    }
+  }
+
+  printf("Top Commands (by frequency + recency):\n");
+  printf("Rank  Command                Count    Score\n");
+  printf("----  --------------------   -----    -----\n");
+
+  int display_count = frequency_count < 10 ? frequency_count : 10;
+  for (int i = 0; i < display_count; i++) {
+    printf("%-4d  %-20s    %-5d    %.2f\n", i + 1, stats[i].command,
+           stats[i].count, stats[i].score);
+  }
+
+  printf("\nNext Command Prediction: \n");
+  if (frequency_count > 0) {
+    printf("Most likely: %s (score: %.2f)\n", stats[0].command, stats[0].score);
+  }
+	free(stats);
+	return 1;
 }

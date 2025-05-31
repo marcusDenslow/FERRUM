@@ -82,4 +82,10 @@ char **get_matching_history_entries(const char *prefix);
 // Free matching entries
 void free_matching_entries(char **entries);
 
+// Expose global variables for stats command
+extern CommandFrequency *command_frequencies;
+extern int frequency_count;
+extern PersistentHistoryEntry *history_entries;
+extern int history_size;
+
 #endif // PERSISTENT_HISTORY_H

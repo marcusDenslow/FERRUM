@@ -1,5 +1,5 @@
 /**
- * builtins.h 
+ * builtins.h
  * Declarations for all built-in shell commands
  */
 
@@ -77,6 +77,7 @@ int lsh_theme(char **args);
 int lsh_loc(char **args);
 int lsh_git_status(char **args);
 int lsh_gg(char **args);
+int lsh_stats(char **args);
 
 // Add command to history
 void lsh_add_to_history(const char *command);
@@ -84,8 +85,9 @@ void lsh_add_to_history(const char *command);
 // Get number of builtin commands
 int lsh_num_builtins(void);
 
-// Expose the builtin command strings and function pointers
-extern char *builtin_str[];
+
+    // Expose the builtin command strings and function pointers
+    extern char *builtin_str[];
 extern int (*builtin_func[])(char **);
 
 /**

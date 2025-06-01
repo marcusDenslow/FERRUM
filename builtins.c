@@ -5,6 +5,7 @@
 
 #include "builtins.h"
 #include "common.h"
+#include "diff_viewer.h"
 #include "filters.h"
 #include "fzf_native.h"
 #include "git_integration.h"
@@ -1113,7 +1114,7 @@ int lsh_gg(char **args) {
   } else if (strcmp(args[1], "l") == 0) {
     system("git log --oneline -10");
   } else if (strcmp(args[1], "d") == 0) {
-    system("git diff");
+    run_diff_viewer();
   } else if (strcmp(args[1], "b") == 0) {
     system("git branch");
   } else if (strcmp(args[1], "ch") == 0) {

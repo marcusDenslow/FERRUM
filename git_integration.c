@@ -168,11 +168,11 @@ int get_last_commit(char *title, size_t title_size, char *hash,
   fp = popen("git log -1 --pretty=format:%s 2>/dev/null", "r");
   if (fp) {
     if (fgets(title, title_size, fp) != NULL) {
-      // No need to remove quotes since we're not using them in the format
+      // No need to remove quotes since we're not using them in the format.
     }
     pclose(fp);
   }
-  
+
   return (strlen(hash) > 0 && strlen(title) > 0) ? 1 : 0;
 }
 
@@ -180,23 +180,25 @@ int get_recent_commit(char commits[][256], int count) {
   if (!commits || count <= 0) {
     return 0;
   }
-  
+
   char cmd[256];
-  snprintf(cmd, sizeof(cmd), "git log -%d --pretty=format:%%s 2>/dev/null", count);
-  
+  snprintf(cmd, sizeof(cmd), "git log -%d --pretty=format:%%s 2>/dev/null",
+           count);
+
   FILE *fp = popen(cmd, "r");
   if (!fp) {
     return 0;
   }
-  
+
   int retrieved = 0;
   while (retrieved < count && fgets(commits[retrieved], 256, fp) != NULL) {
     char *newline = strchr(commits[retrieved], '\n');
-    if (newline) *newline = '\0';
-    
+    if (newline)
+      *newline = '\0';
+
     retrieved++;
   }
-  
+
   pclose(fp);
   return retrieved;
 }
@@ -205,31 +207,33 @@ int get_repo_url(char *url, size_t url_size) {
   if (!url || url_size == 0) {
     return 0;
   }
-  
+
   url[0] = '\0';
-  
+
   FILE *fp = popen("git config --get remote.origin.url 2>/dev/null", "r");
   if (!fp) {
     return 0;
   }
-  
+
   char remote_url[512];
   if (fgets(remote_url, sizeof(remote_url), fp) == NULL) {
     pclose(fp);
     return 0;
   }
   pclose(fp);
-  
+
   char *newline = strchr(remote_url, '\n');
-  if (newline) *newline = '\0';
-  
+  if (newline)
+    *newline = '\0';
+
   if (strstr(remote_url, "git@github.com:")) {
     char *repo_path = strchr(remote_url, ':');
     if (repo_path) {
       repo_path++;
       char *git_suffix = strstr(repo_path, ".git");
-      if (git_suffix) *git_suffix = '\0';
-      
+      if (git_suffix)
+        *git_suffix = '\0';
+
       snprintf(url, url_size, "https://github.com/%s", repo_path);
       return 1;
     }
@@ -237,9 +241,10 @@ int get_repo_url(char *url, size_t url_size) {
     strncpy(url, remote_url, url_size - 1);
     url[url_size - 1] = '\0';
     char *git_suffix = strstr(url, ".git");
-    if (git_suffix) *git_suffix = '\0';
+    if (git_suffix)
+      *git_suffix = '\0';
     return 1;
   }
-  
+
   return 0;
 }

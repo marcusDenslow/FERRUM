@@ -165,13 +165,10 @@ int get_last_commit(char *title, size_t title_size, char *hash,
     pclose(fp);
   }
 
-  fp = popen("git log -1 --pretty=format:'%s' 2>/dev/null", "r");
+  fp = popen("git log -1 --pretty=format:%s 2>/dev/null", "r");
   if (fp) {
     if (fgets(title, title_size, fp) != NULL) {
-      if (title[0] == '\'' && title[strlen(title)-1] == '\'') {
-        memmove(title, title + 1, strlen(title) - 1);
-        title[strlen(title) - 1] = '\0';
-      }
+      // No need to remove quotes since we're not using them in the format
     }
     pclose(fp);
   }
@@ -185,7 +182,7 @@ int get_recent_commit(char commits[][256], int count) {
   }
   
   char cmd[256];
-  snprintf(cmd, sizeof(cmd), "git log -%d --pretty=format:'%%s' 2>/dev/null", count);
+  snprintf(cmd, sizeof(cmd), "git log -%d --pretty=format:%%s 2>/dev/null", count);
   
   FILE *fp = popen(cmd, "r");
   if (!fp) {
@@ -196,11 +193,6 @@ int get_recent_commit(char commits[][256], int count) {
   while (retrieved < count && fgets(commits[retrieved], 256, fp) != NULL) {
     char *newline = strchr(commits[retrieved], '\n');
     if (newline) *newline = '\0';
-    
-    if (commits[retrieved][0] == '\'' && commits[retrieved][strlen(commits[retrieved])-1] == '\'') {
-      memmove(commits[retrieved], commits[retrieved] + 1, strlen(commits[retrieved]) - 1);
-      commits[retrieved][strlen(commits[retrieved]) - 1] = '\0';
-    }
     
     retrieved++;
   }

@@ -960,7 +960,81 @@ int lsh_gg(char **args) {
 
   // Execute the appropriate git command based on shorthand
   if (strcmp(args[1], "s") == 0) {
-    system("git status");
+    // Enhanced git status with more information
+    char branch_name[100] = "";
+    char repo_name[100] = "";
+    char last_commit_title[256] = "";
+    char last_commit_hash[32] = "";
+    char recent_commits[2][256];
+    char repo_url[512] = "";
+    int is_dirty = 0;
+    
+    // Check if we're in a git repo
+    if (!get_git_branch(branch_name, sizeof(branch_name), &is_dirty)) {
+        printf("Not in a Git repository\n");
+        return 1;
+    }
+    
+    // Get all the information
+    get_git_repo_name(repo_name, sizeof(repo_name));
+    get_last_commit(last_commit_title, sizeof(last_commit_title), 
+                        last_commit_hash, sizeof(last_commit_hash));
+    int commit_count = get_recent_commit(recent_commits, 2);
+    get_repo_url(repo_url, sizeof(repo_url));
+    
+    // Display enhanced status
+    printf("\n" ANSI_COLOR_CYAN "Git Repository Status" ANSI_COLOR_RESET "\n");
+    printf("══════════════════════════════════════════════════\n\n");
+    
+    // Repository info
+    printf(ANSI_COLOR_GREEN "Repo:" ANSI_COLOR_RESET "   %s\n", 
+           strlen(repo_name) > 0 ? repo_name : "Unknown");
+    
+    // Branch info with clickable link
+    if (strlen(repo_url) > 0) {
+        printf(ANSI_COLOR_GREEN "Branch:" ANSI_COLOR_RESET " \033]8;;%s/tree/%s\033\\%s\033]8;;\033\\%s\n", 
+               repo_url, branch_name, branch_name, is_dirty ? " *" : "");
+    } else {
+        printf(ANSI_COLOR_GREEN "Branch:" ANSI_COLOR_RESET " %s%s\n", 
+               branch_name, is_dirty ? " *" : "");
+    }
+    
+    // Last commit info
+    if (strlen(last_commit_hash) > 0 && strlen(last_commit_title) > 0) {
+        if (strlen(repo_url) > 0) {
+            printf(ANSI_COLOR_GREEN "Last commit:" ANSI_COLOR_RESET " \033]8;;%s/commit/%s\033\\%s\033]8;;\033\\ - %s\n", 
+                   repo_url, last_commit_hash, last_commit_hash, last_commit_title);
+        } else {
+            printf(ANSI_COLOR_GREEN "Last commit:" ANSI_COLOR_RESET " %s - %s\n", 
+                   last_commit_hash, last_commit_title);
+        }
+    }
+    
+    // Recent commits
+    if (commit_count > 0) {
+        printf(ANSI_COLOR_GREEN "Last %d commits:" ANSI_COLOR_RESET "\n", commit_count);
+        for (int i = 0; i < commit_count; i++) {
+            printf("  %d. %s\n", i + 1, recent_commits[i]);
+        }
+    }
+    
+    // Repository link
+    if (strlen(repo_url) > 0) {
+        printf(ANSI_COLOR_GREEN "Repository:" ANSI_COLOR_RESET " \033]8;;%s\033\\%s\033]8;;\033\\\n", 
+               repo_url, repo_url);
+    }
+    
+    printf("\n");
+    
+    // Show regular git status output
+    printf(ANSI_COLOR_YELLOW "Working Directory Status:" ANSI_COLOR_RESET "\n");
+    system("git status --short");
+    
+    if (!is_dirty) {
+        printf(ANSI_COLOR_GREEN "Working tree clean" ANSI_COLOR_RESET "\n");
+    }
+    
+    printf("\n");
   } else if (strcmp(args[1], "b") == 0) {
     system("git branch");
   } else if (strcmp(args[1], "o") == 0) {

@@ -279,6 +279,34 @@ int load_full_file_with_diff(NCursesDiffViewer *viewer, const char *filename) {
 }
 
 /**
+ * Draw a box with rounded corners
+ */
+void draw_rounded_box(WINDOW *win) {
+    if (!win) return;
+    
+    int height, width;
+    getmaxyx(win, height, width);
+    
+    // Draw horizontal lines
+    for (int x = 1; x < width - 1; x++) {
+        mvwaddch(win, 0, x, ACS_HLINE);
+        mvwaddch(win, height - 1, x, ACS_HLINE);
+    }
+    
+    // Draw vertical lines
+    for (int y = 1; y < height - 1; y++) {
+        mvwaddch(win, y, 0, ACS_VLINE);
+        mvwaddch(win, y, width - 1, ACS_VLINE);
+    }
+    
+    // Draw rounded corners
+    mvwaddch(win, 0, 0, ACS_ULCORNER);
+    mvwaddch(win, 0, width - 1, ACS_URCORNER);
+    mvwaddch(win, height - 1, 0, ACS_LLCORNER);
+    mvwaddch(win, height - 1, width - 1, ACS_LRCORNER);
+}
+
+/**
  * Get commit history
  */
 int get_commit_history(NCursesDiffViewer *viewer) {
@@ -513,9 +541,9 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
 void render_file_list_window(NCursesDiffViewer *viewer) {
     if (!viewer || !viewer->file_list_win) return;
     
-    // Only redraw the border and title
-    box(viewer->file_list_win, 0, 0);
-    mvwprintw(viewer->file_list_win, 0, 2, " Changed Files ");
+    // Draw rounded border and title
+    draw_rounded_box(viewer->file_list_win);
+    mvwprintw(viewer->file_list_win, 0, 2, " 1. Files ");
     
     int max_files_visible = viewer->file_panel_height - 2;
     
@@ -542,14 +570,7 @@ void render_file_list_window(NCursesDiffViewer *viewer) {
             mvwprintw(viewer->file_list_win, y, 1, " ");
         }
         
-        // Show commit marking indicator
-        if (viewer->files[i].marked_for_commit) {
-            wattron(viewer->file_list_win, COLOR_PAIR(1));
-            mvwprintw(viewer->file_list_win, y, 2, "●");
-            wattroff(viewer->file_list_win, COLOR_PAIR(1));
-        } else {
-            mvwprintw(viewer->file_list_win, y, 2, " ");
-        }
+        mvwprintw(viewer->file_list_win, y, 2, " ");
         
         // Status indicator
         char status = viewer->files[i].status;
@@ -569,8 +590,8 @@ void render_file_list_window(NCursesDiffViewer *viewer) {
             mvwprintw(viewer->file_list_win, y, 3, "%c", status);
         }
         
-        // Filename (truncated to fit panel)
-        int max_name_len = viewer->file_panel_width - 6;
+        // Filename (truncated to fit panel with better margins)
+        int max_name_len = viewer->file_panel_width - 8; // More margin
         char truncated_name[256];
         if ((int)strlen(viewer->files[i].filename) > max_name_len) {
             strncpy(truncated_name, viewer->files[i].filename, max_name_len - 3);
@@ -580,7 +601,14 @@ void render_file_list_window(NCursesDiffViewer *viewer) {
             strcpy(truncated_name, viewer->files[i].filename);
         }
         
+        // Color filename green if marked for commit
+        if (viewer->files[i].marked_for_commit) {
+            wattron(viewer->file_list_win, COLOR_PAIR(1));
+        }
         mvwprintw(viewer->file_list_win, y, 5, "%s", truncated_name);
+        if (viewer->files[i].marked_for_commit) {
+            wattroff(viewer->file_list_win, COLOR_PAIR(1));
+        }
         
         if (i == viewer->selected_file) {
             if (viewer->current_mode == MODE_FILE_LIST) {
@@ -600,9 +628,9 @@ void render_file_list_window(NCursesDiffViewer *viewer) {
 void render_commit_list_window(NCursesDiffViewer *viewer) {
     if (!viewer || !viewer->commit_list_win) return;
     
-    // Only redraw the border and title
-    box(viewer->commit_list_win, 0, 0);
-    mvwprintw(viewer->commit_list_win, 0, 2, " Recent Commits ");
+    // Draw rounded border and title
+    draw_rounded_box(viewer->commit_list_win);
+    mvwprintw(viewer->commit_list_win, 0, 2, " 3. Commits ");
     
     int max_commits_visible = viewer->commit_panel_height - 2;
     
@@ -625,14 +653,34 @@ void render_commit_list_window(NCursesDiffViewer *viewer) {
             mvwprintw(viewer->commit_list_win, y, 1, " ");
         }
         
-        // Show commit hash
+        // Show commit hash with color based on push status
+        if (viewer->commits[i].is_pushed) {
+            wattron(viewer->commit_list_win, COLOR_PAIR(1)); // Green for pushed
+        } else {
+            wattron(viewer->commit_list_win, COLOR_PAIR(2)); // Red for unpushed
+        }
         mvwprintw(viewer->commit_list_win, y, 2, "%s", viewer->commits[i].hash);
+        if (viewer->commits[i].is_pushed) {
+            wattroff(viewer->commit_list_win, COLOR_PAIR(1));
+        } else {
+            wattroff(viewer->commit_list_win, COLOR_PAIR(2));
+        }
         
-        // Show author initials
+        // Show author initials with same color as hash
+        if (viewer->commits[i].is_pushed) {
+            wattron(viewer->commit_list_win, COLOR_PAIR(1)); // Green for pushed
+        } else {
+            wattron(viewer->commit_list_win, COLOR_PAIR(2)); // Red for unpushed
+        }
         mvwprintw(viewer->commit_list_win, y, 10, "%s", viewer->commits[i].author_initials);
+        if (viewer->commits[i].is_pushed) {
+            wattroff(viewer->commit_list_win, COLOR_PAIR(1));
+        } else {
+            wattroff(viewer->commit_list_win, COLOR_PAIR(2));
+        }
         
-        // Show commit title (truncated to fit)
-        int max_title_len = viewer->file_panel_width - 15;
+        // Show commit title (always white, truncated with better margins)
+        int max_title_len = viewer->file_panel_width - 17; // More margin
         char truncated_title[256];
         if ((int)strlen(viewer->commits[i].title) > max_title_len) {
             strncpy(truncated_title, viewer->commits[i].title, max_title_len - 3);
@@ -642,14 +690,7 @@ void render_commit_list_window(NCursesDiffViewer *viewer) {
             strcpy(truncated_title, viewer->commits[i].title);
         }
         
-        // Color the title based on push status
-        if (!viewer->commits[i].is_pushed) {
-            wattron(viewer->commit_list_win, COLOR_PAIR(2)); // Red for unpushed
-        }
         mvwprintw(viewer->commit_list_win, y, 13, "%s", truncated_title);
-        if (!viewer->commits[i].is_pushed) {
-            wattroff(viewer->commit_list_win, COLOR_PAIR(2));
-        }
     }
     
     wrefresh(viewer->commit_list_win);
@@ -661,15 +702,15 @@ void render_commit_list_window(NCursesDiffViewer *viewer) {
 void render_file_content_window(NCursesDiffViewer *viewer) {
     if (!viewer || !viewer->file_content_win) return;
     
-    // Only redraw the border
-    box(viewer->file_content_win, 0, 0);
+    // Draw rounded border
+    draw_rounded_box(viewer->file_content_win);
     
     if (viewer->file_count > 0 && viewer->selected_file < viewer->file_count) {
         // Show file content (preview in list mode, scrollable in view mode)
         if (viewer->current_mode == MODE_FILE_LIST) {
-            mvwprintw(viewer->file_content_win, 0, 2, " %s (Preview) ", viewer->files[viewer->selected_file].filename);
+            mvwprintw(viewer->file_content_win, 0, 2, " 2. %s (Preview) ", viewer->files[viewer->selected_file].filename);
         } else {
-            mvwprintw(viewer->file_content_win, 0, 2, " %s (Scrollable) ", viewer->files[viewer->selected_file].filename);
+            mvwprintw(viewer->file_content_win, 0, 2, " 2. %s (Scrollable) ", viewer->files[viewer->selected_file].filename);
         }
         
         int max_lines_visible = viewer->terminal_height - 4;
@@ -754,6 +795,23 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     // Global quit commands
     if (key == 'q' || key == 'Q') {
         return 0; // Exit
+    }
+    
+    // Global number key navigation
+    switch (key) {
+        case '1':
+            viewer->current_mode = MODE_FILE_LIST;
+            break;
+        case '2':
+            // Switch to file view mode and load selected file
+            if (viewer->file_count > 0 && viewer->selected_file < viewer->file_count) {
+                load_full_file_with_diff(viewer, viewer->files[viewer->selected_file].filename);
+                viewer->current_mode = MODE_FILE_VIEW;
+            }
+            break;
+        case '3':
+            viewer->current_mode = MODE_COMMIT_LIST;
+            break;
     }
     
     if (viewer->current_mode == MODE_FILE_LIST) {
@@ -941,11 +999,11 @@ int run_ncurses_diff_viewer(void) {
     // Initial display
     attron(COLOR_PAIR(3));
     if (viewer.current_mode == MODE_FILE_LIST) {
-        mvprintw(0, 0, "Git Diff Viewer - FILE LIST: j/k=nav, Space=mark, A=mark all, C=commit, Tab=commits, q=quit");
+        mvprintw(0, 0, "Git Diff Viewer: 1=files 2=view 3=commits | j/k=nav Space=mark A=all C=commit P=push | q=quit");
     } else if (viewer.current_mode == MODE_FILE_VIEW) {
-        mvprintw(0, 0, "Git Diff Viewer - FILE VIEW MODE: j/k=scroll, Ctrl+U/D=30 lines, Esc=back, q=quit");
+        mvprintw(0, 0, "Git Diff Viewer: 1=files 2=view 3=commits | j/k=scroll Ctrl+U/D=30lines | q=quit");
     } else {
-        mvprintw(0, 0, "Git Diff Viewer - COMMIT LIST: j/k=navigate, P=push, Tab=back to files, q=quit");
+        mvprintw(0, 0, "Git Diff Viewer: 1=files 2=view 3=commits | j/k=nav P=push | q=quit");
     }
     attroff(COLOR_PAIR(3));
     refresh();
@@ -967,11 +1025,11 @@ int run_ncurses_diff_viewer(void) {
             
             attron(COLOR_PAIR(3));
             if (viewer.current_mode == MODE_FILE_LIST) {
-                mvprintw(0, 0, "Git Diff Viewer - FILE LIST: j/k=nav, Space=mark, A=mark all, C=commit, Tab=commits, q=quit");
+                mvprintw(0, 0, "Git Diff Viewer: 1=files 2=view 3=commits | j/k=nav Space=mark A=all C=commit P=push | q=quit");
             } else if (viewer.current_mode == MODE_FILE_VIEW) {
-                mvprintw(0, 0, "Git Diff Viewer - FILE VIEW MODE: j/k=scroll, Ctrl+U/D=30 lines, Esc=back, q=quit");
+                mvprintw(0, 0, "Git Diff Viewer: 1=files 2=view 3=commits | j/k=scroll Ctrl+U/D=30lines | q=quit");
             } else {
-                mvprintw(0, 0, "Git Diff Viewer - COMMIT LIST: j/k=navigate, P=push, Tab=back to files, q=quit");
+                mvprintw(0, 0, "Git Diff Viewer: 1=files 2=view 3=commits | j/k=nav P=push | q=quit");
             }
             attroff(COLOR_PAIR(3));
             refresh();

@@ -147,4 +147,9 @@ void render_commit_list_window(NCursesDiffViewer *viewer);
  */
 int get_commit_title_input(char *title, int max_len);
 
+/**
+ * Draw a box with rounded corners
+ */
+void draw_rounded_box(WINDOW *win);
+
 #endif // NCURSES_DIFF_VIEWER_H

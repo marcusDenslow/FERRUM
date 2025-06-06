@@ -42,9 +42,16 @@ typedef enum {
 } NCursesViewMode;
 
 typedef enum {
-    SYNC_STATUS_SYNCED,
-    SYNC_STATUS_SYNCING,
-    SYNC_STATUS_PUSHING
+    SYNC_STATUS_IDLE,
+    SYNC_STATUS_SYNCING_APPEARING,
+    SYNC_STATUS_SYNCING_VISIBLE,
+    SYNC_STATUS_SYNCING_DISAPPEARING,
+    SYNC_STATUS_PUSHING_APPEARING,
+    SYNC_STATUS_PUSHING_VISIBLE,
+    SYNC_STATUS_PUSHING_DISAPPEARING,
+    SYNC_STATUS_SYNCED_APPEARING,
+    SYNC_STATUS_SYNCED_VISIBLE,
+    SYNC_STATUS_SYNCED_DISAPPEARING
 } SyncStatus;
 
 typedef struct {
@@ -71,6 +78,8 @@ typedef struct {
     SyncStatus sync_status;
     int spinner_frame;
     time_t last_sync_time;
+    int animation_frame;
+    int text_char_count;
 } NCursesDiffViewer;
 
 /**

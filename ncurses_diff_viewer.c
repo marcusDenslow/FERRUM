@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <locale.h>
 
 /**
  * Initialize the ncurses diff viewer
@@ -21,9 +22,14 @@ int init_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
     viewer->selected_file = 0;
     viewer->file_scroll_offset = 0;
     viewer->current_mode = NCURSES_MODE_FILE_LIST;
-    viewer->sync_status = SYNC_STATUS_SYNCED;
+    viewer->sync_status = SYNC_STATUS_IDLE;
     viewer->spinner_frame = 0;
     viewer->last_sync_time = time(NULL);
+    viewer->animation_frame = 0;
+    viewer->text_char_count = 0;
+    
+    // Set locale for Unicode support
+    setlocale(LC_ALL, "");
     
     // Initialize ncurses
     initscr();
@@ -31,6 +37,7 @@ int init_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
     noecho();
     keypad(stdscr, TRUE);
     nodelay(stdscr, TRUE); // Make getch() non-blocking
+    curs_set(0); // Hide cursor to prevent flickering
     
     // Enable colors
     if (has_colors()) {
@@ -47,9 +54,12 @@ int init_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
     viewer->status_bar_height = viewer->terminal_height * 0.05; // 5% of screen height
     if (viewer->status_bar_height < 1) viewer->status_bar_height = 1; // Minimum 1 line
     
-    int available_height = viewer->terminal_height - 2 - viewer->status_bar_height; // Subtract top bar and status bar
+    int available_height = viewer->terminal_height - 1 - viewer->status_bar_height; // Subtract top bar and status bar
     viewer->file_panel_height = available_height * 0.6; // 60% of available height
     viewer->commit_panel_height = available_height - viewer->file_panel_height - 1; // Rest of height
+    
+    // Position status bar right after the main content
+    int status_bar_y = 1 + available_height;
     
     // Create four windows
     viewer->file_list_win = newwin(viewer->file_panel_height, viewer->file_panel_width, 1, 0);
@@ -59,7 +69,7 @@ int init_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
                                      viewer->terminal_width - viewer->file_panel_width - 1, 
                                      1, viewer->file_panel_width + 1);
     viewer->status_bar_win = newwin(viewer->status_bar_height, viewer->terminal_width,
-                                   viewer->terminal_height - viewer->status_bar_height, 0);
+                                   status_bar_y, 0);
     
     if (!viewer->file_list_win || !viewer->file_content_win || !viewer->commit_list_win || !viewer->status_bar_win) {
         cleanup_ncurses_diff_viewer(viewer);
@@ -509,28 +519,20 @@ int commit_marked_files(NCursesDiffViewer *viewer, const char *commit_title) {
 int push_commit(NCursesDiffViewer *viewer, int commit_index) {
     if (!viewer || commit_index < 0 || commit_index >= viewer->commit_count) return 0;
     
-    // Set pushing status and show it
-    viewer->sync_status = SYNC_STATUS_PUSHING;
-    render_status_bar(viewer);
+    // Start pushing animation
+    viewer->sync_status = SYNC_STATUS_PUSHING_APPEARING;
+    viewer->animation_frame = 0;
+    viewer->text_char_count = 0;
     
-    // Show pushing animation for a moment
-    for (int i = 0; i < 10; i++) {
-        viewer->spinner_frame++;
-        render_status_bar(viewer);
-        usleep(100000); // 100ms delays for animation
-    }
-    
-    // Push to origin (hide output)
+    // Do the actual push work
     int result = system("git push origin 2>/dev/null >/dev/null");
     
     if (result == 0) {
         // Refresh commit history to get proper push status
         get_commit_history(viewer);
-        viewer->sync_status = SYNC_STATUS_SYNCED;
         return 1;
     }
     
-    viewer->sync_status = SYNC_STATUS_SYNCED;
     return 0;
 }
 
@@ -786,7 +788,7 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
 void render_status_bar(NCursesDiffViewer *viewer) {
     if (!viewer || !viewer->status_bar_win) return;
     
-    // Clear status bar
+    // Clear status bar (no border)
     werase(viewer->status_bar_win);
     wbkgd(viewer->status_bar_win, COLOR_PAIR(3)); // Cyan background
     
@@ -804,37 +806,82 @@ void render_status_bar(NCursesDiffViewer *viewer) {
     
     // Right side: Sync status
     char sync_text[64] = "";
-    char spinner_chars[] = "| / - \\ ";
-    int spinner_idx = (viewer->spinner_frame / 5) % 4; // Change every 5 frames for slower animation
+    char *spinner_chars[] = {"|", "/", "-", "\\"};
+    int spinner_idx = viewer->spinner_frame % 4; // Change every frame (~50ms per character)
     
-    if (viewer->sync_status == SYNC_STATUS_SYNCED) {
-        wattron(viewer->status_bar_win, COLOR_PAIR(1)); // Green
-        strcpy(sync_text, "Synced!");
-        wattroff(viewer->status_bar_win, COLOR_PAIR(1));
-    } else if (viewer->sync_status == SYNC_STATUS_SYNCING) {
-        wattron(viewer->status_bar_win, COLOR_PAIR(4)); // Yellow
-        snprintf(sync_text, sizeof(sync_text), "Syncing %c", spinner_chars[spinner_idx]);
-        wattroff(viewer->status_bar_win, COLOR_PAIR(4));
-    } else if (viewer->sync_status == SYNC_STATUS_PUSHING) {
-        wattron(viewer->status_bar_win, COLOR_PAIR(4)); // Yellow
-        snprintf(sync_text, sizeof(sync_text), "Pushing %c", spinner_chars[spinner_idx]);
-        wattroff(viewer->status_bar_win, COLOR_PAIR(4));
+    if (viewer->sync_status == SYNC_STATUS_IDLE) {
+        // Show nothing when idle
+        strcpy(sync_text, "");
+    } else if (viewer->sync_status >= SYNC_STATUS_SYNCING_APPEARING && viewer->sync_status <= SYNC_STATUS_SYNCING_DISAPPEARING) {
+        // Show partial or full "Fetching" text with spinner
+        char full_text[] = "Fetching";
+        int chars_to_show = viewer->text_char_count;
+        if (chars_to_show > 8) chars_to_show = 8; // Max length of "Fetching"
+        if (chars_to_show < 0) chars_to_show = 0;
+        
+        if (chars_to_show > 0) {
+            char partial_text[16];
+            strncpy(partial_text, full_text, chars_to_show);
+            partial_text[chars_to_show] = '\0';
+            
+            if (viewer->sync_status == SYNC_STATUS_SYNCING_VISIBLE) {
+                snprintf(sync_text, sizeof(sync_text), "%s %s", partial_text, spinner_chars[spinner_idx]);
+            } else {
+                strcpy(sync_text, partial_text);
+            }
+        } else {
+            strcpy(sync_text, "");
+        }
+    } else if (viewer->sync_status >= SYNC_STATUS_PUSHING_APPEARING && viewer->sync_status <= SYNC_STATUS_PUSHING_DISAPPEARING) {
+        // Show partial or full "Pushing" text with spinner
+        char full_text[] = "Pushing";
+        int chars_to_show = viewer->text_char_count;
+        if (chars_to_show > 7) chars_to_show = 7; // Max length of "Pushing"
+        if (chars_to_show < 0) chars_to_show = 0;
+        
+        if (chars_to_show > 0) {
+            char partial_text[16];
+            strncpy(partial_text, full_text, chars_to_show);
+            partial_text[chars_to_show] = '\0';
+            
+            if (viewer->sync_status == SYNC_STATUS_PUSHING_VISIBLE) {
+                snprintf(sync_text, sizeof(sync_text), "%s %s", partial_text, spinner_chars[spinner_idx]);
+            } else {
+                strcpy(sync_text, partial_text);
+            }
+        } else {
+            strcpy(sync_text, "");
+        }
+    } else if (viewer->sync_status >= SYNC_STATUS_SYNCED_APPEARING && viewer->sync_status <= SYNC_STATUS_SYNCED_DISAPPEARING) {
+        // Show partial or full "Synced!" text
+        char full_text[] = "Synced!";
+        int chars_to_show = viewer->text_char_count;
+        if (chars_to_show > 7) chars_to_show = 7; // Max length of "Synced!"
+        if (chars_to_show < 0) chars_to_show = 0;
+        
+        strncpy(sync_text, full_text, chars_to_show);
+        sync_text[chars_to_show] = '\0';
     }
     
-    int sync_text_pos = viewer->terminal_width - strlen(sync_text) - 1;
-    if (viewer->sync_status == SYNC_STATUS_SYNCED) {
-        wattron(viewer->status_bar_win, COLOR_PAIR(1)); // Green
-    } else {
-        wattron(viewer->status_bar_win, COLOR_PAIR(4)); // Yellow
-    }
-    mvwprintw(viewer->status_bar_win, 0, sync_text_pos, "%s", sync_text);
-    if (viewer->sync_status == SYNC_STATUS_SYNCED) {
-        wattroff(viewer->status_bar_win, COLOR_PAIR(1));
-    } else {
-        wattroff(viewer->status_bar_win, COLOR_PAIR(4));
+    if (strlen(sync_text) > 0) {
+        int sync_text_pos = viewer->terminal_width - strlen(sync_text) - 1; // No border padding needed
+        
+        if (viewer->sync_status >= SYNC_STATUS_SYNCED_APPEARING && viewer->sync_status <= SYNC_STATUS_SYNCED_DISAPPEARING) {
+            wattron(viewer->status_bar_win, COLOR_PAIR(1)); // Green
+            mvwprintw(viewer->status_bar_win, 0, sync_text_pos, "%s", sync_text);
+            wattroff(viewer->status_bar_win, COLOR_PAIR(1));
+        } else {
+            wattron(viewer->status_bar_win, COLOR_PAIR(4)); // Yellow
+            mvwprintw(viewer->status_bar_win, 0, sync_text_pos, "%s", sync_text);
+            wattroff(viewer->status_bar_win, COLOR_PAIR(4));
+        }
     }
     
     wrefresh(viewer->status_bar_win);
+    
+    // Ensure cursor stays hidden and positioned off-screen
+    move(viewer->terminal_height - 1, viewer->terminal_width - 1);
+    refresh();
 }
 
 /**
@@ -845,30 +892,111 @@ void update_sync_status(NCursesDiffViewer *viewer) {
     
     time_t current_time = time(NULL);
     
-    // Check if it's time to sync (every 5 seconds for more responsive updates)
-    if (current_time - viewer->last_sync_time >= 5) {
-        viewer->sync_status = SYNC_STATUS_SYNCING;
+    // Check if it's time to sync (every 30 seconds)
+    if (current_time - viewer->last_sync_time >= 30) {
+        viewer->sync_status = SYNC_STATUS_SYNCING_APPEARING;
+        viewer->last_sync_time = current_time;
+        viewer->animation_frame = 0;
+        viewer->text_char_count = 0;
         
-        // Show syncing animation for a brief moment
-        render_status_bar(viewer);
-        usleep(200000); // 200ms delay to show syncing status
-        
-        // Get updated file list
+        // Do the actual sync work immediately
         get_ncurses_changed_files(viewer);
-        
-        // If we're viewing a file and it's still valid, reload it
         if (viewer->selected_file < viewer->file_count && viewer->file_count > 0) {
             load_full_file_with_diff(viewer, viewer->files[viewer->selected_file].filename);
         }
-        
-        // Update commits as well
         get_commit_history(viewer);
-        
-        viewer->sync_status = SYNC_STATUS_SYNCED;
-        viewer->last_sync_time = current_time;
     }
     
-    // Always update spinner frame for animation
+    // Handle all animation states
+    if (viewer->sync_status != SYNC_STATUS_IDLE) {
+        viewer->animation_frame++;
+        
+        // Handle fetching animation (4 seconds total: appear + visible + disappear)
+        if (viewer->sync_status >= SYNC_STATUS_SYNCING_APPEARING && viewer->sync_status <= SYNC_STATUS_SYNCING_DISAPPEARING) {
+            if (viewer->sync_status == SYNC_STATUS_SYNCING_APPEARING) {
+                // Appearing: one character every 2 frames (0.1s) for "Fetching" (8 chars)
+                viewer->text_char_count = viewer->animation_frame / 2;
+                if (viewer->text_char_count >= 8) {
+                    viewer->text_char_count = 8;
+                    viewer->sync_status = SYNC_STATUS_SYNCING_VISIBLE;
+                    viewer->animation_frame = 0;
+                }
+            } else if (viewer->sync_status == SYNC_STATUS_SYNCING_VISIBLE) {
+                // Visible with spinner for 2.4 seconds (48 frames)
+                if (viewer->animation_frame >= 48) {
+                    viewer->sync_status = SYNC_STATUS_SYNCING_DISAPPEARING;
+                    viewer->animation_frame = 0;
+                    viewer->text_char_count = 8;
+                }
+            } else if (viewer->sync_status == SYNC_STATUS_SYNCING_DISAPPEARING) {
+                // Disappearing: remove one character every 2 frames (0.1s)
+                int chars_to_remove = viewer->animation_frame / 2;
+                viewer->text_char_count = 8 - chars_to_remove;
+                if (viewer->text_char_count <= 0) {
+                    viewer->text_char_count = 0;
+                    viewer->sync_status = SYNC_STATUS_SYNCED_APPEARING;
+                    viewer->animation_frame = 0;
+                }
+            }
+        }
+        // Handle pushing animation (same 4 second pattern)
+        else if (viewer->sync_status >= SYNC_STATUS_PUSHING_APPEARING && viewer->sync_status <= SYNC_STATUS_PUSHING_DISAPPEARING) {
+            if (viewer->sync_status == SYNC_STATUS_PUSHING_APPEARING) {
+                // Appearing: one character every 2 frames (0.1s) for "Pushing" (7 chars)
+                viewer->text_char_count = viewer->animation_frame / 2;
+                if (viewer->text_char_count >= 7) {
+                    viewer->text_char_count = 7;
+                    viewer->sync_status = SYNC_STATUS_PUSHING_VISIBLE;
+                    viewer->animation_frame = 0;
+                }
+            } else if (viewer->sync_status == SYNC_STATUS_PUSHING_VISIBLE) {
+                // Visible with spinner for 2.6 seconds (52 frames)
+                if (viewer->animation_frame >= 52) {
+                    viewer->sync_status = SYNC_STATUS_PUSHING_DISAPPEARING;
+                    viewer->animation_frame = 0;
+                    viewer->text_char_count = 7;
+                }
+            } else if (viewer->sync_status == SYNC_STATUS_PUSHING_DISAPPEARING) {
+                // Disappearing: remove one character every 2 frames (0.1s)
+                int chars_to_remove = viewer->animation_frame / 2;
+                viewer->text_char_count = 7 - chars_to_remove;
+                if (viewer->text_char_count <= 0) {
+                    viewer->text_char_count = 0;
+                    viewer->sync_status = SYNC_STATUS_SYNCED_APPEARING;
+                    viewer->animation_frame = 0;
+                }
+            }
+        }
+        // Handle synced animation
+        else if (viewer->sync_status >= SYNC_STATUS_SYNCED_APPEARING && viewer->sync_status <= SYNC_STATUS_SYNCED_DISAPPEARING) {
+            if (viewer->sync_status == SYNC_STATUS_SYNCED_APPEARING) {
+                // Appearing: one character every 2 frames (0.1s) for "Synced!" (7 chars)
+                viewer->text_char_count = viewer->animation_frame / 2;
+                if (viewer->text_char_count >= 7) {
+                    viewer->text_char_count = 7;
+                    viewer->sync_status = SYNC_STATUS_SYNCED_VISIBLE;
+                    viewer->animation_frame = 0;
+                }
+            } else if (viewer->sync_status == SYNC_STATUS_SYNCED_VISIBLE) {
+                // Visible for 3 seconds (60 frames)
+                if (viewer->animation_frame >= 60) {
+                    viewer->sync_status = SYNC_STATUS_SYNCED_DISAPPEARING;
+                    viewer->animation_frame = 0;
+                    viewer->text_char_count = 7;
+                }
+            } else if (viewer->sync_status == SYNC_STATUS_SYNCED_DISAPPEARING) {
+                // Disappearing: remove one character every 2 frames (0.1s)
+                int chars_to_remove = viewer->animation_frame / 2;
+                viewer->text_char_count = 7 - chars_to_remove;
+                if (viewer->text_char_count <= 0) {
+                    viewer->text_char_count = 0;
+                    viewer->sync_status = SYNC_STATUS_IDLE;
+                }
+            }
+        }
+    }
+    
+    // Always update spinner frame for spinner animation
     viewer->spinner_frame++;
     if (viewer->spinner_frame > 100) viewer->spinner_frame = 0; // Reset to prevent overflow
 }
@@ -1133,6 +1261,9 @@ int run_ncurses_diff_viewer(void) {
         render_file_content_window(&viewer);
         render_commit_list_window(&viewer);
         render_status_bar(&viewer);
+        
+        // Keep cursor hidden
+        curs_set(0);
         
         int c = getch();
         if (c != ERR) { // Only process if a key was actually pressed

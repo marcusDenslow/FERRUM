@@ -557,6 +557,102 @@ int show_diverged_branch_dialog(int commits_ahead, int commits_behind) {
 }
 
 /**
+ * Show confirmation dialog requiring user to type "yes"
+ * Returns 1 if confirmed, 0 if cancelled
+ */
+int show_reset_confirmation_dialog(void) {
+  // Save current screen
+  WINDOW *saved_screen = dupwin(stdscr);
+
+  // Calculate window dimensions
+  int dialog_width = 60;
+  int dialog_height = 10;
+  int start_x = COLS / 2 - dialog_width / 2;
+  int start_y = LINES / 2 - dialog_height / 2;
+
+  // Create dialog window
+  WINDOW *dialog_win = newwin(dialog_height, dialog_width, start_y, start_x);
+  if (!dialog_win) {
+    if (saved_screen)
+      delwin(saved_screen);
+    return 0;
+  }
+
+  char input_buffer[10] = "";
+  int input_pos = 0;
+  
+  while (1) {
+    // Clear and redraw dialog
+    werase(dialog_win);
+    wattron(dialog_win, COLOR_PAIR(3)); // Red for warning
+    box(dialog_win, 0, 0);
+    
+    // Title
+    mvwprintw(dialog_win, 1, 2, "HARD RESET WARNING!");
+    
+    // Warning message
+    mvwprintw(dialog_win, 3, 2, "This will permanently delete the most recent");
+    mvwprintw(dialog_win, 4, 2, "commit and ALL uncommitted changes!");
+    
+    // Instructions
+    mvwprintw(dialog_win, 6, 2, "Type 'yes' to confirm or ESC to cancel:");
+    
+    // Input field
+    mvwprintw(dialog_win, 7, 2, "> %s", input_buffer);
+    
+    wattroff(dialog_win, COLOR_PAIR(3));
+    wrefresh(dialog_win);
+
+    // Position cursor
+    wmove(dialog_win, 7, 4 + strlen(input_buffer));
+    
+    // Get user input
+    int ch = wgetch(dialog_win);
+    
+    if (ch == 27 || ch == 'q') { // ESC or q
+      break;
+    } else if (ch == '\n' || ch == '\r') {
+      // Check if input is "yes" (case insensitive)
+      if (strcasecmp(input_buffer, "yes") == 0) {
+        // Cleanup and return confirmed
+        delwin(dialog_win);
+        if (saved_screen) {
+          touchwin(saved_screen);
+          wrefresh(saved_screen);
+          delwin(saved_screen);
+        }
+        return 1;
+      } else {
+        // Wrong input, clear buffer
+        input_buffer[0] = '\0';
+        input_pos = 0;
+      }
+    } else if (ch == KEY_BACKSPACE || ch == 127 || ch == 8) {
+      // Backspace
+      if (input_pos > 0) {
+        input_pos--;
+        input_buffer[input_pos] = '\0';
+      }
+    } else if (ch >= 32 && ch <= 126 && input_pos < 8) {
+      // Regular character
+      input_buffer[input_pos] = ch;
+      input_pos++;
+      input_buffer[input_pos] = '\0';
+    }
+  }
+
+  // Cleanup and return cancelled
+  delwin(dialog_win);
+  if (saved_screen) {
+    touchwin(saved_screen);
+    wrefresh(saved_screen);
+    delwin(saved_screen);
+  }
+  
+  return 0;
+}
+
+/**
  * Get commit title and message input from user
  */
 int get_commit_title_input(char *title, int max_len, char *message,
@@ -966,6 +1062,11 @@ int reset_commit_hard(NCursesDiffViewer *viewer, int commit_index) {
   if (commit_index != 0)
     return 0;
 
+  // Show confirmation dialog
+  if (!show_reset_confirmation_dialog()) {
+    return 0; // User cancelled
+  }
+
   // Do hard reset of HEAD~1
   int result = system("git reset --hard HEAD~1 2>/dev/null >/dev/null");
 
@@ -1110,8 +1211,10 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
   viewer->animation_frame = 0;
   viewer->text_char_count = 0;
 
-  // Render immediately to show the animation start
+  // Force render and refresh to show immediate animation start
   render_status_bar(viewer);
+  wrefresh(viewer->status_bar_win);
+  refresh();
 
   // Do the actual push work
   int result;
@@ -1124,9 +1227,17 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
   }
 
   if (result == 0) {
+    // Immediately transition to "Pushed!" animation
+    viewer->sync_status = SYNC_STATUS_PUSHED_APPEARING;
+    viewer->animation_frame = 0;
+    viewer->text_char_count = 0;
+    
     // Refresh commit history to get proper push status
     get_commit_history(viewer);
     return 1;
+  } else {
+    // Push failed, reset to idle
+    viewer->sync_status = SYNC_STATUS_IDLE;
   }
 
   return 0;
@@ -1689,24 +1800,24 @@ void update_sync_status(NCursesDiffViewer *viewer) {
     else if (viewer->sync_status >= SYNC_STATUS_PUSHING_APPEARING &&
              viewer->sync_status <= SYNC_STATUS_PUSHING_DISAPPEARING) {
       if (viewer->sync_status == SYNC_STATUS_PUSHING_APPEARING) {
-        // Appearing: one character every 2 frames (0.1s) for "Pushing" (7
+        // Appearing: one character every frame (0.05s) for "Pushing" (7
         // chars)
-        viewer->text_char_count = viewer->animation_frame / 2;
+        viewer->text_char_count = viewer->animation_frame;
         if (viewer->text_char_count >= 7) {
           viewer->text_char_count = 7;
           viewer->sync_status = SYNC_STATUS_PUSHING_VISIBLE;
           viewer->animation_frame = 0;
         }
       } else if (viewer->sync_status == SYNC_STATUS_PUSHING_VISIBLE) {
-        // Visible with spinner for 1.2 seconds (24 frames) - faster
-        if (viewer->animation_frame >= 24) {
+        // Visible with spinner for 1.2 seconds (60 frames at 20ms) - faster
+        if (viewer->animation_frame >= 60) {
           viewer->sync_status = SYNC_STATUS_PUSHING_DISAPPEARING;
           viewer->animation_frame = 0;
           viewer->text_char_count = 7;
         }
       } else if (viewer->sync_status == SYNC_STATUS_PUSHING_DISAPPEARING) {
-        // Disappearing: remove one character every 2 frames (0.1s)
-        int chars_to_remove = viewer->animation_frame / 2;
+        // Disappearing: remove one character every frame (0.05s)
+        int chars_to_remove = viewer->animation_frame;
         viewer->text_char_count = 7 - chars_to_remove;
         if (viewer->text_char_count <= 0) {
           viewer->text_char_count = 0;
@@ -1778,24 +1889,24 @@ void update_sync_status(NCursesDiffViewer *viewer) {
     else if (viewer->sync_status >= SYNC_STATUS_PUSHED_APPEARING &&
              viewer->sync_status <= SYNC_STATUS_PUSHED_DISAPPEARING) {
       if (viewer->sync_status == SYNC_STATUS_PUSHED_APPEARING) {
-        // Appearing: one character every 2 frames (0.1s) for "Pushed!" (7
+        // Appearing: one character every frame (0.05s) for "Pushed!" (7
         // chars)
-        viewer->text_char_count = viewer->animation_frame / 2;
+        viewer->text_char_count = viewer->animation_frame;
         if (viewer->text_char_count >= 7) {
           viewer->text_char_count = 7;
           viewer->sync_status = SYNC_STATUS_PUSHED_VISIBLE;
           viewer->animation_frame = 0;
         }
       } else if (viewer->sync_status == SYNC_STATUS_PUSHED_VISIBLE) {
-        // Visible for 2 seconds (40 frames)
-        if (viewer->animation_frame >= 40) {
+        // Visible for 2 seconds (100 frames at 20ms)
+        if (viewer->animation_frame >= 100) {
           viewer->sync_status = SYNC_STATUS_PUSHED_DISAPPEARING;
           viewer->animation_frame = 0;
           viewer->text_char_count = 7;
         }
       } else if (viewer->sync_status == SYNC_STATUS_PUSHED_DISAPPEARING) {
-        // Disappearing: remove one character every 2 frames (0.1s)
-        int chars_to_remove = viewer->animation_frame / 2;
+        // Disappearing: remove one character every frame (0.05s)
+        int chars_to_remove = viewer->animation_frame;
         viewer->text_char_count = 7 - chars_to_remove;
         if (viewer->text_char_count <= 0) {
           viewer->text_char_count = 0;
@@ -2156,7 +2267,7 @@ int run_ncurses_diff_viewer(void) {
     }
 
     // Small delay to prevent excessive CPU usage and allow animations
-    usleep(50000); // 50ms delay
+    usleep(20000); // 20ms delay
   }
 
   cleanup_ncurses_diff_viewer(&viewer);

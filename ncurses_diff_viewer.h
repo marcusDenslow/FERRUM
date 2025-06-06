@@ -41,6 +41,12 @@ typedef enum {
     NCURSES_MODE_COMMIT_LIST
 } NCursesViewMode;
 
+typedef enum {
+    SYNC_STATUS_SYNCED,
+    SYNC_STATUS_SYNCING,
+    SYNC_STATUS_PUSHING
+} SyncStatus;
+
 typedef struct {
     NCursesChangedFile files[MAX_FILES];
     int file_count;
@@ -54,12 +60,17 @@ typedef struct {
     WINDOW *file_list_win;
     WINDOW *file_content_win;
     WINDOW *commit_list_win;
+    WINDOW *status_bar_win;
     int terminal_width;
     int terminal_height;
     int file_panel_width;
     int file_panel_height;
     int commit_panel_height;
+    int status_bar_height;
     NCursesViewMode current_mode;
+    SyncStatus sync_status;
+    int spinner_frame;
+    time_t last_sync_time;
 } NCursesDiffViewer;
 
 /**
@@ -151,5 +162,15 @@ int get_commit_title_input(char *title, int max_len);
  * Draw a box with rounded corners
  */
 void draw_rounded_box(WINDOW *win);
+
+/**
+ * Render the status bar
+ */
+void render_status_bar(NCursesDiffViewer *viewer);
+
+/**
+ * Update sync status and check for new files
+ */
+void update_sync_status(NCursesDiffViewer *viewer);
 
 #endif // NCURSES_DIFF_VIEWER_H

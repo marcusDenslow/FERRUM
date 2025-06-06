@@ -9,6 +9,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <time.h>
 
 /**
  * Initialize the ncurses diff viewer
@@ -20,6 +21,9 @@ int init_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
     viewer->selected_file = 0;
     viewer->file_scroll_offset = 0;
     viewer->current_mode = NCURSES_MODE_FILE_LIST;
+    viewer->sync_status = SYNC_STATUS_SYNCED;
+    viewer->spinner_frame = 0;
+    viewer->last_sync_time = time(NULL);
     
     // Initialize ncurses
     initscr();
@@ -38,19 +42,25 @@ int init_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
     }
     
     getmaxyx(stdscr, viewer->terminal_height, viewer->terminal_width);
-    viewer->file_panel_width = viewer->terminal_width * 0.3; // 30% of screen width
-    viewer->file_panel_height = (viewer->terminal_height - 2) * 0.6; // 60% of available height
-    viewer->commit_panel_height = (viewer->terminal_height - 2) - viewer->file_panel_height - 1; // Rest of height
+    viewer->file_panel_width = viewer->terminal_width * 0.4; // 40% of screen width
+    viewer->status_bar_height = viewer->terminal_height * 0.05; // 5% of screen height
+    if (viewer->status_bar_height < 1) viewer->status_bar_height = 1; // Minimum 1 line
     
-    // Create three windows
+    int available_height = viewer->terminal_height - 2 - viewer->status_bar_height; // Subtract top bar and status bar
+    viewer->file_panel_height = available_height * 0.6; // 60% of available height
+    viewer->commit_panel_height = available_height - viewer->file_panel_height - 1; // Rest of height
+    
+    // Create four windows
     viewer->file_list_win = newwin(viewer->file_panel_height, viewer->file_panel_width, 1, 0);
     viewer->commit_list_win = newwin(viewer->commit_panel_height, viewer->file_panel_width, 
                                     1 + viewer->file_panel_height + 1, 0);
-    viewer->file_content_win = newwin(viewer->terminal_height - 2, 
+    viewer->file_content_win = newwin(available_height, 
                                      viewer->terminal_width - viewer->file_panel_width - 1, 
                                      1, viewer->file_panel_width + 1);
+    viewer->status_bar_win = newwin(viewer->status_bar_height, viewer->terminal_width,
+                                   viewer->terminal_height - viewer->status_bar_height, 0);
     
-    if (!viewer->file_list_win || !viewer->file_content_win || !viewer->commit_list_win) {
+    if (!viewer->file_list_win || !viewer->file_content_win || !viewer->commit_list_win || !viewer->status_bar_win) {
         cleanup_ncurses_diff_viewer(viewer);
         return 0;
     }
@@ -498,15 +508,20 @@ int commit_marked_files(NCursesDiffViewer *viewer, const char *commit_title) {
 int push_commit(NCursesDiffViewer *viewer, int commit_index) {
     if (!viewer || commit_index < 0 || commit_index >= viewer->commit_count) return 0;
     
+    // Set pushing status
+    viewer->sync_status = SYNC_STATUS_PUSHING;
+    
     // Push to origin (hide output)
     int result = system("git push origin 2>/dev/null >/dev/null");
     
     if (result == 0) {
         // Refresh commit history to get proper push status
         get_commit_history(viewer);
+        viewer->sync_status = SYNC_STATUS_SYNCED;
         return 1;
     }
     
+    viewer->sync_status = SYNC_STATUS_SYNCED;
     return 0;
 }
 
@@ -560,13 +575,13 @@ void render_file_list_window(NCursesDiffViewer *viewer) {
             mvwprintw(viewer->file_list_win, y, 2, "%c", status);
         }
         
-        // Filename (truncated to fit panel)
-        int max_name_len = viewer->file_panel_width - 7;
+        // Filename (truncated to fit panel with "..")
+        int max_name_len = viewer->file_panel_width - 6; // Leave space for border
         char truncated_name[256];
         if ((int)strlen(viewer->files[i].filename) > max_name_len) {
-            strncpy(truncated_name, viewer->files[i].filename, max_name_len - 3);
-            truncated_name[max_name_len - 3] = '\0';
-            strcat(truncated_name, "...");
+            strncpy(truncated_name, viewer->files[i].filename, max_name_len - 2);
+            truncated_name[max_name_len - 2] = '\0';
+            strcat(truncated_name, "..");
         } else {
             strcpy(truncated_name, viewer->files[i].filename);
         }
@@ -646,13 +661,13 @@ void render_commit_list_window(NCursesDiffViewer *viewer) {
             wattroff(viewer->commit_list_win, COLOR_PAIR(2));
         }
         
-        // Show commit title (always white, truncated to fit)
-        int max_title_len = viewer->file_panel_width - 16;
+        // Show commit title (always white, truncated to fit with "..")
+        int max_title_len = viewer->file_panel_width - 15; // Leave space for border
         char truncated_title[256];
         if ((int)strlen(viewer->commits[i].title) > max_title_len) {
-            strncpy(truncated_title, viewer->commits[i].title, max_title_len - 3);
-            truncated_title[max_title_len - 3] = '\0';
-            strcat(truncated_title, "...");
+            strncpy(truncated_title, viewer->commits[i].title, max_title_len - 2);
+            truncated_title[max_title_len - 2] = '\0';
+            strcat(truncated_title, "..");
         } else {
             strcpy(truncated_title, viewer->commits[i].title);
         }
@@ -754,6 +769,96 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
     }
     
     wrefresh(viewer->file_content_win);
+}
+
+/**
+ * Render the status bar
+ */
+void render_status_bar(NCursesDiffViewer *viewer) {
+    if (!viewer || !viewer->status_bar_win) return;
+    
+    // Clear status bar
+    werase(viewer->status_bar_win);
+    wbkgd(viewer->status_bar_win, COLOR_PAIR(3)); // Cyan background
+    
+    // Left side: Key bindings based on current mode
+    char keybindings[256] = "";
+    if (viewer->current_mode == NCURSES_MODE_FILE_LIST) {
+        strcpy(keybindings, "Stage: <space> | Stage All: a | Commit: c");
+    } else if (viewer->current_mode == NCURSES_MODE_COMMIT_LIST) {
+        strcpy(keybindings, "Push: P | Nav: j/k");
+    } else if (viewer->current_mode == NCURSES_MODE_FILE_VIEW) {
+        strcpy(keybindings, "Scroll: j/k | Page: Ctrl+U/D | Back: Esc");
+    }
+    
+    mvwprintw(viewer->status_bar_win, 0, 1, "%s", keybindings);
+    
+    // Right side: Sync status
+    char sync_text[64] = "";
+    char spinner_chars[] = "| / - \\ ";
+    int spinner_idx = (viewer->spinner_frame / 5) % 4; // Change every 5 frames for slower animation
+    
+    if (viewer->sync_status == SYNC_STATUS_SYNCED) {
+        wattron(viewer->status_bar_win, COLOR_PAIR(1)); // Green
+        strcpy(sync_text, "Synced!");
+        wattroff(viewer->status_bar_win, COLOR_PAIR(1));
+    } else if (viewer->sync_status == SYNC_STATUS_SYNCING) {
+        wattron(viewer->status_bar_win, COLOR_PAIR(4)); // Yellow
+        snprintf(sync_text, sizeof(sync_text), "Syncing %c", spinner_chars[spinner_idx]);
+        wattroff(viewer->status_bar_win, COLOR_PAIR(4));
+    } else if (viewer->sync_status == SYNC_STATUS_PUSHING) {
+        wattron(viewer->status_bar_win, COLOR_PAIR(4)); // Yellow
+        snprintf(sync_text, sizeof(sync_text), "Pushing %c", spinner_chars[spinner_idx]);
+        wattroff(viewer->status_bar_win, COLOR_PAIR(4));
+    }
+    
+    int sync_text_pos = viewer->terminal_width - strlen(sync_text) - 1;
+    if (viewer->sync_status == SYNC_STATUS_SYNCED) {
+        wattron(viewer->status_bar_win, COLOR_PAIR(1)); // Green
+    } else {
+        wattron(viewer->status_bar_win, COLOR_PAIR(4)); // Yellow
+    }
+    mvwprintw(viewer->status_bar_win, 0, sync_text_pos, "%s", sync_text);
+    if (viewer->sync_status == SYNC_STATUS_SYNCED) {
+        wattroff(viewer->status_bar_win, COLOR_PAIR(1));
+    } else {
+        wattroff(viewer->status_bar_win, COLOR_PAIR(4));
+    }
+    
+    wrefresh(viewer->status_bar_win);
+}
+
+/**
+ * Update sync status and check for new files
+ */
+void update_sync_status(NCursesDiffViewer *viewer) {
+    if (!viewer) return;
+    
+    time_t current_time = time(NULL);
+    
+    // Check if it's time to sync (every 10 seconds)
+    if (current_time - viewer->last_sync_time >= 10) {
+        viewer->sync_status = SYNC_STATUS_SYNCING;
+        viewer->last_sync_time = current_time;
+        
+        // Get updated file list
+        int old_count = viewer->file_count;
+        get_ncurses_changed_files(viewer);
+        
+        // If we're viewing a file and it's still valid, reload it
+        if (viewer->selected_file < viewer->file_count && viewer->file_count > 0) {
+            load_full_file_with_diff(viewer, viewer->files[viewer->selected_file].filename);
+        }
+        
+        // Update commits as well
+        get_commit_history(viewer);
+        
+        viewer->sync_status = SYNC_STATUS_SYNCED;
+    }
+    
+    // Update spinner frame
+    viewer->spinner_frame++;
+    if (viewer->spinner_frame > 100) viewer->spinner_frame = 0; // Reset to prevent overflow
 }
 
 /**
@@ -983,6 +1088,7 @@ int run_ncurses_diff_viewer(void) {
     render_file_list_window(&viewer);
     render_file_content_window(&viewer);
     render_commit_list_window(&viewer);
+    render_status_bar(&viewer);
     
     // Main display loop
     int running = 1;
@@ -1008,9 +1114,13 @@ int run_ncurses_diff_viewer(void) {
             last_mode = viewer.current_mode;
         }
         
+        // Update sync status and check for new files
+        update_sync_status(&viewer);
+        
         render_file_list_window(&viewer);
         render_file_content_window(&viewer);
         render_commit_list_window(&viewer);
+        render_status_bar(&viewer);
         
         int c = getch();
         running = handle_ncurses_diff_input(&viewer, c);
@@ -1033,6 +1143,9 @@ void cleanup_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
         }
         if (viewer->commit_list_win) {
             delwin(viewer->commit_list_win);
+        }
+        if (viewer->status_bar_win) {
+            delwin(viewer->status_bar_win);
         }
     }
     endwin();

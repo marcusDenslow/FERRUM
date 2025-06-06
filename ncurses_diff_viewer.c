@@ -780,6 +780,36 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
 }
 
 /**
+ * Pull commits from remote
+ */
+int pull_commits(NCursesDiffViewer *viewer) {
+    if (!viewer) return 0;
+    
+    // Start syncing animation (reuse the fetching animation)
+    viewer->sync_status = SYNC_STATUS_SYNCING_APPEARING;
+    viewer->animation_frame = 0;
+    viewer->text_char_count = 0;
+    
+    // Do the actual pull work
+    int result = system("git pull origin 2>/dev/null >/dev/null");
+    
+    if (result == 0) {
+        // Refresh everything after pull
+        get_ncurses_changed_files(viewer);
+        get_commit_history(viewer);
+        
+        // Reload current file if any
+        if (viewer->file_count > 0 && viewer->selected_file < viewer->file_count) {
+            load_full_file_with_diff(viewer, viewer->files[viewer->selected_file].filename);
+        }
+        
+        return 1;
+    }
+    
+    return 0;
+}
+
+/**
  * Render the file list window
  */
 void render_file_list_window(NCursesDiffViewer *viewer) {
@@ -1040,7 +1070,7 @@ void render_status_bar(NCursesDiffViewer *viewer) {
     if (viewer->current_mode == NCURSES_MODE_FILE_LIST) {
         strcpy(keybindings, "Stage: <space> | Stage All: a | Commit: c");
     } else if (viewer->current_mode == NCURSES_MODE_COMMIT_LIST) {
-        strcpy(keybindings, "Push: P | Nav: j/k");
+        strcpy(keybindings, "Push: P | Pull: p | Nav: j/k");
     } else if (viewer->current_mode == NCURSES_MODE_FILE_VIEW) {
         strcpy(keybindings, "Scroll: j/k | Page: Ctrl+U/D | Back: Esc");
     }
@@ -1426,6 +1456,10 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
                     push_commit(viewer, viewer->selected_commit);
                 }
                 break;
+                
+            case 'p': // Pull commits
+                pull_commits(viewer);
+                break;
         }
     }
     
@@ -1443,11 +1477,8 @@ int run_ncurses_diff_viewer(void) {
         return 1;
     }
     
-    if (get_ncurses_changed_files(&viewer) == 0) {
-        cleanup_ncurses_diff_viewer(&viewer);
-        printf("No changed files found\n");
-        return 1;
-    }
+    // Get changed files (can be 0, that's okay)
+    get_ncurses_changed_files(&viewer);
     
     // Load commit history
     get_commit_history(&viewer);
@@ -1491,7 +1522,7 @@ int run_ncurses_diff_viewer(void) {
             } else if (viewer.current_mode == NCURSES_MODE_FILE_VIEW) {
                 mvprintw(0, 0, "Git Diff Viewer: 1=files 2=view 3=commits | j/k=scroll Ctrl+U/D=30lines | q=quit");
             } else {
-                mvprintw(0, 0, "Git Diff Viewer: 1=files 2=view 3=commits | j/k=nav P=push | q=quit");
+                mvprintw(0, 0, "Git Diff Viewer: 1=files 2=view 3=commits | j/k=nav P=push p=pull | q=quit");
             }
             attroff(COLOR_PAIR(3));
             refresh();

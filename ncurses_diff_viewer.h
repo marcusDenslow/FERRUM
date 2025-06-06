@@ -158,6 +158,11 @@ int commit_marked_files(NCursesDiffViewer *viewer, const char *commit_title, con
 int push_commit(NCursesDiffViewer *viewer, int commit_index);
 
 /**
+ * Pull commits from remote
+ */
+int pull_commits(NCursesDiffViewer *viewer);
+
+/**
  * Render the commit list window
  */
 void render_commit_list_window(NCursesDiffViewer *viewer);

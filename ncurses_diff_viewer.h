@@ -148,9 +148,9 @@ void toggle_file_mark(NCursesDiffViewer *viewer, int file_index);
 void mark_all_files(NCursesDiffViewer *viewer);
 
 /**
- * Commit marked files with title
+ * Commit marked files with title and message
  */
-int commit_marked_files(NCursesDiffViewer *viewer, const char *commit_title);
+int commit_marked_files(NCursesDiffViewer *viewer, const char *commit_title, const char *commit_message);
 
 /**
  * Push specific commit
@@ -163,9 +163,9 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index);
 void render_commit_list_window(NCursesDiffViewer *viewer);
 
 /**
- * Get commit title input from user
+ * Get commit title and message input from user
  */
-int get_commit_title_input(char *title, int max_len);
+int get_commit_title_input(char *title, int max_len, char *message, int max_message_len);
 
 /**
  * Draw a box with rounded corners

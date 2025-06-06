@@ -431,43 +431,176 @@ void mark_all_files(NCursesDiffViewer *viewer) {
 }
 
 /**
- * Get commit title input from user
+ * Get commit title and message input from user
  */
-int get_commit_title_input(char *title, int max_len) {
+int get_commit_title_input(char *title, int max_len, char *message, int max_message_len) {
     if (!title) return 0;
     
     // Save current screen
     WINDOW *saved_screen = dupwin(stdscr);
     
-    // Create a temporary window for input
-    int start_y = LINES / 2 - 2;
-    int start_x = COLS / 2 - 25;
-    WINDOW *input_win = newwin(5, 50, start_y, start_x);
+    // Create larger windows for title and message
+    int dialog_width = COLS * 0.8; // 80% of screen width
+    int dialog_height = 12;
+    int start_y = LINES / 2 - dialog_height / 2;
+    int start_x = COLS / 2 - dialog_width / 2;
     
-    if (!input_win) {
+    // Main dialog window
+    WINDOW *dialog_win = newwin(dialog_height, dialog_width, start_y, start_x);
+    
+    // Title input window (inside dialog)
+    int title_width = dialog_width - 4;
+    WINDOW *title_win = newwin(3, title_width, start_y + 2, start_x + 2);
+    
+    // Message input window (inside dialog)
+    int message_height = 5;
+    WINDOW *message_win = newwin(message_height, title_width, start_y + 6, start_x + 2);
+    
+    if (!dialog_win || !title_win || !message_win) {
         if (saved_screen) delwin(saved_screen);
+        if (dialog_win) delwin(dialog_win);
+        if (title_win) delwin(title_win);
+        if (message_win) delwin(message_win);
         return 0;
     }
     
-    box(input_win, 0, 0);
-    mvwprintw(input_win, 0, 2, " Commit Title ");
-    mvwprintw(input_win, 2, 2, "Enter commit message:");
-    mvwprintw(input_win, 4, 2, "Press Enter when done, Esc to cancel");
-    wrefresh(input_win);
+    // Draw main dialog
+    box(dialog_win, 0, 0);
+    mvwprintw(dialog_win, 0, 2, " Commit ");
+    mvwprintw(dialog_win, dialog_height - 1, 2, " Press Tab to switch fields, Enter to commit, Esc to cancel ");
     
-    // Enable echo and normal mode for input
+    // Draw title input box
+    box(title_win, 0, 0);
+    mvwprintw(title_win, 0, 2, " Title ");
+    
+    // Draw message input box
+    box(message_win, 0, 0);
+    mvwprintw(message_win, 0, 2, " Message ");
+    
+    wrefresh(dialog_win);
+    wrefresh(title_win);
+    wrefresh(message_win);
+    
+    // Enable echo and input mode
     echo();
-    nocbreak();
-    cbreak();
+    curs_set(1); // Show cursor
     
-    // Get input
-    wmove(input_win, 3, 2);
-    wgetnstr(input_win, title, max_len - 1);
+    // Initialize message buffer
+    if (message) {
+        message[0] = '\0';
+    }
+    
+    // Variables for input handling
+    char local_message[512] = "";
+    int current_field = 0; // 0 = title, 1 = message
+    int ch;
+    
+    // Position cursor in title field initially
+    wmove(title_win, 1, 1);
+    wrefresh(title_win);
+    
+    while ((ch = getch()) != 27) { // ESC to cancel
+        if (ch == '\t') {
+            // Switch between fields
+            current_field = !current_field;
+            if (current_field == 0) {
+                wmove(title_win, 1, 1);
+                wrefresh(title_win);
+            } else {
+                wmove(message_win, 1, 1);
+                wrefresh(message_win);
+            }
+        } else if (ch == '\n' || ch == '\r') {
+            // Enter to commit (only if title has content)
+            if (strlen(title) > 0) {
+                break;
+            }
+        } else if (ch == KEY_BACKSPACE || ch == 127 || ch == 8) {
+            // Handle backspace
+            if (current_field == 0) {
+                int len = strlen(title);
+                if (len > 0) {
+                    title[len - 1] = '\0';
+                    werase(title_win);
+                    box(title_win, 0, 0);
+                    mvwprintw(title_win, 0, 2, " Title ");
+                    mvwprintw(title_win, 1, 1, "%s", title);
+                    wrefresh(title_win);
+                }
+            } else {
+                int len = strlen(local_message);
+                if (len > 0) {
+                    local_message[len - 1] = '\0';
+                    werase(message_win);
+                    box(message_win, 0, 0);
+                    mvwprintw(message_win, 0, 2, " Message ");
+                    
+                    // Display message with word wrapping
+                    int line = 1, col = 1;
+                    int max_width = title_width - 3;
+                    for (int i = 0; local_message[i] && line < message_height - 1; i++) {
+                        if (col >= max_width || local_message[i] == '\n') {
+                            line++;
+                            col = 1;
+                            if (local_message[i] == '\n') continue;
+                        }
+                        mvwaddch(message_win, line, col, local_message[i]);
+                        col++;
+                    }
+                    wrefresh(message_win);
+                }
+            }
+        } else if (ch >= 32 && ch <= 126) {
+            // Regular character input
+            if (current_field == 0) {
+                int len = strlen(title);
+                if (len < max_len - 1 && len < title_width - 3) {
+                    title[len] = ch;
+                    title[len + 1] = '\0';
+                    mvwaddch(title_win, 1, 1 + len, ch);
+                    wrefresh(title_win);
+                }
+            } else {
+                int len = strlen(local_message);
+                if (len < 511) {
+                    local_message[len] = ch;
+                    local_message[len + 1] = '\0';
+                    
+                    // Redraw message with word wrapping
+                    werase(message_win);
+                    box(message_win, 0, 0);
+                    mvwprintw(message_win, 0, 2, " Message ");
+                    
+                    int line = 1, col = 1;
+                    int max_width = title_width - 3;
+                    for (int i = 0; local_message[i] && line < message_height - 1; i++) {
+                        if (col >= max_width) {
+                            line++;
+                            col = 1;
+                        }
+                        mvwaddch(message_win, line, col, local_message[i]);
+                        col++;
+                    }
+                    wrefresh(message_win);
+                }
+            }
+        }
+    }
+    
+    // Copy local message to output parameter
+    if (message && max_message_len > 0) {
+        strncpy(message, local_message, max_message_len - 1);
+        message[max_message_len - 1] = '\0';
+    }
     
     // Restore settings
     noecho();
+    curs_set(0); // Hide cursor
     
-    delwin(input_win);
+    // Clean up windows
+    delwin(title_win);
+    delwin(message_win);
+    delwin(dialog_win);
     
     // Restore the screen
     if (saved_screen) {
@@ -483,9 +616,9 @@ int get_commit_title_input(char *title, int max_len) {
 }
 
 /**
- * Commit marked files with title
+ * Commit marked files with title and message
  */
-int commit_marked_files(NCursesDiffViewer *viewer, const char *commit_title) {
+int commit_marked_files(NCursesDiffViewer *viewer, const char *commit_title, const char *commit_message) {
     if (!viewer || !commit_title || strlen(commit_title) == 0) return 0;
     
     // First, add marked files to git
@@ -497,9 +630,13 @@ int commit_marked_files(NCursesDiffViewer *viewer, const char *commit_title) {
         }
     }
     
-    // Commit with the provided title
-    char commit_cmd[1024];
-    snprintf(commit_cmd, sizeof(commit_cmd), "git commit -m \"%s\" 2>/dev/null >/dev/null", commit_title);
+    // Commit with the provided title and message
+    char commit_cmd[2048];
+    if (commit_message && strlen(commit_message) > 0) {
+        snprintf(commit_cmd, sizeof(commit_cmd), "git commit -m \"%s\" -m \"%s\" 2>/dev/null >/dev/null", commit_title, commit_message);
+    } else {
+        snprintf(commit_cmd, sizeof(commit_cmd), "git commit -m \"%s\" 2>/dev/null >/dev/null", commit_title);
+    }
     int result = system(commit_cmd);
     
     if (result == 0) {
@@ -1074,8 +1211,9 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
             case 'C': // Commit marked files
                 {
                     char commit_title[MAX_COMMIT_TITLE_LEN];
-                    if (get_commit_title_input(commit_title, MAX_COMMIT_TITLE_LEN)) {
-                        commit_marked_files(viewer, commit_title);
+                    char commit_message[512];
+                    if (get_commit_title_input(commit_title, MAX_COMMIT_TITLE_LEN, commit_message, sizeof(commit_message))) {
+                        commit_marked_files(viewer, commit_title, commit_message);
                     }
                 }
                 break;

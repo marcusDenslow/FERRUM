@@ -248,3 +248,57 @@ int get_repo_url(char *url, size_t url_size) {
 
   return 0;
 }
+
+/**
+ * Check if the current branch has diverged from its remote tracking branch
+ */
+int check_branch_divergence(int *commits_ahead, int *commits_behind) {
+  if (!commits_ahead || !commits_behind) {
+    return 0;
+  }
+  
+  *commits_ahead = 0;
+  *commits_behind = 0;
+  
+  // Check if we have a remote tracking branch
+  FILE *fp = popen("git rev-parse --abbrev-ref @{u} 2>/dev/null", "r");
+  if (!fp) {
+    return 0;
+  }
+  
+  char remote_branch[256];
+  if (fgets(remote_branch, sizeof(remote_branch), fp) == NULL) {
+    pclose(fp);
+    return 0; // No remote tracking branch
+  }
+  pclose(fp);
+  
+  // Remove newline
+  char *newline = strchr(remote_branch, '\n');
+  if (newline) {
+    *newline = '\0';
+  }
+  
+  // Get commits ahead (local commits not in remote)
+  fp = popen("git rev-list --count @{u}..HEAD 2>/dev/null", "r");
+  if (fp) {
+    char count_str[32];
+    if (fgets(count_str, sizeof(count_str), fp) != NULL) {
+      *commits_ahead = atoi(count_str);
+    }
+    pclose(fp);
+  }
+  
+  // Get commits behind (remote commits not in local)
+  fp = popen("git rev-list --count HEAD..@{u} 2>/dev/null", "r");
+  if (fp) {
+    char count_str[32];
+    if (fgets(count_str, sizeof(count_str), fp) != NULL) {
+      *commits_behind = atoi(count_str);
+    }
+    pclose(fp);
+  }
+  
+  // Branch has diverged if we have commits both ahead and behind
+  return (*commits_ahead > 0 && *commits_behind > 0) ? 1 : 0;
+}

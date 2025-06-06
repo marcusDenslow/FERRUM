@@ -4,6 +4,7 @@
  */
 
 #include "ncurses_diff_viewer.h"
+#include "git_integration.h"
 #include <locale.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -486,6 +487,73 @@ void mark_all_files(NCursesDiffViewer *viewer) {
   for (int i = 0; i < viewer->file_count; i++) {
     viewer->files[i].marked_for_commit = all_marked ? 0 : 1;
   }
+}
+
+/**
+ * Show confirmation dialog for diverged branch
+ * Returns 1 for force push, 0 for cancel
+ */
+int show_diverged_branch_dialog(int commits_ahead, int commits_behind) {
+  // Save current screen
+  WINDOW *saved_screen = dupwin(stdscr);
+
+  // Calculate window dimensions
+  int dialog_width = 60;
+  int dialog_height = 8;
+  int start_x = COLS / 2 - dialog_width / 2;
+  int start_y = LINES / 2 - dialog_height / 2;
+
+  // Create dialog window
+  WINDOW *dialog_win = newwin(dialog_height, dialog_width, start_y, start_x);
+  if (!dialog_win) {
+    if (saved_screen)
+      delwin(saved_screen);
+    return 0;
+  }
+
+  // Draw dialog
+  wattron(dialog_win, COLOR_PAIR(3)); // Red for warning
+  box(dialog_win, 0, 0);
+  
+  // Title
+  mvwprintw(dialog_win, 1, 2, "Branch has diverged!");
+  
+  // Message
+  mvwprintw(dialog_win, 3, 2, "Local: %d commit(s) ahead", commits_ahead);
+  mvwprintw(dialog_win, 4, 2, "Remote: %d commit(s) ahead", commits_behind);
+  
+  // Instructions
+  mvwprintw(dialog_win, 6, 2, "Force push anyway? (y/N):");
+  wattroff(dialog_win, COLOR_PAIR(3));
+  
+  wrefresh(dialog_win);
+
+  // Get user input
+  int ch;
+  int result = 0;
+  
+  while ((ch = wgetch(dialog_win)) != ERR) {
+    if (ch == 'y' || ch == 'Y') {
+      result = 1;
+      break;
+    } else if (ch == 'n' || ch == 'N' || ch == 27 || ch == 'q') { // ESC or q or n
+      result = 0;
+      break;
+    } else if (ch == '\n' || ch == '\r') {
+      result = 0; // Default to no on Enter
+      break;
+    }
+  }
+
+  // Cleanup
+  delwin(dialog_win);
+  if (saved_screen) {
+    touchwin(saved_screen);
+    wrefresh(saved_screen);
+    delwin(saved_screen);
+  }
+  
+  return result;
 }
 
 /**
@@ -1024,6 +1092,19 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
   if (!viewer || commit_index < 0 || commit_index >= viewer->commit_count)
     return 0;
 
+  // Check for branch divergence first
+  int commits_ahead = 0;
+  int commits_behind = 0;
+  int is_diverged = check_branch_divergence(&commits_ahead, &commits_behind);
+  
+  // If diverged, show confirmation dialog
+  if (is_diverged) {
+    if (!show_diverged_branch_dialog(commits_ahead, commits_behind)) {
+      // User cancelled
+      return 0;
+    }
+  }
+
   // Start pushing animation immediately
   viewer->sync_status = SYNC_STATUS_PUSHING_APPEARING;
   viewer->animation_frame = 0;
@@ -1033,7 +1114,14 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
   render_status_bar(viewer);
 
   // Do the actual push work
-  int result = system("git push origin 2>/dev/null >/dev/null");
+  int result;
+  if (is_diverged) {
+    // Use force push with lease for safety
+    result = system("git push --force-with-lease origin 2>/dev/null >/dev/null");
+  } else {
+    // Normal push
+    result = system("git push origin 2>/dev/null >/dev/null");
+  }
 
   if (result == 0) {
     // Refresh commit history to get proper push status

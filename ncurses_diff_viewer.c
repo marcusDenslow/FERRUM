@@ -915,84 +915,93 @@ int pull_commits(NCursesDiffViewer *viewer) {
 /**
  * Render the file list window
  */
+
 void render_file_list_window(NCursesDiffViewer *viewer) {
-  if (!viewer || !viewer->file_list_win)
-    return;
-
-  // Draw rounded border and title
-  draw_rounded_box(viewer->file_list_win);
-  mvwprintw(viewer->file_list_win, 0, 2, " 1. Files ");
-
-  int max_files_visible = viewer->file_panel_height - 2;
-
-  for (int i = 0; i < max_files_visible; i++) {
-    int y = i + 1;
-
-    // Skip if no more files
-    if (i >= viewer->file_count)
-      continue;
-
-    // Show selection indicator
-    if (i == viewer->selected_file) {
-      if (viewer->current_mode == NCURSES_MODE_FILE_LIST) {
-        wattron(viewer->file_list_win, COLOR_PAIR(5));
-        mvwprintw(viewer->file_list_win, y, 1, ">");
-      } else {
-        wattron(viewer->file_list_win, COLOR_PAIR(1));
-        mvwprintw(viewer->file_list_win, y, 1, "*");
-      }
-    } else {
-      mvwprintw(viewer->file_list_win, y, 1, " ");
+    if (!viewer || !viewer->file_list_win) return;
+    
+    // CRITICAL: Clear the entire window first
+    werase(viewer->file_list_win);
+    
+    // Draw rounded border and title
+    draw_rounded_box(viewer->file_list_win);
+    mvwprintw(viewer->file_list_win, 0, 2, " 1. Files ");
+    
+    int max_files_visible = viewer->file_panel_height - 2;
+    
+    // CRITICAL: Clear the content area with spaces FIRST
+    for (int y = 1; y < viewer->file_panel_height - 1; y++) {
+        for (int x = 1; x < viewer->file_panel_width - 1; x++) {
+            mvwaddch(viewer->file_list_win, y, x, ' ');
+        }
     }
-
-    // Status indicator
-    char status = viewer->files[i].status;
-    if (status == 'M') {
-      wattron(viewer->file_list_win, COLOR_PAIR(4));
-      mvwprintw(viewer->file_list_win, y, 2, "M");
-      wattroff(viewer->file_list_win, COLOR_PAIR(4));
-    } else if (status == 'A') {
-      wattron(viewer->file_list_win, COLOR_PAIR(1));
-      mvwprintw(viewer->file_list_win, y, 2, "A");
-      wattroff(viewer->file_list_win, COLOR_PAIR(1));
-    } else if (status == 'D') {
-      wattron(viewer->file_list_win, COLOR_PAIR(2));
-      mvwprintw(viewer->file_list_win, y, 2, "D");
-      wattroff(viewer->file_list_win, COLOR_PAIR(2));
-    } else {
-      mvwprintw(viewer->file_list_win, y, 2, "%c", status);
+    
+    for (int i = 0; i < max_files_visible; i++) {
+        int y = i + 1;
+        
+        // Skip if no more files
+        if (i >= viewer->file_count) continue;
+        
+        // Show selection indicator
+        if (i == viewer->selected_file) {
+            if (viewer->current_mode == NCURSES_MODE_FILE_LIST) {
+                wattron(viewer->file_list_win, COLOR_PAIR(5));
+                mvwprintw(viewer->file_list_win, y, 1, ">");
+            } else {
+                wattron(viewer->file_list_win, COLOR_PAIR(1));
+                mvwprintw(viewer->file_list_win, y, 1, "*");
+            }
+        } else {
+            mvwprintw(viewer->file_list_win, y, 1, " ");
+        }
+        
+        // Status indicator
+        char status = viewer->files[i].status;
+        if (status == 'M') {
+            wattron(viewer->file_list_win, COLOR_PAIR(4));
+            mvwprintw(viewer->file_list_win, y, 2, "M");
+            wattroff(viewer->file_list_win, COLOR_PAIR(4));
+        } else if (status == 'A') {
+            wattron(viewer->file_list_win, COLOR_PAIR(1));
+            mvwprintw(viewer->file_list_win, y, 2, "A");
+            wattroff(viewer->file_list_win, COLOR_PAIR(1));
+        } else if (status == 'D') {
+            wattron(viewer->file_list_win, COLOR_PAIR(2));
+            mvwprintw(viewer->file_list_win, y, 2, "D");
+            wattroff(viewer->file_list_win, COLOR_PAIR(2));
+        } else {
+            mvwprintw(viewer->file_list_win, y, 2, "%c", status);
+        }
+        
+        // Filename (truncated to fit panel with "..")
+        int max_name_len = viewer->file_panel_width - 6; // Leave space for border
+        char truncated_name[256];
+        if ((int)strlen(viewer->files[i].filename) > max_name_len) {
+            strncpy(truncated_name, viewer->files[i].filename, max_name_len - 2);
+            truncated_name[max_name_len - 2] = '\0';
+            strcat(truncated_name, "..");
+        } else {
+            strcpy(truncated_name, viewer->files[i].filename);
+        }
+        
+        // Color filename green if marked for commit
+        if (viewer->files[i].marked_for_commit) {
+            wattron(viewer->file_list_win, COLOR_PAIR(1));
+        }
+        mvwprintw(viewer->file_list_win, y, 4, "%s", truncated_name);
+        if (viewer->files[i].marked_for_commit) {
+            wattroff(viewer->file_list_win, COLOR_PAIR(1));
+        }
+        
+        if (i == viewer->selected_file) {
+            if (viewer->current_mode == NCURSES_MODE_FILE_LIST) {
+                wattroff(viewer->file_list_win, COLOR_PAIR(5));
+            } else {
+                wattroff(viewer->file_list_win, COLOR_PAIR(1));
+            }
+        }
     }
-
-    // Filename (truncated to fit panel with "..")
-    int max_name_len = viewer->file_panel_width - 6; // Leave space for border
-    char truncated_name[256];
-    if ((int)strlen(viewer->files[i].filename) > max_name_len) {
-      strncpy(truncated_name, viewer->files[i].filename, max_name_len - 2);
-      truncated_name[max_name_len - 2] = '\0';
-      strcat(truncated_name, "..");
-    } else {
-      strcpy(truncated_name, viewer->files[i].filename);
-    }
-
-    // Color filename green if marked for commit
-    if (viewer->files[i].marked_for_commit) {
-      wattron(viewer->file_list_win, COLOR_PAIR(1));
-    }
-    mvwprintw(viewer->file_list_win, y, 4, "%s", truncated_name);
-    if (viewer->files[i].marked_for_commit) {
-      wattroff(viewer->file_list_win, COLOR_PAIR(1));
-    }
-
-    if (i == viewer->selected_file) {
-      if (viewer->current_mode == NCURSES_MODE_FILE_LIST) {
-        wattroff(viewer->file_list_win, COLOR_PAIR(5));
-      } else {
-        wattroff(viewer->file_list_win, COLOR_PAIR(1));
-      }
-    }
-  }
-
-  wrefresh(viewer->file_list_win);
+    
+    wrefresh(viewer->file_list_win);
 }
 
 /**

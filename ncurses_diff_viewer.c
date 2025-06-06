@@ -485,21 +485,28 @@ int get_commit_title_input(char *title, int max_len, char *message, int max_mess
         int display_end = display_start + visible_width;
         if (display_end > title_len) display_end = title_len;
         
+        // Clear the content area first to fix backspace issues
+        wmove(title_win, 1, 1);
+        for (int x = 1; x < visible_width + 1; x++) {
+            waddch(title_win, ' ');
+        }
+        
         // Show the visible portion of the title
         for (int i = display_start; i < display_end; i++) {
             mvwaddch(title_win, 1, 1 + (i - display_start), title[i]);
         }
         
-        // Position cursor at the end of visible text
-        int cursor_pos = title_len - title_scroll_offset;
-        if (cursor_pos > visible_width - 1) cursor_pos = visible_width - 1;
-        if (cursor_pos < 0) cursor_pos = 0;
-        wmove(title_win, 1, 1 + cursor_pos);
-        
+        // Position cursor at the end of visible text only if this is the active field
         if (current_field == 0) {
-            wattron(title_win, A_REVERSE);
-            mvwchgat(title_win, 0, 2, 40, A_REVERSE, 0, NULL);
-            wattroff(title_win, A_REVERSE);
+            int cursor_pos = title_len - title_scroll_offset;
+            if (cursor_pos > visible_width - 1) cursor_pos = visible_width - 1;
+            if (cursor_pos < 0) cursor_pos = 0;
+            wmove(title_win, 1, 1 + cursor_pos);
+            
+            // Highlight the header text (no blinking cursor issue)
+            wattron(title_win, COLOR_PAIR(4)); // Yellow color instead of reverse
+            mvwprintw(title_win, 0, 2, " Title (Tab to switch, Enter to commit) ");
+            wattroff(title_win, COLOR_PAIR(4));
         }
         wrefresh(title_win);
         
@@ -540,22 +547,56 @@ int get_commit_title_input(char *title, int max_len, char *message, int max_mess
         }
         if (current_line_pos > 0) line_count++;
         
+        // Clear the content area first to fix backspace issues
+        for (int y = 1; y < visible_height + 1; y++) {
+            wmove(message_win, y, 1);
+            for (int x = 1; x < message_visible_width + 1; x++) {
+                waddch(message_win, ' ');
+            }
+        }
+        
         // Display visible lines based on scroll offset
         for (int i = 0; i < visible_height && (i + message_scroll_offset) < line_count; i++) {
             int line_idx = i + message_scroll_offset;
             mvwprintw(message_win, i + 1, 1, "%s", display_lines[line_idx]);
         }
         
+        // Position cursor and highlight header if this is the active field
         if (current_field == 1) {
-            wattron(message_win, A_REVERSE);
-            mvwchgat(message_win, 0, 2, 43, A_REVERSE, 0, NULL);
-            wattroff(message_win, A_REVERSE);
+            // Position cursor at the end of text in the visible area
+            int cursor_line = 1;
+            int cursor_col = 1;
+            
+            // Find where the cursor should be positioned
+            int total_chars = 0;
+            for (int i = 0; i < line_count && i < message_scroll_offset + visible_height; i++) {
+                if (i >= message_scroll_offset) {
+                    int line_len = strlen(display_lines[i]);
+                    if (i == line_count - 1) {
+                        // Last line - position cursor at end
+                        cursor_line = (i - message_scroll_offset) + 1;
+                        cursor_col = line_len + 1;
+                        break;
+                    }
+                }
+            }
+            
+            wmove(message_win, cursor_line, cursor_col);
+            
+            // Highlight the header text
+            wattron(message_win, COLOR_PAIR(4)); // Yellow color instead of reverse
+            mvwprintw(message_win, 0, 2, " Message (Tab to switch, Enter for newline) ");
+            wattroff(message_win, COLOR_PAIR(4));
         }
         wrefresh(message_win);
     
         // Enable input mode
         noecho(); // Handle echo manually for better control
-        curs_set(1); // Show cursor
+        if (current_field == 0 || current_field == 1) {
+            curs_set(1); // Show cursor only in active input field
+        } else {
+            curs_set(0); // Hide cursor otherwise
+        }
         
         ch = getch();
         if (ch == 27) break; // ESC to cancel

@@ -256,29 +256,29 @@ int check_branch_divergence(int *commits_ahead, int *commits_behind) {
   if (!commits_ahead || !commits_behind) {
     return 0;
   }
-  
+
   *commits_ahead = 0;
   *commits_behind = 0;
-  
+
   // Check if we have a remote tracking branch
   FILE *fp = popen("git rev-parse --abbrev-ref @{u} 2>/dev/null", "r");
   if (!fp) {
     return 0;
   }
-  
+
   char remote_branch[256];
   if (fgets(remote_branch, sizeof(remote_branch), fp) == NULL) {
     pclose(fp);
     return 0; // No remote tracking branch
   }
   pclose(fp);
-  
+
   // Remove newline
   char *newline = strchr(remote_branch, '\n');
   if (newline) {
     *newline = '\0';
   }
-  
+
   // Get commits ahead (local commits not in remote)
   fp = popen("git rev-list --count @{u}..HEAD 2>/dev/null", "r");
   if (fp) {
@@ -288,7 +288,7 @@ int check_branch_divergence(int *commits_ahead, int *commits_behind) {
     }
     pclose(fp);
   }
-  
+
   // Get commits behind (remote commits not in local)
   fp = popen("git rev-list --count HEAD..@{u} 2>/dev/null", "r");
   if (fp) {
@@ -298,7 +298,64 @@ int check_branch_divergence(int *commits_ahead, int *commits_behind) {
     }
     pclose(fp);
   }
-  
+
   // Branch has diverged if we have commits both ahead and behind
   return (*commits_ahead > 0 && *commits_behind > 0) ? 1 : 0;
+}
+
+int create_git_stash(void) {
+  FILE *fp = popen("git status --porcelain 2>/dev/null", "r");
+  if (!fp)
+    return 0;
+
+  char line[256];
+  int has_changes = 0;
+  if (fgets(line, sizeof(line), fp) != NULL) {
+    has_changes = 1;
+  }
+  pclose(fp);
+
+  if (!has_changes) {
+    return 0;
+  }
+
+  time_t now = time(NULL);
+  struct tm *timeinfo = localtime(&now);
+  
+  char cmd[512];
+  snprintf(cmd, sizeof(cmd), "git stash push -m \"WIP: stashed at %04d-%02d-%02d %02d:%02d:%02d\" 2>/dev/null >/dev/null", 
+    timeinfo->tm_year + 1900, timeinfo->tm_mon + 1, timeinfo->tm_mday,
+    timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
+
+  int result = system(cmd);
+  return (result == 0) ? 1 : 0;
+}
+
+
+int get_git_stashes(char stashes[][512], int max_stashes) {
+	if (!stashes || max_stashes <= 0) {
+		return 0;
+	}
+
+	FILE *fp = popen("git stash list --format=\"%gd: %gs\" 2>/dev/null", "r");
+	if (!fp) {
+		return 0;
+	}
+
+	int count = 0;
+	char line[512];
+
+	while (fgets(line, sizeof(line), fp) != NULL && count < max_stashes) {
+		char *newline = strchr(line, '\n');
+		if (newline) {
+			*newline = '\0';
+		}
+
+		strncpy(stashes[count], line, 511);
+		stashes[count][511] = '\0';
+		count++;
+	}
+
+	pclose(fp);
+	return count;
 }

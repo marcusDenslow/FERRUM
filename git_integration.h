@@ -51,9 +51,13 @@ char *get_git_status(void);
  * Check if the current branch has diverged from its remote tracking branch
  *
  * @param commits_ahead Pointer to store number of commits ahead of remote
- * @param commits_behind Pointer to store number of commits behind remote  
+ * @param commits_behind Pointer to store number of commits behind remote
  * @return 1 if diverged (both ahead and behind > 0), 0 otherwise
  */
 int check_branch_divergence(int *commits_ahead, int *commits_behind);
+
+int create_git_stash(void);
+
+int get_git_stashes(char stashed[][512], int max_stashes);
 
 #endif // GIT_INTEGRATION_H

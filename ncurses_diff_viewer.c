@@ -62,19 +62,23 @@ int init_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
   int available_height =
       viewer->terminal_height - 1 -
       viewer->status_bar_height; // Subtract top bar and status bar
-  viewer->file_panel_height = available_height * 0.6; // 60% of available height
-  viewer->commit_panel_height =
-      available_height - viewer->file_panel_height - 1; // Rest of height
+  viewer->file_panel_height = available_height * 0.4;
+  viewer->commit_panel_height = available_height * 0.4;
+  viewer->stash_panel_height = available_height - viewer->file_panel_height -
+                               viewer->commit_panel_height - 2;
 
   // Position status bar right after the main content
   int status_bar_y = 1 + available_height;
 
-  // Create four windows
+  // Create five windows
   viewer->file_list_win =
       newwin(viewer->file_panel_height, viewer->file_panel_width, 1, 0);
   viewer->commit_list_win =
       newwin(viewer->commit_panel_height, viewer->file_panel_width,
              1 + viewer->file_panel_height + 1, 0);
+  viewer->stash_list_win = newwin(
+      viewer->stash_panel_height, viewer->file_panel_width,
+      1 + viewer->file_panel_height + 1 + viewer->commit_panel_height + 1, 0);
   viewer->file_content_win = newwin(
       available_height, viewer->terminal_width - viewer->file_panel_width - 1,
       1, viewer->file_panel_width + 1);
@@ -82,12 +86,13 @@ int init_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
                                   viewer->terminal_width, status_bar_y, 0);
 
   if (!viewer->file_list_win || !viewer->file_content_win ||
-      !viewer->commit_list_win || !viewer->status_bar_win) {
-    cleanup_ncurses_diff_viewer(viewer);
-    return 0;
-  }
+      !viewer->commit_list_win || !viewer->stash_list_win ||
+      !viewer->status_bar_win) {
+        cleanup_ncurses_diff_viewer(viewer);
+        return 0;
+      }
 
-  return 1;
+    return 1;
 }
 
 /**
@@ -514,29 +519,30 @@ int show_diverged_branch_dialog(int commits_ahead, int commits_behind) {
   // Draw dialog
   wattron(dialog_win, COLOR_PAIR(3)); // Red for warning
   box(dialog_win, 0, 0);
-  
+
   // Title
   mvwprintw(dialog_win, 1, 2, "Branch has diverged!");
-  
+
   // Message
   mvwprintw(dialog_win, 3, 2, "Local: %d commit(s) ahead", commits_ahead);
   mvwprintw(dialog_win, 4, 2, "Remote: %d commit(s) ahead", commits_behind);
-  
+
   // Instructions
   mvwprintw(dialog_win, 6, 2, "Force push anyway? (y/N):");
   wattroff(dialog_win, COLOR_PAIR(3));
-  
+
   wrefresh(dialog_win);
 
   // Get user input
   int ch;
   int result = 0;
-  
+
   while ((ch = wgetch(dialog_win)) != ERR) {
     if (ch == 'y' || ch == 'Y') {
       result = 1;
       break;
-    } else if (ch == 'n' || ch == 'N' || ch == 27 || ch == 'q') { // ESC or q or n
+    } else if (ch == 'n' || ch == 'N' || ch == 27 ||
+               ch == 'q') { // ESC or q or n
       result = 0;
       break;
     } else if (ch == '\n' || ch == '\r') {
@@ -552,7 +558,7 @@ int show_diverged_branch_dialog(int commits_ahead, int commits_behind) {
     wrefresh(saved_screen);
     delwin(saved_screen);
   }
-  
+
   return result;
 }
 
@@ -580,35 +586,35 @@ int show_reset_confirmation_dialog(void) {
 
   char input_buffer[10] = "";
   int input_pos = 0;
-  
+
   while (1) {
     // Clear and redraw dialog
     werase(dialog_win);
     wattron(dialog_win, COLOR_PAIR(3)); // Red for warning
     box(dialog_win, 0, 0);
-    
+
     // Title
     mvwprintw(dialog_win, 1, 2, "HARD RESET WARNING!");
-    
+
     // Warning message
     mvwprintw(dialog_win, 3, 2, "This will permanently delete the most recent");
     mvwprintw(dialog_win, 4, 2, "commit and ALL uncommitted changes!");
-    
+
     // Instructions
     mvwprintw(dialog_win, 6, 2, "Type 'yes' to confirm or ESC to cancel:");
-    
+
     // Input field
     mvwprintw(dialog_win, 7, 2, "> %s", input_buffer);
-    
+
     wattroff(dialog_win, COLOR_PAIR(3));
     wrefresh(dialog_win);
 
     // Position cursor
     wmove(dialog_win, 7, 4 + strlen(input_buffer));
-    
+
     // Get user input
     int ch = wgetch(dialog_win);
-    
+
     if (ch == 27 || ch == 'q') { // ESC or q
       break;
     } else if (ch == '\n' || ch == '\r') {
@@ -648,7 +654,7 @@ int show_reset_confirmation_dialog(void) {
     wrefresh(saved_screen);
     delwin(saved_screen);
   }
-  
+
   return 0;
 }
 
@@ -1197,7 +1203,7 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
   int commits_ahead = 0;
   int commits_behind = 0;
   int is_diverged = check_branch_divergence(&commits_ahead, &commits_behind);
-  
+
   // If diverged, show confirmation dialog
   if (is_diverged) {
     if (!show_diverged_branch_dialog(commits_ahead, commits_behind)) {
@@ -1220,7 +1226,8 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
   int result;
   if (is_diverged) {
     // Use force push with lease for safety
-    result = system("git push --force-with-lease origin 2>/dev/null >/dev/null");
+    result =
+        system("git push --force-with-lease origin 2>/dev/null >/dev/null");
   } else {
     // Normal push
     result = system("git push origin 2>/dev/null >/dev/null");
@@ -1231,7 +1238,7 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
     viewer->sync_status = SYNC_STATUS_PUSHED_APPEARING;
     viewer->animation_frame = 0;
     viewer->text_char_count = 0;
-    
+
     // Refresh commit history to get proper push status
     get_commit_history(viewer);
     return 1;
@@ -1465,7 +1472,6 @@ void render_commit_list_window(NCursesDiffViewer *viewer) {
   wrefresh(viewer->commit_list_win);
 }
 
-
 /**
  * Render the file content window
  */
@@ -1580,7 +1586,7 @@ void render_status_bar(NCursesDiffViewer *viewer) {
   // Left side: Key bindings based on current mode
   char keybindings[256] = "";
   if (viewer->current_mode == NCURSES_MODE_FILE_LIST) {
-    strcpy(keybindings, "Stage: <space> | Stage All: a | Commit: c");
+    strcpy(keybindings, "Stage: <space> | Stage All: a | Stash: s | Commit: c");
   } else if (viewer->current_mode == NCURSES_MODE_COMMIT_LIST) {
     strcpy(keybindings, "Push: P | Pull: p | Reset: r/R | Amend: a | Nav: j/k");
   } else if (viewer->current_mode == NCURSES_MODE_FILE_VIEW) {
@@ -2025,6 +2031,11 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
       mark_all_files(viewer);
       break;
 
+	case 's':
+	case 'S':
+			create_ncurses_git_stash(viewer);
+			break;
+
     case 'c':
     case 'C': // Commit marked files
     {
@@ -2189,6 +2200,10 @@ int run_ncurses_diff_viewer(void) {
   // Get changed files (can be 0, that's okay)
   get_ncurses_changed_files(&viewer);
 
+
+	//get stashes
+	get_ncurses_git_stashes(&viewer);
+
   // Load commit history
   get_commit_history(&viewer);
 
@@ -2202,7 +2217,7 @@ int run_ncurses_diff_viewer(void) {
   if (viewer.current_mode == NCURSES_MODE_FILE_LIST) {
     mvprintw(0, 0,
              "Git Diff Viewer: 1=files 2=view 3=commits | j/k=nav Space=mark "
-             "A=all C=commit P=push | q=quit");
+             "A=all S=stash C=commit P=push | q=quit");
   } else if (viewer.current_mode == NCURSES_MODE_FILE_VIEW) {
     mvprintw(0, 0,
              "Git Diff Viewer: 1=files 2=view 3=commits | j/k=scroll "
@@ -2218,6 +2233,7 @@ int run_ncurses_diff_viewer(void) {
   render_file_list_window(&viewer);
   render_file_content_window(&viewer);
   render_commit_list_window(&viewer);
+	render_stash_list_window(&viewer);
   render_status_bar(&viewer);
 
   // Main display loop
@@ -2235,7 +2251,7 @@ int run_ncurses_diff_viewer(void) {
       if (viewer.current_mode == NCURSES_MODE_FILE_LIST) {
         mvprintw(0, 0,
                  "Git Diff Viewer: 1=files 2=view 3=commits | j/k=nav "
-                 "Space=mark A=all C=commit P=push | q=quit");
+                 "Space=mark A=all S=stash C=commit P=push | q=quit");
       } else if (viewer.current_mode == NCURSES_MODE_FILE_VIEW) {
         mvprintw(0, 0,
                  "Git Diff Viewer: 1=files 2=view 3=commits | j/k=scroll "
@@ -2256,6 +2272,7 @@ int run_ncurses_diff_viewer(void) {
     render_file_list_window(&viewer);
     render_file_content_window(&viewer);
     render_commit_list_window(&viewer);
+		render_stash_list_window(&viewer);
     render_status_bar(&viewer);
 
     // Keep cursor hidden
@@ -2275,6 +2292,102 @@ int run_ncurses_diff_viewer(void) {
 }
 
 /**
+ * Get list of git stashes
+ */
+int get_ncurses_git_stashes(NCursesDiffViewer *viewer) {
+  if (!viewer) return 0;
+  
+  char stash_lines[MAX_STASHES][512];
+  viewer->stash_count = get_git_stashes(stash_lines, MAX_STASHES);
+  
+  for (int i = 0; i < viewer->stash_count; i++) {
+    strncpy(viewer->stashes[i].stash_info, stash_lines[i], 511);
+    viewer->stashes[i].stash_info[511] = '\0';
+  }
+  
+  return viewer->stash_count;
+}
+
+/**
+ * Create a new git stash
+ */
+int create_ncurses_git_stash(NCursesDiffViewer *viewer) {
+  if (!viewer) return 0;
+  
+  int result = create_git_stash();
+  
+  if (result) {
+    // Refresh everything after creating stash
+    get_ncurses_changed_files(viewer);
+    get_ncurses_git_stashes(viewer);
+    get_commit_history(viewer);
+    
+    // Reset file selection since changes are stashed
+    viewer->selected_file = 0;
+    viewer->file_line_count = 0;
+    viewer->file_scroll_offset = 0;
+    
+    // Reload current file if any files still exist
+    if (viewer->file_count > 0 && viewer->selected_file < viewer->file_count) {
+      load_full_file_with_diff(viewer, viewer->files[viewer->selected_file].filename);
+    }
+  }
+  
+  return result;
+}
+
+/**
+ * Render the stash list window
+ */
+void render_stash_list_window(NCursesDiffViewer *viewer) {
+  if (!viewer || !viewer->stash_list_win)
+    return;
+
+  // Clear the entire window first
+  werase(viewer->stash_list_win);
+
+  // Draw rounded border and title
+  draw_rounded_box(viewer->stash_list_win);
+  mvwprintw(viewer->stash_list_win, 0, 2, " 4. Stashes ");
+
+  int max_stashes_visible = viewer->stash_panel_height - 2;
+
+  // Clear the content area with spaces
+  for (int y = 1; y < viewer->stash_panel_height - 1; y++) {
+    for (int x = 1; x < viewer->file_panel_width - 1; x++) {
+      mvwaddch(viewer->stash_list_win, y, x, ' ');
+    }
+  }
+
+  if (viewer->stash_count == 0) {
+    // Show "No stashes" message
+    mvwprintw(viewer->stash_list_win, 1, 2, "No stashes available");
+  } else {
+    for (int i = 0; i < max_stashes_visible && i < viewer->stash_count; i++) {
+      int y = i + 1;
+
+      // Show stash info (truncated to fit panel)
+      int max_stash_len = viewer->file_panel_width - 4;
+      char truncated_stash[256];
+      if ((int)strlen(viewer->stashes[i].stash_info) > max_stash_len) {
+        strncpy(truncated_stash, viewer->stashes[i].stash_info, max_stash_len - 2);
+        truncated_stash[max_stash_len - 2] = '\0';
+        strcat(truncated_stash, "..");
+      } else {
+        strcpy(truncated_stash, viewer->stashes[i].stash_info);
+      }
+
+      // Color stash entries yellow
+      wattron(viewer->stash_list_win, COLOR_PAIR(4));
+      mvwprintw(viewer->stash_list_win, y, 2, "%s", truncated_stash);
+      wattroff(viewer->stash_list_win, COLOR_PAIR(4));
+    }
+  }
+
+  wrefresh(viewer->stash_list_win);
+}
+
+/**
  * Clean up ncurses diff viewer resources
  */
 void cleanup_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
@@ -2288,9 +2401,13 @@ void cleanup_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
     if (viewer->commit_list_win) {
       delwin(viewer->commit_list_win);
     }
+    if (viewer->stash_list_win) {
+      delwin(viewer->stash_list_win);
+    }
     if (viewer->status_bar_win) {
       delwin(viewer->status_bar_win);
     }
   }
   endwin();
 }
+

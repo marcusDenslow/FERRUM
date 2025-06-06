@@ -1,6 +1,6 @@
 CC = gcc
 CFLAGS = -Wextra -g
-LIBS = -lm
+LIBS = -lm -lncurses
 
 # Get all .c files
 SOURCES = $(wildcard *.c)

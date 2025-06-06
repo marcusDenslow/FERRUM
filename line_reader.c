@@ -120,6 +120,7 @@ int is_valid_command(const char *cmd) {
 
       free(git_status_info);
     }
+    // hello world
 
     // Format the prompt
     snprintf(prompt_buffer, buffer_size,

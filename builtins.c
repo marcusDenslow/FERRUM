@@ -6,6 +6,7 @@
 #include "builtins.h"
 #include "common.h"
 #include "diff_viewer.h"
+#include "ncurses_diff_viewer.h"
 #include "filters.h"
 #include "fzf_native.h"
 #include "git_integration.h"
@@ -953,6 +954,7 @@ int lsh_gg(char **args) {
     printf("  a - add .\n");
     printf("  l - log\n");
     printf("  d - diff\n");
+    printf("  dd - ncurses diff viewer\n");
     printf("  b - branch\n");
     printf("  ch - checkout\n");
     printf("  o - open in GitHub browser\n");
@@ -1115,6 +1117,8 @@ int lsh_gg(char **args) {
     system("git log --oneline -10");
   } else if (strcmp(args[1], "d") == 0) {
     run_diff_viewer();
+  } else if (strcmp(args[1], "dd") == 0) {
+    run_ncurses_diff_viewer();
   } else if (strcmp(args[1], "b") == 0) {
     system("git branch");
   } else if (strcmp(args[1], "ch") == 0) {

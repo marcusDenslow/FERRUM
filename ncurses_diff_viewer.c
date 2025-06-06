@@ -439,51 +439,24 @@ int get_commit_title_input(char *title, int max_len, char *message, int max_mess
     // Save current screen
     WINDOW *saved_screen = dupwin(stdscr);
     
-    // Create larger windows for title and message
-    int dialog_width = COLS * 0.8; // 80% of screen width
-    int dialog_height = 12;
-    int start_y = LINES / 2 - dialog_height / 2;
-    int start_x = COLS / 2 - dialog_width / 2;
+    // Calculate window dimensions
+    int input_width = COLS * 0.8; // 80% of screen width
+    int title_height = 3;
+    int message_height = 15; // Much taller message box
+    int start_x = COLS / 2 - input_width / 2;
+    int title_start_y = LINES / 2 - (title_height + message_height + 2) / 2;
+    int message_start_y = title_start_y + title_height + 1;
     
-    // Main dialog window
-    WINDOW *dialog_win = newwin(dialog_height, dialog_width, start_y, start_x);
+    // Create title and message windows directly (no outer dialog)
+    WINDOW *title_win = newwin(title_height, input_width, title_start_y, start_x);
+    WINDOW *message_win = newwin(message_height, input_width, message_start_y, start_x);
     
-    // Title input window (inside dialog)
-    int title_width = dialog_width - 4;
-    WINDOW *title_win = newwin(3, title_width, start_y + 2, start_x + 2);
-    
-    // Message input window (inside dialog)
-    int message_height = 5;
-    WINDOW *message_win = newwin(message_height, title_width, start_y + 6, start_x + 2);
-    
-    if (!dialog_win || !title_win || !message_win) {
+    if (!title_win || !message_win) {
         if (saved_screen) delwin(saved_screen);
-        if (dialog_win) delwin(dialog_win);
         if (title_win) delwin(title_win);
         if (message_win) delwin(message_win);
         return 0;
     }
-    
-    // Draw main dialog
-    box(dialog_win, 0, 0);
-    mvwprintw(dialog_win, 0, 2, " Commit ");
-    mvwprintw(dialog_win, dialog_height - 1, 2, " Press Tab to switch fields, Enter to commit, Esc to cancel ");
-    
-    // Draw title input box
-    box(title_win, 0, 0);
-    mvwprintw(title_win, 0, 2, " Title ");
-    
-    // Draw message input box
-    box(message_win, 0, 0);
-    mvwprintw(message_win, 0, 2, " Message ");
-    
-    wrefresh(dialog_win);
-    wrefresh(title_win);
-    wrefresh(message_win);
-    
-    // Enable echo and input mode
-    echo();
-    curs_set(1); // Show cursor
     
     // Initialize message buffer
     if (message) {
@@ -491,29 +464,128 @@ int get_commit_title_input(char *title, int max_len, char *message, int max_mess
     }
     
     // Variables for input handling
-    char local_message[512] = "";
+    char local_message[2048] = "";
     int current_field = 0; // 0 = title, 1 = message
+    int title_scroll_offset = 0; // For horizontal scrolling
+    int message_scroll_offset = 0; // For vertical scrolling
     int ch;
     
-    // Position cursor in title field initially
-    wmove(title_win, 1, 1);
-    wrefresh(title_win);
+    // Initial draw and main input loop
+    while (1) {
+        // Redraw title field with horizontal scrolling
+        werase(title_win);
+        box(title_win, 0, 0);
+        mvwprintw(title_win, 0, 2, " Title (Tab to switch, Enter to commit) ");
+        
+        int visible_width = input_width - 4; // Account for borders
+        int title_len = strlen(title);
+        
+        // Calculate what part of the title to show
+        int display_start = title_scroll_offset;
+        int display_end = display_start + visible_width;
+        if (display_end > title_len) display_end = title_len;
+        
+        // Show the visible portion of the title
+        for (int i = display_start; i < display_end; i++) {
+            mvwaddch(title_win, 1, 1 + (i - display_start), title[i]);
+        }
+        
+        // Position cursor at the end of visible text
+        int cursor_pos = title_len - title_scroll_offset;
+        if (cursor_pos > visible_width - 1) cursor_pos = visible_width - 1;
+        if (cursor_pos < 0) cursor_pos = 0;
+        wmove(title_win, 1, 1 + cursor_pos);
+        
+        if (current_field == 0) {
+            wattron(title_win, A_REVERSE);
+            mvwchgat(title_win, 0, 2, 40, A_REVERSE, 0, NULL);
+            wattroff(title_win, A_REVERSE);
+        }
+        wrefresh(title_win);
+        
+        // Redraw message field with vertical scrolling
+        werase(message_win);
+        box(message_win, 0, 0);
+        mvwprintw(message_win, 0, 2, " Message (Tab to switch, Enter for newline) ");
+        
+        int visible_height = message_height - 2; // Account for borders
+        int message_visible_width = input_width - 3; // Account for borders
+        
+        // Split message into lines for display
+        char display_lines[100][1024];
+        int line_count = 0;
+        int current_line_pos = 0;
+        
+        display_lines[0][0] = '\0';
+        
+        for (int i = 0; local_message[i] && line_count < 100; i++) {
+            if (local_message[i] == '\n') {
+                display_lines[line_count][current_line_pos] = '\0';
+                line_count++;
+                current_line_pos = 0;
+                if (line_count < 100) display_lines[line_count][0] = '\0';
+            } else {
+                if (current_line_pos >= message_visible_width - 1) {
+                    // Word wrap
+                    display_lines[line_count][current_line_pos] = '\0';
+                    line_count++;
+                    current_line_pos = 0;
+                    if (line_count < 100) display_lines[line_count][0] = '\0';
+                }
+                if (line_count < 100) {
+                    display_lines[line_count][current_line_pos] = local_message[i];
+                    current_line_pos++;
+                }
+            }
+        }
+        if (current_line_pos > 0) line_count++;
+        
+        // Display visible lines based on scroll offset
+        for (int i = 0; i < visible_height && (i + message_scroll_offset) < line_count; i++) {
+            int line_idx = i + message_scroll_offset;
+            mvwprintw(message_win, i + 1, 1, "%s", display_lines[line_idx]);
+        }
+        
+        if (current_field == 1) {
+            wattron(message_win, A_REVERSE);
+            mvwchgat(message_win, 0, 2, 43, A_REVERSE, 0, NULL);
+            wattroff(message_win, A_REVERSE);
+        }
+        wrefresh(message_win);
     
-    while ((ch = getch()) != 27) { // ESC to cancel
+        // Enable input mode
+        noecho(); // Handle echo manually for better control
+        curs_set(1); // Show cursor
+        
+        ch = getch();
+        if (ch == 27) break; // ESC to cancel
         if (ch == '\t') {
             // Switch between fields
             current_field = !current_field;
-            if (current_field == 0) {
-                wmove(title_win, 1, 1);
-                wrefresh(title_win);
-            } else {
-                wmove(message_win, 1, 1);
-                wrefresh(message_win);
-            }
         } else if (ch == '\n' || ch == '\r') {
-            // Enter to commit (only if title has content)
-            if (strlen(title) > 0) {
-                break;
+            if (current_field == 0) {
+                // Enter in title field - commit if title has content
+                if (strlen(title) > 0) {
+                    break;
+                }
+            } else {
+                // Enter in message field - add newline
+                int len = strlen(local_message);
+                if (len < 2047) {
+                    local_message[len] = '\n';
+                    local_message[len + 1] = '\0';
+                    
+                    // Auto-scroll down if needed
+                    int visible_height = message_height - 2;
+                    // Count current lines to see if we need to scroll
+                    int current_lines = 1;
+                    for (int i = 0; local_message[i]; i++) {
+                        if (local_message[i] == '\n') current_lines++;
+                    }
+                    if (current_lines > visible_height + message_scroll_offset) {
+                        message_scroll_offset += 2; // Scroll down 2 lines
+                    }
+                }
             }
         } else if (ch == KEY_BACKSPACE || ch == 127 || ch == 8) {
             // Handle backspace
@@ -521,67 +593,39 @@ int get_commit_title_input(char *title, int max_len, char *message, int max_mess
                 int len = strlen(title);
                 if (len > 0) {
                     title[len - 1] = '\0';
-                    werase(title_win);
-                    box(title_win, 0, 0);
-                    mvwprintw(title_win, 0, 2, " Title ");
-                    mvwprintw(title_win, 1, 1, "%s", title);
-                    wrefresh(title_win);
+                    
+                    // Adjust scroll if needed
+                    int visible_width = input_width - 4;
+                    if (len - 1 <= title_scroll_offset) {
+                        title_scroll_offset = (len - 1) - (visible_width - 5);
+                        if (title_scroll_offset < 0) title_scroll_offset = 0;
+                    }
                 }
             } else {
                 int len = strlen(local_message);
                 if (len > 0) {
                     local_message[len - 1] = '\0';
-                    werase(message_win);
-                    box(message_win, 0, 0);
-                    mvwprintw(message_win, 0, 2, " Message ");
-                    
-                    // Display message with word wrapping
-                    int line = 1, col = 1;
-                    int max_width = title_width - 3;
-                    for (int i = 0; local_message[i] && line < message_height - 1; i++) {
-                        if (col >= max_width || local_message[i] == '\n') {
-                            line++;
-                            col = 1;
-                            if (local_message[i] == '\n') continue;
-                        }
-                        mvwaddch(message_win, line, col, local_message[i]);
-                        col++;
-                    }
-                    wrefresh(message_win);
                 }
             }
         } else if (ch >= 32 && ch <= 126) {
             // Regular character input
             if (current_field == 0) {
                 int len = strlen(title);
-                if (len < max_len - 1 && len < title_width - 3) {
+                if (len < max_len - 1) {
                     title[len] = ch;
                     title[len + 1] = '\0';
-                    mvwaddch(title_win, 1, 1 + len, ch);
-                    wrefresh(title_win);
+                    
+                    // Auto-scroll horizontally if needed
+                    int visible_width = input_width - 4;
+                    if (len + 1 > title_scroll_offset + visible_width - 5) {
+                        title_scroll_offset = (len + 1) - (visible_width - 5);
+                    }
                 }
             } else {
                 int len = strlen(local_message);
-                if (len < 511) {
+                if (len < 2047) {
                     local_message[len] = ch;
                     local_message[len + 1] = '\0';
-                    
-                    // Redraw message with word wrapping
-                    werase(message_win);
-                    box(message_win, 0, 0);
-                    mvwprintw(message_win, 0, 2, " Message ");
-                    
-                    int line = 1, col = 1;
-                    int max_width = title_width - 3;
-                    for (int i = 0; local_message[i] && line < message_height - 1; i++) {
-                        if (col >= max_width) {
-                            line++;
-                            col = 1;
-                        }
-                        mvwaddch(message_win, line, col, local_message[i]);
-                        col++;
-                    }
-                    wrefresh(message_win);
                 }
             }
         }
@@ -594,13 +638,11 @@ int get_commit_title_input(char *title, int max_len, char *message, int max_mess
     }
     
     // Restore settings
-    noecho();
     curs_set(0); // Hide cursor
     
     // Clean up windows
     delwin(title_win);
     delwin(message_win);
-    delwin(dialog_win);
     
     // Restore the screen
     if (saved_screen) {
@@ -1211,7 +1253,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
             case 'C': // Commit marked files
                 {
                     char commit_title[MAX_COMMIT_TITLE_LEN];
-                    char commit_message[512];
+                    char commit_message[2048];
                     if (get_commit_title_input(commit_title, MAX_COMMIT_TITLE_LEN, commit_message, sizeof(commit_message))) {
                         commit_marked_files(viewer, commit_title, commit_message);
                     }

@@ -23,6 +23,7 @@ int init_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
   memset(viewer, 0, sizeof(NCursesDiffViewer));
   viewer->selected_file = 0;
   viewer->file_scroll_offset = 0;
+  viewer->selected_stash = 0;
   viewer->current_mode = NCURSES_MODE_FILE_LIST;
   viewer->sync_status = SYNC_STATUS_IDLE;
   viewer->spinner_frame = 0;
@@ -1589,6 +1590,8 @@ void render_status_bar(NCursesDiffViewer *viewer) {
     strcpy(keybindings, "Stage: <space> | Stage All: a | Stash: s | Commit: c");
   } else if (viewer->current_mode == NCURSES_MODE_COMMIT_LIST) {
     strcpy(keybindings, "Push: P | Pull: p | Reset: r/R | Amend: a | Nav: j/k");
+  } else if (viewer->current_mode == NCURSES_MODE_STASH_LIST) {
+    strcpy(keybindings, "Apply: <space> | Pop: g | Drop: d | Nav: j/k");
   } else if (viewer->current_mode == NCURSES_MODE_FILE_VIEW) {
     strcpy(keybindings, "Scroll: j/k | Page: Ctrl+U/D | Back: Esc");
   }
@@ -1987,6 +1990,9 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
   case '3':
     viewer->current_mode = NCURSES_MODE_COMMIT_LIST;
     break;
+  case '4':
+    viewer->current_mode = NCURSES_MODE_STASH_LIST;
+    break;
   }
 
   if (viewer->current_mode == NCURSES_MODE_FILE_LIST) {
@@ -2181,6 +2187,98 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
       }
       break;
     }
+  } else if (viewer->current_mode == NCURSES_MODE_STASH_LIST) {
+    // Stash list mode navigation
+    switch (key) {
+    case 27:   // ESC
+    case '\t': // Tab - return to file list mode
+      viewer->current_mode = NCURSES_MODE_FILE_LIST;
+      break;
+
+    case KEY_UP:
+    case 'k':
+      if (viewer->selected_stash > 0) {
+        viewer->selected_stash--;
+      }
+      break;
+
+    case KEY_DOWN:
+    case 'j':
+      if (viewer->selected_stash < viewer->stash_count - 1) {
+        viewer->selected_stash++;
+      }
+      break;
+
+    case ' ': // Space - Apply stash (keeps stash in list)
+      if (viewer->stash_count > 0 && viewer->selected_stash < viewer->stash_count) {
+        if (apply_git_stash(viewer->selected_stash)) {
+          // Refresh everything after applying stash
+          get_ncurses_changed_files(viewer);
+          get_commit_history(viewer);
+          
+          // Reset file selection if no files remain
+          if (viewer->file_count == 0) {
+            viewer->selected_file = 0;
+            viewer->file_line_count = 0;
+            viewer->file_scroll_offset = 0;
+          } else if (viewer->selected_file >= viewer->file_count) {
+            viewer->selected_file = viewer->file_count - 1;
+          }
+          
+          // Reload current file if any files exist
+          if (viewer->file_count > 0 && viewer->selected_file < viewer->file_count) {
+            load_full_file_with_diff(viewer, viewer->files[viewer->selected_file].filename);
+          }
+        }
+      }
+      break;
+
+    case 'g':
+    case 'G': // Pop stash (applies and removes from list)
+      if (viewer->stash_count > 0 && viewer->selected_stash < viewer->stash_count) {
+        if (pop_git_stash(viewer->selected_stash)) {
+          // Refresh everything after popping stash
+          get_ncurses_changed_files(viewer);
+          get_ncurses_git_stashes(viewer);
+          get_commit_history(viewer);
+          
+          // Adjust selected stash if needed
+          if (viewer->selected_stash >= viewer->stash_count && viewer->stash_count > 0) {
+            viewer->selected_stash = viewer->stash_count - 1;
+          }
+          
+          // Reset file selection if no files remain
+          if (viewer->file_count == 0) {
+            viewer->selected_file = 0;
+            viewer->file_line_count = 0;
+            viewer->file_scroll_offset = 0;
+          } else if (viewer->selected_file >= viewer->file_count) {
+            viewer->selected_file = viewer->file_count - 1;
+          }
+          
+          // Reload current file if any files exist
+          if (viewer->file_count > 0 && viewer->selected_file < viewer->file_count) {
+            load_full_file_with_diff(viewer, viewer->files[viewer->selected_file].filename);
+          }
+        }
+      }
+      break;
+
+    case 'd':
+    case 'D': // Drop stash (removes without applying)
+      if (viewer->stash_count > 0 && viewer->selected_stash < viewer->stash_count) {
+        if (drop_git_stash(viewer->selected_stash)) {
+          // Refresh stash list after dropping
+          get_ncurses_git_stashes(viewer);
+          
+          // Adjust selected stash if needed
+          if (viewer->selected_stash >= viewer->stash_count && viewer->stash_count > 0) {
+            viewer->selected_stash = viewer->stash_count - 1;
+          }
+        }
+      }
+      break;
+    }
   }
 
   return 1; // Continue
@@ -2216,15 +2314,15 @@ int run_ncurses_diff_viewer(void) {
   attron(COLOR_PAIR(3));
   if (viewer.current_mode == NCURSES_MODE_FILE_LIST) {
     mvprintw(0, 0,
-             "Git Diff Viewer: 1=files 2=view 3=commits | j/k=nav Space=mark "
+             "Git Diff Viewer: 1=files 2=view 3=commits 4=stashes | j/k=nav Space=mark "
              "A=all S=stash C=commit P=push | q=quit");
   } else if (viewer.current_mode == NCURSES_MODE_FILE_VIEW) {
     mvprintw(0, 0,
-             "Git Diff Viewer: 1=files 2=view 3=commits | j/k=scroll "
+             "Git Diff Viewer: 1=files 2=view 3=commits 4=stashes | j/k=scroll "
              "Ctrl+U/D=30lines | q=quit");
   } else {
     mvprintw(0, 0,
-             "Git Diff Viewer: 1=files 2=view 3=commits | j/k=nav P=push "
+             "Git Diff Viewer: 1=files 2=view 3=commits 4=stashes | j/k=nav P=push "
              "p=pull r/R=reset a=amend | q=quit");
   }
   attroff(COLOR_PAIR(3));
@@ -2250,15 +2348,15 @@ int run_ncurses_diff_viewer(void) {
       attron(COLOR_PAIR(3));
       if (viewer.current_mode == NCURSES_MODE_FILE_LIST) {
         mvprintw(0, 0,
-                 "Git Diff Viewer: 1=files 2=view 3=commits | j/k=nav "
+                 "Git Diff Viewer: 1=files 2=view 3=commits 4=stashes | j/k=nav "
                  "Space=mark A=all S=stash C=commit P=push | q=quit");
       } else if (viewer.current_mode == NCURSES_MODE_FILE_VIEW) {
         mvprintw(0, 0,
-                 "Git Diff Viewer: 1=files 2=view 3=commits | j/k=scroll "
+                 "Git Diff Viewer: 1=files 2=view 3=commits 4=stashes | j/k=scroll "
                  "Ctrl+U/D=30lines | q=quit");
       } else {
         mvprintw(0, 0,
-                 "Git Diff Viewer: 1=files 2=view 3=commits | j/k=nav P=push "
+                 "Git Diff Viewer: 1=files 2=view 3=commits 4=stashes | j/k=nav P=push "
                  "p=pull r/R=reset a=amend | q=quit");
       }
       attroff(COLOR_PAIR(3));
@@ -2524,6 +2622,16 @@ void render_stash_list_window(NCursesDiffViewer *viewer) {
   } else {
     for (int i = 0; i < max_stashes_visible && i < viewer->stash_count; i++) {
       int y = i + 1;
+
+      // Show selection indicator for stash list mode
+      if (i == viewer->selected_stash &&
+          viewer->current_mode == NCURSES_MODE_STASH_LIST) {
+        wattron(viewer->stash_list_win, COLOR_PAIR(5));
+        mvwprintw(viewer->stash_list_win, y, 1, ">");
+        wattroff(viewer->stash_list_win, COLOR_PAIR(5));
+      } else {
+        mvwprintw(viewer->stash_list_win, y, 1, " ");
+      }
 
       // Show stash info (truncated to fit panel)
       int max_stash_len = viewer->file_panel_width - 4;

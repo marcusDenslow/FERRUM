@@ -43,7 +43,8 @@ typedef struct {
 typedef enum {
   NCURSES_MODE_FILE_LIST,
   NCURSES_MODE_FILE_VIEW,
-  NCURSES_MODE_COMMIT_LIST
+  NCURSES_MODE_COMMIT_LIST,
+  NCURSES_MODE_STASH_LIST
 } NCursesViewMode;
 
 typedef enum {
@@ -80,6 +81,7 @@ typedef struct {
   int selected_commit;
   NCursesStash stashes[MAX_STASHES];
   int stash_count;
+  int selected_stash;
   WINDOW *file_list_win;
   WINDOW *file_content_win;
   WINDOW *commit_list_win;

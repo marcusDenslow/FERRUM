@@ -62,4 +62,28 @@ int create_git_stash_with_name(const char *stash_name);
 
 int get_git_stashes(char stashed[][512], int max_stashes);
 
+/**
+ * Apply a git stash by index (keeps stash in list)
+ *
+ * @param stash_index Index of stash to apply (0 = most recent)
+ * @return 1 if stash was applied successfully, 0 otherwise
+ */
+int apply_git_stash(int stash_index);
+
+/**
+ * Pop a git stash by index (applies and removes stash from list)
+ *
+ * @param stash_index Index of stash to pop (0 = most recent)
+ * @return 1 if stash was popped successfully, 0 otherwise
+ */
+int pop_git_stash(int stash_index);
+
+/**
+ * Drop a git stash by index (removes stash without applying)
+ *
+ * @param stash_index Index of stash to drop (0 = most recent)
+ * @return 1 if stash was dropped successfully, 0 otherwise
+ */
+int drop_git_stash(int stash_index);
+
 #endif // GIT_INTEGRATION_H

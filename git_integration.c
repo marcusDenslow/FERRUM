@@ -386,3 +386,48 @@ int get_git_stashes(char stashes[][512], int max_stashes) {
 	pclose(fp);
 	return count;
 }
+
+/**
+ * Apply a git stash by index (keeps stash in list)
+ */
+int apply_git_stash(int stash_index) {
+  if (stash_index < 0) {
+    return 0;
+  }
+
+  char cmd[128];
+  snprintf(cmd, sizeof(cmd), "git stash apply stash@{%d} 2>/dev/null >/dev/null", stash_index);
+  
+  int result = system(cmd);
+  return (result == 0) ? 1 : 0;
+}
+
+/**
+ * Pop a git stash by index (applies and removes stash from list)
+ */
+int pop_git_stash(int stash_index) {
+  if (stash_index < 0) {
+    return 0;
+  }
+
+  char cmd[128];
+  snprintf(cmd, sizeof(cmd), "git stash pop stash@{%d} 2>/dev/null >/dev/null", stash_index);
+  
+  int result = system(cmd);
+  return (result == 0) ? 1 : 0;
+}
+
+/**
+ * Drop a git stash by index (removes stash without applying)
+ */
+int drop_git_stash(int stash_index) {
+  if (stash_index < 0) {
+    return 0;
+  }
+
+  char cmd[128];
+  snprintf(cmd, sizeof(cmd), "git stash drop stash@{%d} 2>/dev/null >/dev/null", stash_index);
+  
+  int result = system(cmd);
+  return (result == 0) ? 1 : 0;
+}

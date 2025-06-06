@@ -331,6 +331,33 @@ int create_git_stash(void) {
   return (result == 0) ? 1 : 0;
 }
 
+int create_git_stash_with_name(const char *stash_name) {
+  if (!stash_name || strlen(stash_name) == 0) {
+    return 0;
+  }
+
+  FILE *fp = popen("git status --porcelain 2>/dev/null", "r");
+  if (!fp)
+    return 0;
+
+  char line[256];
+  int has_changes = 0;
+  if (fgets(line, sizeof(line), fp) != NULL) {
+    has_changes = 1;
+  }
+  pclose(fp);
+
+  if (!has_changes) {
+    return 0;
+  }
+
+  char cmd[512];
+  snprintf(cmd, sizeof(cmd), "git stash push -m \"%s\" 2>/dev/null >/dev/null", stash_name);
+
+  int result = system(cmd);
+  return (result == 0) ? 1 : 0;
+}
+
 
 int get_git_stashes(char stashes[][512], int max_stashes) {
 	if (!stashes || max_stashes <= 0) {

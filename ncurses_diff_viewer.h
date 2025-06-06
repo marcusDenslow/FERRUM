@@ -211,6 +211,8 @@ int get_ncurses_git_stashes(NCursesDiffViewer *viewer);
 
 int create_ncurses_git_stash(NCursesDiffViewer *viewer);
 
+int get_stash_name_input(char *stash_name, int max_len);
+
 void render_stash_list_window(NCursesDiffViewer *viewer);
 
 #endif // NCURSES_DIFF_VIEWER_H

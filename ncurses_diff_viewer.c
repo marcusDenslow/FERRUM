@@ -2309,12 +2309,171 @@ int get_ncurses_git_stashes(NCursesDiffViewer *viewer) {
 }
 
 /**
+ * Get stash name input from user
+ */
+int get_stash_name_input(char *stash_name, int max_len) {
+  if (!stash_name)
+    return 0;
+
+  // Save current screen
+  WINDOW *saved_screen = dupwin(stdscr);
+
+  // Calculate window dimensions
+  int input_width = COLS * 0.6; // 60% of screen width
+  int input_height = 3;
+  int start_x = COLS / 2 - input_width / 2;
+  int start_y = LINES / 2 - input_height / 2;
+
+  // Create input window
+  WINDOW *input_win = newwin(input_height, input_width, start_y, start_x);
+
+  if (!input_win) {
+    if (saved_screen)
+      delwin(saved_screen);
+    return 0;
+  }
+
+  // Variables for input handling
+  int input_scroll_offset = 0; // For horizontal scrolling
+  int ch;
+
+  // Function to redraw input window
+  void redraw_input() {
+    werase(input_win);
+    box(input_win, 0, 0);
+
+    int visible_width = input_width - 4;
+    int name_len = strlen(stash_name);
+
+    // Clear the content area with spaces FIRST
+    for (int x = 1; x <= visible_width; x++) {
+      mvwaddch(input_win, 1, x, ' ');
+    }
+
+    // Calculate what part of the name to show
+    int display_start = input_scroll_offset;
+    int display_end = display_start + visible_width;
+    if (display_end > name_len)
+      display_end = name_len;
+
+    // Show the visible portion of the name ON TOP of cleared spaces
+    for (int i = display_start; i < display_end; i++) {
+      mvwaddch(input_win, 1, 1 + (i - display_start), stash_name[i]);
+    }
+
+    // Header
+    wattron(input_win, COLOR_PAIR(4));
+    mvwprintw(input_win, 0, 2, " Enter stash name (ESC to cancel, Enter to confirm) ");
+    wattroff(input_win, COLOR_PAIR(4));
+    
+    wrefresh(input_win);
+  }
+
+  // Initial draw
+  redraw_input();
+
+  // Position initial cursor
+  int cursor_pos = strlen(stash_name) - input_scroll_offset;
+  int visible_width = input_width - 4;
+  if (cursor_pos > visible_width - 1)
+    cursor_pos = visible_width - 1;
+  if (cursor_pos < 0)
+    cursor_pos = 0;
+  wmove(input_win, 1, 1 + cursor_pos);
+  wrefresh(input_win);
+
+  curs_set(1);
+  noecho();
+
+  // Main input loop
+  while (1) {
+    ch = getch();
+
+    if (ch == 27) {
+      // ESC to cancel
+      stash_name[0] = '\0'; // Clear name
+      break;
+    }
+
+    if (ch == '\n' || ch == '\r') {
+      // Enter to confirm - accept if name has content
+      if (strlen(stash_name) > 0) {
+        break;
+      }
+    } else if (ch == KEY_BACKSPACE || ch == 127 || ch == 8) {
+      // Handle backspace
+      int len = strlen(stash_name);
+      if (len > 0) {
+        stash_name[len - 1] = '\0';
+
+        // Adjust scroll if needed
+        int visible_width = input_width - 4;
+        if (len - 1 <= input_scroll_offset) {
+          input_scroll_offset = (len - 1) - (visible_width - 5);
+          if (input_scroll_offset < 0)
+            input_scroll_offset = 0;
+        }
+        redraw_input();
+      }
+    } else if (ch >= 32 && ch <= 126) {
+      // Regular character input
+      int len = strlen(stash_name);
+      if (len < max_len - 1) {
+        stash_name[len] = ch;
+        stash_name[len + 1] = '\0';
+
+        // Auto-scroll horizontally if needed
+        int visible_width = input_width - 4;
+        if (len + 1 > input_scroll_offset + visible_width - 5) {
+          input_scroll_offset = (len + 1) - (visible_width - 5);
+        }
+        redraw_input();
+      }
+    }
+
+    // Position cursor
+    int cursor_pos = strlen(stash_name) - input_scroll_offset;
+    int visible_width = input_width - 4;
+    if (cursor_pos > visible_width - 1)
+      cursor_pos = visible_width - 1;
+    if (cursor_pos < 0)
+      cursor_pos = 0;
+    wmove(input_win, 1, 1 + cursor_pos);
+    wrefresh(input_win);
+  }
+
+  // Restore settings
+  curs_set(0); // Hide cursor
+
+  // Clean up window
+  delwin(input_win);
+
+  // Restore the screen
+  if (saved_screen) {
+    overwrite(saved_screen, stdscr);
+    delwin(saved_screen);
+  }
+
+  // Force a complete redraw
+  clear();
+  refresh();
+
+  return strlen(stash_name) > 0 ? 1 : 0;
+}
+
+/**
  * Create a new git stash
  */
 int create_ncurses_git_stash(NCursesDiffViewer *viewer) {
   if (!viewer) return 0;
   
-  int result = create_git_stash();
+  // Get stash name from user
+  char stash_name[256] = "";
+  if (!get_stash_name_input(stash_name, sizeof(stash_name))) {
+    return 0; // User cancelled
+  }
+  
+  int result = create_git_stash_with_name(stash_name);
   
   if (result) {
     // Refresh everything after creating stash

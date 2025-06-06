@@ -58,6 +58,8 @@ int check_branch_divergence(int *commits_ahead, int *commits_behind);
 
 int create_git_stash(void);
 
+int create_git_stash_with_name(const char *stash_name);
+
 int get_git_stashes(char stashed[][512], int max_stashes);
 
 #endif // GIT_INTEGRATION_H

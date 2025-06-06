@@ -3,7 +3,6 @@
  * Implementation of line reading and parsing with context-aware suggestions
  */
 
-// this is a test
 #include "line_reader.h"
 #include "aliases.h"
 #include "bookmarks.h" // Added for bookmark support

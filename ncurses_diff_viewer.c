@@ -1003,6 +1003,7 @@ void render_file_list_window(NCursesDiffViewer *viewer) {
     
     wrefresh(viewer->file_list_win);
 }
+//bruh
 
 /**
  * Render the commit list window

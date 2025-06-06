@@ -5,3 +5,4 @@ Boyer-Moore algorithm
 testing the grep
 This is a test change
 Modified test.txt content
+test change

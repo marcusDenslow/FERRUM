@@ -750,6 +750,15 @@ int commit_marked_files(NCursesDiffViewer *viewer, const char *commit_title, con
         get_ncurses_changed_files(viewer);
         get_commit_history(viewer);
         
+        // Reset selection if no files remain
+        if (viewer->file_count == 0) {
+            viewer->selected_file = 0;
+            viewer->file_line_count = 0;
+            viewer->file_scroll_offset = 0;
+        } else if (viewer->selected_file >= viewer->file_count) {
+            viewer->selected_file = viewer->file_count - 1;
+        }
+        
         return 1;
     }
     
@@ -762,10 +771,13 @@ int commit_marked_files(NCursesDiffViewer *viewer, const char *commit_title, con
 int push_commit(NCursesDiffViewer *viewer, int commit_index) {
     if (!viewer || commit_index < 0 || commit_index >= viewer->commit_count) return 0;
     
-    // Start pushing animation
+    // Start pushing animation immediately
     viewer->sync_status = SYNC_STATUS_PUSHING_APPEARING;
     viewer->animation_frame = 0;
     viewer->text_char_count = 0;
+    
+    // Render immediately to show the animation start
+    render_status_bar(viewer);
     
     // Do the actual push work
     int result = system("git push origin 2>/dev/null >/dev/null");
@@ -785,10 +797,13 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
 int pull_commits(NCursesDiffViewer *viewer) {
     if (!viewer) return 0;
     
-    // Start syncing animation (reuse the fetching animation)
-    viewer->sync_status = SYNC_STATUS_SYNCING_APPEARING;
+    // Start pulling animation immediately
+    viewer->sync_status = SYNC_STATUS_PULLING_APPEARING;
     viewer->animation_frame = 0;
     viewer->text_char_count = 0;
+    
+    // Render immediately to show the animation start
+    render_status_bar(viewer);
     
     // Do the actual pull work
     int result = system("git pull origin 2>/dev/null >/dev/null");
@@ -797,6 +812,15 @@ int pull_commits(NCursesDiffViewer *viewer) {
         // Refresh everything after pull
         get_ncurses_changed_files(viewer);
         get_commit_history(viewer);
+        
+        // Reset selection if no files remain
+        if (viewer->file_count == 0) {
+            viewer->selected_file = 0;
+            viewer->file_line_count = 0;
+            viewer->file_scroll_offset = 0;
+        } else if (viewer->selected_file >= viewer->file_count) {
+            viewer->selected_file = viewer->file_count - 1;
+        }
         
         // Reload current file if any
         if (viewer->file_count > 0 && viewer->selected_file < viewer->file_count) {
@@ -1125,11 +1149,49 @@ void render_status_bar(NCursesDiffViewer *viewer) {
         } else {
             strcpy(sync_text, "");
         }
+    } else if (viewer->sync_status >= SYNC_STATUS_PULLING_APPEARING && viewer->sync_status <= SYNC_STATUS_PULLING_DISAPPEARING) {
+        // Show partial or full "Pulling" text with spinner
+        char full_text[] = "Pulling";
+        int chars_to_show = viewer->text_char_count;
+        if (chars_to_show > 7) chars_to_show = 7; // Max length of "Pulling"
+        if (chars_to_show < 0) chars_to_show = 0;
+        
+        if (chars_to_show > 0) {
+            char partial_text[16];
+            strncpy(partial_text, full_text, chars_to_show);
+            partial_text[chars_to_show] = '\0';
+            
+            if (viewer->sync_status == SYNC_STATUS_PULLING_VISIBLE) {
+                snprintf(sync_text, sizeof(sync_text), "%s %s", partial_text, spinner_chars[spinner_idx]);
+            } else {
+                strcpy(sync_text, partial_text);
+            }
+        } else {
+            strcpy(sync_text, "");
+        }
     } else if (viewer->sync_status >= SYNC_STATUS_SYNCED_APPEARING && viewer->sync_status <= SYNC_STATUS_SYNCED_DISAPPEARING) {
-        // Show partial or full "Synced!" text
+        // Show partial or full "Synced!" text (for fetching)
         char full_text[] = "Synced!";
         int chars_to_show = viewer->text_char_count;
         if (chars_to_show > 7) chars_to_show = 7; // Max length of "Synced!"
+        if (chars_to_show < 0) chars_to_show = 0;
+        
+        strncpy(sync_text, full_text, chars_to_show);
+        sync_text[chars_to_show] = '\0';
+    } else if (viewer->sync_status >= SYNC_STATUS_PUSHED_APPEARING && viewer->sync_status <= SYNC_STATUS_PUSHED_DISAPPEARING) {
+        // Show partial or full "Pushed!" text
+        char full_text[] = "Pushed!";
+        int chars_to_show = viewer->text_char_count;
+        if (chars_to_show > 7) chars_to_show = 7; // Max length of "Pushed!"
+        if (chars_to_show < 0) chars_to_show = 0;
+        
+        strncpy(sync_text, full_text, chars_to_show);
+        sync_text[chars_to_show] = '\0';
+    } else if (viewer->sync_status >= SYNC_STATUS_PULLED_APPEARING && viewer->sync_status <= SYNC_STATUS_PULLED_DISAPPEARING) {
+        // Show partial or full "Pulled!" text
+        char full_text[] = "Pulled!";
+        int chars_to_show = viewer->text_char_count;
+        if (chars_to_show > 7) chars_to_show = 7; // Max length of "Pulled!"
         if (chars_to_show < 0) chars_to_show = 0;
         
         strncpy(sync_text, full_text, chars_to_show);
@@ -1139,12 +1201,14 @@ void render_status_bar(NCursesDiffViewer *viewer) {
     if (strlen(sync_text) > 0) {
         int sync_text_pos = viewer->terminal_width - strlen(sync_text) - 1; // No border padding needed
         
-        if (viewer->sync_status >= SYNC_STATUS_SYNCED_APPEARING && viewer->sync_status <= SYNC_STATUS_SYNCED_DISAPPEARING) {
-            wattron(viewer->status_bar_win, COLOR_PAIR(1)); // Green
+        if (viewer->sync_status >= SYNC_STATUS_SYNCED_APPEARING && viewer->sync_status <= SYNC_STATUS_SYNCED_DISAPPEARING ||
+            viewer->sync_status >= SYNC_STATUS_PUSHED_APPEARING && viewer->sync_status <= SYNC_STATUS_PUSHED_DISAPPEARING ||
+            viewer->sync_status >= SYNC_STATUS_PULLED_APPEARING && viewer->sync_status <= SYNC_STATUS_PULLED_DISAPPEARING) {
+            wattron(viewer->status_bar_win, COLOR_PAIR(1)); // Green for success messages
             mvwprintw(viewer->status_bar_win, 0, sync_text_pos, "%s", sync_text);
             wattroff(viewer->status_bar_win, COLOR_PAIR(1));
         } else {
-            wattron(viewer->status_bar_win, COLOR_PAIR(4)); // Yellow
+            wattron(viewer->status_bar_win, COLOR_PAIR(4)); // Yellow for in-progress messages
             mvwprintw(viewer->status_bar_win, 0, sync_text_pos, "%s", sync_text);
             wattroff(viewer->status_bar_win, COLOR_PAIR(4));
         }
@@ -1223,8 +1287,8 @@ void update_sync_status(NCursesDiffViewer *viewer) {
                     viewer->animation_frame = 0;
                 }
             } else if (viewer->sync_status == SYNC_STATUS_PUSHING_VISIBLE) {
-                // Visible with spinner for 2.6 seconds (52 frames)
-                if (viewer->animation_frame >= 52) {
+                // Visible with spinner for 1.2 seconds (24 frames) - faster
+                if (viewer->animation_frame >= 24) {
                     viewer->sync_status = SYNC_STATUS_PUSHING_DISAPPEARING;
                     viewer->animation_frame = 0;
                     viewer->text_char_count = 7;
@@ -1235,7 +1299,35 @@ void update_sync_status(NCursesDiffViewer *viewer) {
                 viewer->text_char_count = 7 - chars_to_remove;
                 if (viewer->text_char_count <= 0) {
                     viewer->text_char_count = 0;
-                    viewer->sync_status = SYNC_STATUS_SYNCED_APPEARING;
+                    viewer->sync_status = SYNC_STATUS_PUSHED_APPEARING;
+                    viewer->animation_frame = 0;
+                }
+            }
+        }
+        // Handle pulling animation (same pattern as pushing)
+        else if (viewer->sync_status >= SYNC_STATUS_PULLING_APPEARING && viewer->sync_status <= SYNC_STATUS_PULLING_DISAPPEARING) {
+            if (viewer->sync_status == SYNC_STATUS_PULLING_APPEARING) {
+                // Appearing: one character every 2 frames (0.1s) for "Pulling" (7 chars)
+                viewer->text_char_count = viewer->animation_frame / 2;
+                if (viewer->text_char_count >= 7) {
+                    viewer->text_char_count = 7;
+                    viewer->sync_status = SYNC_STATUS_PULLING_VISIBLE;
+                    viewer->animation_frame = 0;
+                }
+            } else if (viewer->sync_status == SYNC_STATUS_PULLING_VISIBLE) {
+                // Visible with spinner for 1.2 seconds (24 frames) - faster
+                if (viewer->animation_frame >= 24) {
+                    viewer->sync_status = SYNC_STATUS_PULLING_DISAPPEARING;
+                    viewer->animation_frame = 0;
+                    viewer->text_char_count = 7;
+                }
+            } else if (viewer->sync_status == SYNC_STATUS_PULLING_DISAPPEARING) {
+                // Disappearing: remove one character every 2 frames (0.1s)
+                int chars_to_remove = viewer->animation_frame / 2;
+                viewer->text_char_count = 7 - chars_to_remove;
+                if (viewer->text_char_count <= 0) {
+                    viewer->text_char_count = 0;
+                    viewer->sync_status = SYNC_STATUS_PULLED_APPEARING;
                     viewer->animation_frame = 0;
                 }
             }
@@ -1258,6 +1350,60 @@ void update_sync_status(NCursesDiffViewer *viewer) {
                     viewer->text_char_count = 7;
                 }
             } else if (viewer->sync_status == SYNC_STATUS_SYNCED_DISAPPEARING) {
+                // Disappearing: remove one character every 2 frames (0.1s)
+                int chars_to_remove = viewer->animation_frame / 2;
+                viewer->text_char_count = 7 - chars_to_remove;
+                if (viewer->text_char_count <= 0) {
+                    viewer->text_char_count = 0;
+                    viewer->sync_status = SYNC_STATUS_IDLE;
+                }
+            }
+        }
+        // Handle pushed animation
+        else if (viewer->sync_status >= SYNC_STATUS_PUSHED_APPEARING && viewer->sync_status <= SYNC_STATUS_PUSHED_DISAPPEARING) {
+            if (viewer->sync_status == SYNC_STATUS_PUSHED_APPEARING) {
+                // Appearing: one character every 2 frames (0.1s) for "Pushed!" (7 chars)
+                viewer->text_char_count = viewer->animation_frame / 2;
+                if (viewer->text_char_count >= 7) {
+                    viewer->text_char_count = 7;
+                    viewer->sync_status = SYNC_STATUS_PUSHED_VISIBLE;
+                    viewer->animation_frame = 0;
+                }
+            } else if (viewer->sync_status == SYNC_STATUS_PUSHED_VISIBLE) {
+                // Visible for 2 seconds (40 frames)
+                if (viewer->animation_frame >= 40) {
+                    viewer->sync_status = SYNC_STATUS_PUSHED_DISAPPEARING;
+                    viewer->animation_frame = 0;
+                    viewer->text_char_count = 7;
+                }
+            } else if (viewer->sync_status == SYNC_STATUS_PUSHED_DISAPPEARING) {
+                // Disappearing: remove one character every 2 frames (0.1s)
+                int chars_to_remove = viewer->animation_frame / 2;
+                viewer->text_char_count = 7 - chars_to_remove;
+                if (viewer->text_char_count <= 0) {
+                    viewer->text_char_count = 0;
+                    viewer->sync_status = SYNC_STATUS_IDLE;
+                }
+            }
+        }
+        // Handle pulled animation
+        else if (viewer->sync_status >= SYNC_STATUS_PULLED_APPEARING && viewer->sync_status <= SYNC_STATUS_PULLED_DISAPPEARING) {
+            if (viewer->sync_status == SYNC_STATUS_PULLED_APPEARING) {
+                // Appearing: one character every 2 frames (0.1s) for "Pulled!" (7 chars)
+                viewer->text_char_count = viewer->animation_frame / 2;
+                if (viewer->text_char_count >= 7) {
+                    viewer->text_char_count = 7;
+                    viewer->sync_status = SYNC_STATUS_PULLED_VISIBLE;
+                    viewer->animation_frame = 0;
+                }
+            } else if (viewer->sync_status == SYNC_STATUS_PULLED_VISIBLE) {
+                // Visible for 2 seconds (40 frames)
+                if (viewer->animation_frame >= 40) {
+                    viewer->sync_status = SYNC_STATUS_PULLED_DISAPPEARING;
+                    viewer->animation_frame = 0;
+                    viewer->text_char_count = 7;
+                }
+            } else if (viewer->sync_status == SYNC_STATUS_PULLED_DISAPPEARING) {
                 // Disappearing: remove one character every 2 frames (0.1s)
                 int chars_to_remove = viewer->animation_frame / 2;
                 viewer->text_char_count = 7 - chars_to_remove;

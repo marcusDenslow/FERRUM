@@ -470,139 +470,119 @@ int get_commit_title_input(char *title, int max_len, char *message, int max_mess
     int message_scroll_offset = 0; // For vertical scrolling
     int ch;
     
-    // Initial draw and main input loop
-    while (1) {
-        // Redraw title field with horizontal scrolling
+    // Function to redraw title window
+    void redraw_title() {
         werase(title_win);
         box(title_win, 0, 0);
-        mvwprintw(title_win, 0, 2, " Title (Tab to switch, Enter to commit) ");
         
-        int visible_width = input_width - 4; // Account for borders
+        int visible_width = input_width - 4;
         int title_len = strlen(title);
+        
+        // CRITICAL: Clear the content area with spaces FIRST
+        for (int x = 1; x <= visible_width; x++) {
+            mvwaddch(title_win, 1, x, ' ');
+        }
         
         // Calculate what part of the title to show
         int display_start = title_scroll_offset;
         int display_end = display_start + visible_width;
         if (display_end > title_len) display_end = title_len;
         
-        // Clear the content area first to fix backspace issues
-        wmove(title_win, 1, 1);
-        for (int x = 1; x < visible_width + 1; x++) {
-            waddch(title_win, ' ');
-        }
-        
-        // Show the visible portion of the title
+        // Show the visible portion of the title ON TOP of cleared spaces
         for (int i = display_start; i < display_end; i++) {
             mvwaddch(title_win, 1, 1 + (i - display_start), title[i]);
         }
         
-        // Position cursor at the end of visible text only if this is the active field
+        // Highlight header if active
         if (current_field == 0) {
-            int cursor_pos = title_len - title_scroll_offset;
-            if (cursor_pos > visible_width - 1) cursor_pos = visible_width - 1;
-            if (cursor_pos < 0) cursor_pos = 0;
-            wmove(title_win, 1, 1 + cursor_pos);
-            
-            // Highlight the header text (no blinking cursor issue)
-            wattron(title_win, COLOR_PAIR(4)); // Yellow color instead of reverse
+            wattron(title_win, COLOR_PAIR(4));
             mvwprintw(title_win, 0, 2, " Title (Tab to switch, Enter to commit) ");
             wattroff(title_win, COLOR_PAIR(4));
+        } else {
+            mvwprintw(title_win, 0, 2, " Title (Tab to switch, Enter to commit) ");
         }
         wrefresh(title_win);
-        
-        // Redraw message field with vertical scrolling
+    }
+    
+    // Function to redraw message window - SIMPLE like title field
+    void redraw_message() {
         werase(message_win);
         box(message_win, 0, 0);
-        mvwprintw(message_win, 0, 2, " Message (Tab to switch, Enter for newline) ");
         
-        int visible_height = message_height - 2; // Account for borders
-        int message_visible_width = input_width - 3; // Account for borders
+        int visible_height = message_height - 2;
+        int message_visible_width = input_width - 3;
         
-        // Split message into lines for display
-        char display_lines[100][1024];
-        int line_count = 0;
-        int current_line_pos = 0;
+        // Clear content area
+        for (int y = 1; y <= visible_height; y++) {
+            for (int x = 1; x <= message_visible_width; x++) {
+                mvwaddch(message_win, y, x, ' ');
+            }
+        }
         
-        display_lines[0][0] = '\0';
-        
-        for (int i = 0; local_message[i] && line_count < 100; i++) {
+        // SIMPLE: Just display the raw string, character by character
+        int y = 1, x = 1;
+        for (int i = 0; local_message[i] && y <= visible_height; i++) {
             if (local_message[i] == '\n') {
-                display_lines[line_count][current_line_pos] = '\0';
-                line_count++;
-                current_line_pos = 0;
-                if (line_count < 100) display_lines[line_count][0] = '\0';
+                y++;
+                x = 1;
             } else {
-                if (current_line_pos >= message_visible_width - 1) {
-                    // Word wrap
-                    display_lines[line_count][current_line_pos] = '\0';
-                    line_count++;
-                    current_line_pos = 0;
-                    if (line_count < 100) display_lines[line_count][0] = '\0';
-                }
-                if (line_count < 100) {
-                    display_lines[line_count][current_line_pos] = local_message[i];
-                    current_line_pos++;
-                }
-            }
-        }
-        if (current_line_pos > 0) line_count++;
-        
-        // Clear the content area first to fix backspace issues
-        for (int y = 1; y < visible_height + 1; y++) {
-            wmove(message_win, y, 1);
-            for (int x = 1; x < message_visible_width + 1; x++) {
-                waddch(message_win, ' ');
-            }
-        }
-        
-        // Display visible lines based on scroll offset
-        for (int i = 0; i < visible_height && (i + message_scroll_offset) < line_count; i++) {
-            int line_idx = i + message_scroll_offset;
-            mvwprintw(message_win, i + 1, 1, "%s", display_lines[line_idx]);
-        }
-        
-        // Position cursor and highlight header if this is the active field
-        if (current_field == 1) {
-            // Position cursor at the end of text in the visible area
-            int cursor_line = 1;
-            int cursor_col = 1;
-            
-            // Find where the cursor should be positioned
-            int total_chars = 0;
-            for (int i = 0; i < line_count && i < message_scroll_offset + visible_height; i++) {
-                if (i >= message_scroll_offset) {
-                    int line_len = strlen(display_lines[i]);
-                    if (i == line_count - 1) {
-                        // Last line - position cursor at end
-                        cursor_line = (i - message_scroll_offset) + 1;
-                        cursor_col = line_len + 1;
-                        break;
+                if (x <= message_visible_width) {
+                    mvwaddch(message_win, y, x, local_message[i]);
+                    x++;
+                    if (x > message_visible_width) {
+                        y++;
+                        x = 1;
                     }
                 }
             }
-            
-            wmove(message_win, cursor_line, cursor_col);
-            
-            // Highlight the header text
-            wattron(message_win, COLOR_PAIR(4)); // Yellow color instead of reverse
-            mvwprintw(message_win, 0, 2, " Message (Tab to switch, Enter for newline) ");
-            wattroff(message_win, COLOR_PAIR(4));
-        }
-        wrefresh(message_win);
-    
-        // Enable input mode
-        noecho(); // Handle echo manually for better control
-        if (current_field == 0 || current_field == 1) {
-            curs_set(1); // Show cursor only in active input field
-        } else {
-            curs_set(0); // Hide cursor otherwise
         }
         
+        // Highlight header if active
+        if (current_field == 1) {
+            wattron(message_win, COLOR_PAIR(4));
+            mvwprintw(message_win, 0, 2, " Message (Tab to switch, Enter for newline) ");
+            wattroff(message_win, COLOR_PAIR(4));
+        } else {
+            mvwprintw(message_win, 0, 2, " Message (Tab to switch, Enter for newline) ");
+        }
+        wrefresh(message_win);
+    }
+    
+    // Initial draw
+    redraw_title();
+    redraw_message();
+    
+    // Position initial cursor
+    if (current_field == 0) {
+        int cursor_pos = strlen(title) - title_scroll_offset;
+        int visible_width = input_width - 4;
+        if (cursor_pos > visible_width - 1) cursor_pos = visible_width - 1;
+        if (cursor_pos < 0) cursor_pos = 0;
+        wmove(title_win, 1, 1 + cursor_pos);
+        wrefresh(title_win);
+    }
+    
+    curs_set(1);
+    noecho();
+    
+    // Main input loop
+    while (1) {
         ch = getch();
-        if (ch == 27) break; // ESC to cancel
+        int redraw_needed = 0;
+        
+        if (ch == 27) {
+            // ESC to cancel - don't commit
+            if (message && max_message_len > 0) {
+                message[0] = '\0'; // Clear message
+            }
+            title[0] = '\0'; // Clear title
+            break;
+        }
+        
         if (ch == '\t') {
             // Switch between fields
             current_field = !current_field;
+            redraw_needed = 1;
         } else if (ch == '\n' || ch == '\r') {
             if (current_field == 0) {
                 // Enter in title field - commit if title has content
@@ -618,14 +598,14 @@ int get_commit_title_input(char *title, int max_len, char *message, int max_mess
                     
                     // Auto-scroll down if needed
                     int visible_height = message_height - 2;
-                    // Count current lines to see if we need to scroll
                     int current_lines = 1;
                     for (int i = 0; local_message[i]; i++) {
                         if (local_message[i] == '\n') current_lines++;
                     }
                     if (current_lines > visible_height + message_scroll_offset) {
-                        message_scroll_offset += 2; // Scroll down 2 lines
+                        message_scroll_offset += 2;
                     }
+                    redraw_message();
                 }
             }
         } else if (ch == KEY_BACKSPACE || ch == 127 || ch == 8) {
@@ -641,11 +621,13 @@ int get_commit_title_input(char *title, int max_len, char *message, int max_mess
                         title_scroll_offset = (len - 1) - (visible_width - 5);
                         if (title_scroll_offset < 0) title_scroll_offset = 0;
                     }
+                    redraw_title();
                 }
             } else {
                 int len = strlen(local_message);
                 if (len > 0) {
                     local_message[len - 1] = '\0';
+                    redraw_message();
                 }
             }
         } else if (ch >= 32 && ch <= 126) {
@@ -661,19 +643,60 @@ int get_commit_title_input(char *title, int max_len, char *message, int max_mess
                     if (len + 1 > title_scroll_offset + visible_width - 5) {
                         title_scroll_offset = (len + 1) - (visible_width - 5);
                     }
+                    redraw_title();
                 }
             } else {
                 int len = strlen(local_message);
                 if (len < 2047) {
                     local_message[len] = ch;
                     local_message[len + 1] = '\0';
+                    redraw_message();
                 }
             }
         }
+        
+        // Redraw if field switched
+        if (redraw_needed) {
+            redraw_title();
+            redraw_message();
+        }
+        
+        // Position cursor in active field
+        if (current_field == 0) {
+            int cursor_pos = strlen(title) - title_scroll_offset;
+            int visible_width = input_width - 4;
+            if (cursor_pos > visible_width - 1) cursor_pos = visible_width - 1;
+            if (cursor_pos < 0) cursor_pos = 0;
+            wmove(title_win, 1, 1 + cursor_pos);
+            wrefresh(title_win);
+        } else {
+            // Position cursor in message field - EXACTLY like title field
+            int message_len = strlen(local_message);
+            int message_visible_width = input_width - 3;
+            
+            // Simple cursor positioning - just count where we are
+            int y = 1, x = 1;
+            for (int i = 0; i < message_len; i++) {
+                if (local_message[i] == '\n') {
+                    y++;
+                    x = 1;
+                } else {
+                    x++;
+                    if (x > message_visible_width) {
+                        y++;
+                        x = 1;
+                    }
+                }
+            }
+            
+            // Position cursor at end of text
+            wmove(message_win, y, x);
+            wrefresh(message_win);
+        }
     }
     
-    // Copy local message to output parameter
-    if (message && max_message_len > 0) {
+    // Copy local message to output parameter only if not canceled
+    if (message && max_message_len > 0 && strlen(title) > 0) {
         strncpy(message, local_message, max_message_len - 1);
         message[max_message_len - 1] = '\0';
     }

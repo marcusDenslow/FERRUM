@@ -19,7 +19,7 @@ int init_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
     memset(viewer, 0, sizeof(NCursesDiffViewer));
     viewer->selected_file = 0;
     viewer->file_scroll_offset = 0;
-    viewer->current_mode = MODE_FILE_LIST;
+    viewer->current_mode = NCURSES_MODE_FILE_LIST;
     
     // Initialize ncurses
     initscr();
@@ -139,7 +139,7 @@ int is_ncurses_new_file(const char *filename) {
 }
 
 /**
- * Load full file content with diff highlighting
+ * Load diff context with highlighting (like lazygit)
  */
 int load_full_file_with_diff(NCursesDiffViewer *viewer, const char *filename) {
     if (!viewer || !filename) return 0;
@@ -149,131 +149,106 @@ int load_full_file_with_diff(NCursesDiffViewer *viewer, const char *filename) {
     
     // Check if this is a new file
     if (is_ncurses_new_file(filename)) {
-        // For new files, just show the content as all additions
+        // For new files, show first 50 lines as additions
         FILE *fp = fopen(filename, "r");
         if (!fp) return 0;
         
         char line[1024];
-        while (fgets(line, sizeof(line), fp) != NULL && viewer->file_line_count < MAX_FULL_FILE_LINES) {
+        int line_count = 0;
+        while (fgets(line, sizeof(line), fp) != NULL && 
+               viewer->file_line_count < MAX_FULL_FILE_LINES && 
+               line_count < 50) {
             // Remove newline
             char *newline_pos = strchr(line, '\n');
             if (newline_pos) *newline_pos = '\0';
             
             NCursesFileLine *file_line = &viewer->file_lines[viewer->file_line_count];
-            strncpy(file_line->line, line, sizeof(file_line->line) - 1);
-            file_line->line[sizeof(file_line->line) - 1] = '\0';
+            snprintf(file_line->line, sizeof(file_line->line), "+%s", line);
             file_line->type = '+';
             file_line->is_diff_line = 1;
             
             viewer->file_line_count++;
+            line_count++;
         }
         
         fclose(fp);
         return viewer->file_line_count;
     }
     
-    // For existing files, create temporary files and merge with diff
-    char temp_current[256], temp_git[256];
-    
-    if (!create_temp_file_with_changes(filename, temp_current)) {
-        return 0;
-    }
-    
-    if (!create_temp_file_git_version(filename, temp_git)) {
-        unlink(temp_current);
-        return 0;
-    }
-    
-    // Get diff information
+    // Use git diff to get only the changed context (like lazygit)
     char cmd[1024];
-    snprintf(cmd, sizeof(cmd), "git diff HEAD -- \"%s\" 2>/dev/null", filename);
+    snprintf(cmd, sizeof(cmd), "git diff HEAD \"%s\" 2>/dev/null", filename);
     
     FILE *diff_fp = popen(cmd, "r");
-    if (!diff_fp) {
-        unlink(temp_current);
-        unlink(temp_git);
-        return 0;
-    }
+    if (!diff_fp) return 0;
     
-    // Parse diff to understand which lines are changed
     char diff_line[1024];
-    int current_old_line = 0, current_new_line = 0;
-    int in_hunk = 0;
+    int found_changes = 0;
     
-    // Store diff information for line marking
-    int changed_lines[MAX_FULL_FILE_LINES];
-    char line_types[MAX_FULL_FILE_LINES];
-    memset(changed_lines, 0, sizeof(changed_lines));
-    memset(line_types, ' ', sizeof(line_types));
-    
-    while (fgets(diff_line, sizeof(diff_line), diff_fp) != NULL) {
+    while (fgets(diff_line, sizeof(diff_line), diff_fp) != NULL && 
+           viewer->file_line_count < MAX_FULL_FILE_LINES) {
+        // Remove newline
+        char *newline_pos = strchr(diff_line, '\n');
+        if (newline_pos) *newline_pos = '\0';
+        
+        // Skip file headers
+        if (strncmp(diff_line, "diff --git", 10) == 0 ||
+            strncmp(diff_line, "index ", 6) == 0 ||
+            strncmp(diff_line, "--- ", 4) == 0 ||
+            strncmp(diff_line, "+++ ", 4) == 0) {
+            continue;
+        }
+        
+        // Process hunk headers and content
         if (diff_line[0] == '@' && diff_line[1] == '@') {
-            // Hunk header: @@-old_start,old_count +new_start,new_count@@
-            sscanf(diff_line, "@@-%d,%*d +%d,%*d@@", &current_old_line, &current_new_line);
-            current_old_line--; // Will be incremented before use
-            current_new_line--;
-            in_hunk = 1;
-        } else if (in_hunk) {
-            if (diff_line[0] == '+') {
-                current_new_line++;
-                if (current_new_line < MAX_FULL_FILE_LINES) {
-                    changed_lines[current_new_line] = 1;
-                    line_types[current_new_line] = '+';
-                }
-            } else if (diff_line[0] == '-') {
-                current_old_line++;
-                // Mark the corresponding line in the new file as changed
-                if (current_old_line < MAX_FULL_FILE_LINES) {
-                    changed_lines[current_old_line] = 1;
-                    line_types[current_old_line] = '-';
-                }
-            } else if (diff_line[0] == ' ') {
-                current_old_line++;
-                current_new_line++;
-            }
+            // Hunk header
+            NCursesFileLine *file_line = &viewer->file_lines[viewer->file_line_count];
+            strncpy(file_line->line, diff_line, sizeof(file_line->line) - 1);
+            file_line->line[sizeof(file_line->line) - 1] = '\0';
+            file_line->type = '@';
+            file_line->is_diff_line = 0;
+            viewer->file_line_count++;
+            found_changes = 1;
+        } else if (diff_line[0] == '+') {
+            // Added line
+            NCursesFileLine *file_line = &viewer->file_lines[viewer->file_line_count];
+            strncpy(file_line->line, diff_line, sizeof(file_line->line) - 1);
+            file_line->line[sizeof(file_line->line) - 1] = '\0';
+            file_line->type = '+';
+            file_line->is_diff_line = 1;
+            viewer->file_line_count++;
+            found_changes = 1;
+        } else if (diff_line[0] == '-') {
+            // Removed line
+            NCursesFileLine *file_line = &viewer->file_lines[viewer->file_line_count];
+            strncpy(file_line->line, diff_line, sizeof(file_line->line) - 1);
+            file_line->line[sizeof(file_line->line) - 1] = '\0';
+            file_line->type = '-';
+            file_line->is_diff_line = 1;
+            viewer->file_line_count++;
+            found_changes = 1;
+        } else if (diff_line[0] == ' ') {
+            // Context line (unchanged)
+            NCursesFileLine *file_line = &viewer->file_lines[viewer->file_line_count];
+            strncpy(file_line->line, diff_line, sizeof(file_line->line) - 1);
+            file_line->line[sizeof(file_line->line) - 1] = '\0';
+            file_line->type = ' ';
+            file_line->is_diff_line = 0;
+            viewer->file_line_count++;
         }
     }
     
     pclose(diff_fp);
     
-    // Read the current file content and mark changed lines
-    FILE *current_fp = fopen(temp_current, "r");
-    if (!current_fp) {
-        unlink(temp_current);
-        unlink(temp_git);
-        return 0;
-    }
-    
-    char line[1024];
-    int line_number = 1;
-    
-    while (fgets(line, sizeof(line), current_fp) != NULL && viewer->file_line_count < MAX_FULL_FILE_LINES) {
-        // Remove newline
-        char *newline_pos = strchr(line, '\n');
-        if (newline_pos) *newline_pos = '\0';
-        
+    // If no changes were found, show a message
+    if (!found_changes) {
         NCursesFileLine *file_line = &viewer->file_lines[viewer->file_line_count];
-        strncpy(file_line->line, line, sizeof(file_line->line) - 1);
+        strncpy(file_line->line, "No changes in this file", sizeof(file_line->line) - 1);
         file_line->line[sizeof(file_line->line) - 1] = '\0';
-        
-        // Check if this line is changed
-        if (line_number < MAX_FULL_FILE_LINES && changed_lines[line_number]) {
-            file_line->type = line_types[line_number];
-            file_line->is_diff_line = 1;
-        } else {
-            file_line->type = ' ';
-            file_line->is_diff_line = 0;
-        }
-        
+        file_line->type = ' ';
+        file_line->is_diff_line = 0;
         viewer->file_line_count++;
-        line_number++;
     }
-    
-    fclose(current_fp);
-    
-    // Clean up temporary files
-    unlink(temp_current);
-    unlink(temp_git);
     
     return viewer->file_line_count;
 }
@@ -550,16 +525,13 @@ void render_file_list_window(NCursesDiffViewer *viewer) {
     for (int i = 0; i < max_files_visible; i++) {
         int y = i + 1;
         
-        // Clear this line first
-        wmove(viewer->file_list_win, y, 1);
-        wclrtoeol(viewer->file_list_win);
         
         // Skip if no more files
         if (i >= viewer->file_count) continue;
         
         // Show selection indicator
         if (i == viewer->selected_file) {
-            if (viewer->current_mode == MODE_FILE_LIST) {
+            if (viewer->current_mode == NCURSES_MODE_FILE_LIST) {
                 wattron(viewer->file_list_win, COLOR_PAIR(5));
                 mvwprintw(viewer->file_list_win, y, 1, ">");
             } else {
@@ -570,28 +542,26 @@ void render_file_list_window(NCursesDiffViewer *viewer) {
             mvwprintw(viewer->file_list_win, y, 1, " ");
         }
         
-        mvwprintw(viewer->file_list_win, y, 2, " ");
-        
         // Status indicator
         char status = viewer->files[i].status;
         if (status == 'M') {
             wattron(viewer->file_list_win, COLOR_PAIR(4));
-            mvwprintw(viewer->file_list_win, y, 3, "M");
+            mvwprintw(viewer->file_list_win, y, 2, "M");
             wattroff(viewer->file_list_win, COLOR_PAIR(4));
         } else if (status == 'A') {
             wattron(viewer->file_list_win, COLOR_PAIR(1));
-            mvwprintw(viewer->file_list_win, y, 3, "A");
+            mvwprintw(viewer->file_list_win, y, 2, "A");
             wattroff(viewer->file_list_win, COLOR_PAIR(1));
         } else if (status == 'D') {
             wattron(viewer->file_list_win, COLOR_PAIR(2));
-            mvwprintw(viewer->file_list_win, y, 3, "D");
+            mvwprintw(viewer->file_list_win, y, 2, "D");
             wattroff(viewer->file_list_win, COLOR_PAIR(2));
         } else {
-            mvwprintw(viewer->file_list_win, y, 3, "%c", status);
+            mvwprintw(viewer->file_list_win, y, 2, "%c", status);
         }
         
-        // Filename (truncated to fit panel with better margins)
-        int max_name_len = viewer->file_panel_width - 8; // More margin
+        // Filename (truncated to fit panel)
+        int max_name_len = viewer->file_panel_width - 7;
         char truncated_name[256];
         if ((int)strlen(viewer->files[i].filename) > max_name_len) {
             strncpy(truncated_name, viewer->files[i].filename, max_name_len - 3);
@@ -605,13 +575,13 @@ void render_file_list_window(NCursesDiffViewer *viewer) {
         if (viewer->files[i].marked_for_commit) {
             wattron(viewer->file_list_win, COLOR_PAIR(1));
         }
-        mvwprintw(viewer->file_list_win, y, 5, "%s", truncated_name);
+        mvwprintw(viewer->file_list_win, y, 4, "%s", truncated_name);
         if (viewer->files[i].marked_for_commit) {
             wattroff(viewer->file_list_win, COLOR_PAIR(1));
         }
         
         if (i == viewer->selected_file) {
-            if (viewer->current_mode == MODE_FILE_LIST) {
+            if (viewer->current_mode == NCURSES_MODE_FILE_LIST) {
                 wattroff(viewer->file_list_win, COLOR_PAIR(5));
             } else {
                 wattroff(viewer->file_list_win, COLOR_PAIR(1));
@@ -637,15 +607,12 @@ void render_commit_list_window(NCursesDiffViewer *viewer) {
     for (int i = 0; i < max_commits_visible; i++) {
         int y = i + 1;
         
-        // Clear this line first
-        wmove(viewer->commit_list_win, y, 1);
-        wclrtoeol(viewer->commit_list_win);
         
         // Skip if no more commits
         if (i >= viewer->commit_count) continue;
         
         // Show selection indicator for commit list mode
-        if (i == viewer->selected_commit && viewer->current_mode == MODE_COMMIT_LIST) {
+        if (i == viewer->selected_commit && viewer->current_mode == NCURSES_MODE_COMMIT_LIST) {
             wattron(viewer->commit_list_win, COLOR_PAIR(5));
             mvwprintw(viewer->commit_list_win, y, 1, ">");
             wattroff(viewer->commit_list_win, COLOR_PAIR(5));
@@ -679,8 +646,8 @@ void render_commit_list_window(NCursesDiffViewer *viewer) {
             wattroff(viewer->commit_list_win, COLOR_PAIR(2));
         }
         
-        // Show commit title (always white, truncated with better margins)
-        int max_title_len = viewer->file_panel_width - 17; // More margin
+        // Show commit title (always white, truncated to fit)
+        int max_title_len = viewer->file_panel_width - 16;
         char truncated_title[256];
         if ((int)strlen(viewer->commits[i].title) > max_title_len) {
             strncpy(truncated_title, viewer->commits[i].title, max_title_len - 3);
@@ -702,12 +669,22 @@ void render_commit_list_window(NCursesDiffViewer *viewer) {
 void render_file_content_window(NCursesDiffViewer *viewer) {
     if (!viewer || !viewer->file_content_win) return;
     
+    // Clear the window content area (but preserve borders)
+    int height, width;
+    getmaxyx(viewer->file_content_win, height, width);
+    for (int y = 1; y < height - 1; y++) {
+        wmove(viewer->file_content_win, y, 1);
+        for (int x = 1; x < width - 1; x++) {
+            waddch(viewer->file_content_win, ' ');
+        }
+    }
+    
     // Draw rounded border
     draw_rounded_box(viewer->file_content_win);
     
     if (viewer->file_count > 0 && viewer->selected_file < viewer->file_count) {
         // Show file content (preview in list mode, scrollable in view mode)
-        if (viewer->current_mode == MODE_FILE_LIST) {
+        if (viewer->current_mode == NCURSES_MODE_FILE_LIST) {
             mvwprintw(viewer->file_content_win, 0, 2, " 2. %s (Preview) ", viewer->files[viewer->selected_file].filename);
         } else {
             mvwprintw(viewer->file_content_win, 0, 2, " 2. %s (Scrollable) ", viewer->files[viewer->selected_file].filename);
@@ -716,11 +693,6 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
         int max_lines_visible = viewer->terminal_height - 4;
         int content_width = viewer->terminal_width - viewer->file_panel_width - 3;
         
-        // Clear all content lines first
-        for (int i = 1; i <= max_lines_visible + 1; i++) {
-            wmove(viewer->file_content_win, i, 1);
-            wclrtoeol(viewer->file_content_win);
-        }
         
         for (int i = 0; i < max_lines_visible && 
              (i + viewer->file_scroll_offset) < viewer->file_line_count; i++) {
@@ -731,12 +703,12 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
             int y = i + 1;
             
             // Apply color based on line type
-            if (line->is_diff_line) {
-                if (line->type == '+') {
-                    wattron(viewer->file_content_win, COLOR_PAIR(1));
-                } else if (line->type == '-') {
-                    wattron(viewer->file_content_win, COLOR_PAIR(2));
-                }
+            if (line->type == '+') {
+                wattron(viewer->file_content_win, COLOR_PAIR(1)); // Green for additions
+            } else if (line->type == '-') {
+                wattron(viewer->file_content_win, COLOR_PAIR(2)); // Red for deletions
+            } else if (line->type == '@') {
+                wattron(viewer->file_content_win, COLOR_PAIR(3)); // Cyan for hunk headers
             }
             
             // Truncate line to fit window
@@ -752,12 +724,12 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
             mvwprintw(viewer->file_content_win, y, 1, "%s", display_line);
             
             // Reset color
-            if (line->is_diff_line) {
-                if (line->type == '+') {
-                    wattroff(viewer->file_content_win, COLOR_PAIR(1));
-                } else if (line->type == '-') {
-                    wattroff(viewer->file_content_win, COLOR_PAIR(2));
-                }
+            if (line->type == '+') {
+                wattroff(viewer->file_content_win, COLOR_PAIR(1));
+            } else if (line->type == '-') {
+                wattroff(viewer->file_content_win, COLOR_PAIR(2));
+            } else if (line->type == '@') {
+                wattroff(viewer->file_content_win, COLOR_PAIR(3));
             }
         }
         
@@ -768,15 +740,15 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
         }
         
         // Show current position info only in file view mode
-        if (viewer->current_mode == MODE_FILE_VIEW) {
-            mvwprintw(viewer->file_content_win, max_lines_visible + 1, 2, 
+        if (viewer->current_mode == NCURSES_MODE_FILE_VIEW) {
+            mvwprintw(viewer->file_content_win, max_lines_visible + 1, 1, 
                      "Line %d-%d of %d", 
                      viewer->file_scroll_offset + 1,
                      viewer->file_scroll_offset + max_lines_visible < viewer->file_line_count ? 
                          viewer->file_scroll_offset + max_lines_visible : viewer->file_line_count,
                      viewer->file_line_count);
         } else {
-            mvwprintw(viewer->file_content_win, max_lines_visible + 1, 2, 
+            mvwprintw(viewer->file_content_win, max_lines_visible + 1, 1, 
                      "Press Enter to enable scrolling");
         }
     }
@@ -800,21 +772,21 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     // Global number key navigation
     switch (key) {
         case '1':
-            viewer->current_mode = MODE_FILE_LIST;
+            viewer->current_mode = NCURSES_MODE_FILE_LIST;
             break;
         case '2':
             // Switch to file view mode and load selected file
             if (viewer->file_count > 0 && viewer->selected_file < viewer->file_count) {
                 load_full_file_with_diff(viewer, viewer->files[viewer->selected_file].filename);
-                viewer->current_mode = MODE_FILE_VIEW;
+                viewer->current_mode = NCURSES_MODE_FILE_VIEW;
             }
             break;
         case '3':
-            viewer->current_mode = MODE_COMMIT_LIST;
+            viewer->current_mode = NCURSES_MODE_COMMIT_LIST;
             break;
     }
     
-    if (viewer->current_mode == MODE_FILE_LIST) {
+    if (viewer->current_mode == NCURSES_MODE_FILE_LIST) {
         // File list mode navigation
         switch (key) {
             case 27: // ESC
@@ -864,7 +836,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
                 break;
                 
             case '\t': // Tab - switch to commit list mode
-                viewer->current_mode = MODE_COMMIT_LIST;
+                viewer->current_mode = NCURSES_MODE_COMMIT_LIST;
                 break;
                 
             case '\n':
@@ -873,15 +845,15 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
                 // Enter file view mode and load the selected file
                 if (viewer->file_count > 0 && viewer->selected_file < viewer->file_count) {
                     load_full_file_with_diff(viewer, viewer->files[viewer->selected_file].filename);
-                    viewer->current_mode = MODE_FILE_VIEW;
+                    viewer->current_mode = NCURSES_MODE_FILE_VIEW;
                 }
                 break;
         }
-    } else if (viewer->current_mode == MODE_FILE_VIEW) {
+    } else if (viewer->current_mode == NCURSES_MODE_FILE_VIEW) {
         // File view mode navigation
         switch (key) {
             case 27: // ESC
-                viewer->current_mode = MODE_FILE_LIST; // Return to file list mode
+                viewer->current_mode = NCURSES_MODE_FILE_LIST; // Return to file list mode
                 break;
                 
             case KEY_UP:
@@ -938,12 +910,12 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
                 }
                 break;
         }
-    } else if (viewer->current_mode == MODE_COMMIT_LIST) {
+    } else if (viewer->current_mode == NCURSES_MODE_COMMIT_LIST) {
         // Commit list mode navigation
         switch (key) {
             case 27: // ESC
             case '\t': // Tab - return to file list mode
-                viewer->current_mode = MODE_FILE_LIST;
+                viewer->current_mode = NCURSES_MODE_FILE_LIST;
                 break;
                 
             case KEY_UP:
@@ -998,9 +970,9 @@ int run_ncurses_diff_viewer(void) {
     
     // Initial display
     attron(COLOR_PAIR(3));
-    if (viewer.current_mode == MODE_FILE_LIST) {
+    if (viewer.current_mode == NCURSES_MODE_FILE_LIST) {
         mvprintw(0, 0, "Git Diff Viewer: 1=files 2=view 3=commits | j/k=nav Space=mark A=all C=commit P=push | q=quit");
-    } else if (viewer.current_mode == MODE_FILE_VIEW) {
+    } else if (viewer.current_mode == NCURSES_MODE_FILE_VIEW) {
         mvprintw(0, 0, "Git Diff Viewer: 1=files 2=view 3=commits | j/k=scroll Ctrl+U/D=30lines | q=quit");
     } else {
         mvprintw(0, 0, "Git Diff Viewer: 1=files 2=view 3=commits | j/k=nav P=push | q=quit");
@@ -1024,9 +996,9 @@ int run_ncurses_diff_viewer(void) {
             clrtoeol();
             
             attron(COLOR_PAIR(3));
-            if (viewer.current_mode == MODE_FILE_LIST) {
+            if (viewer.current_mode == NCURSES_MODE_FILE_LIST) {
                 mvprintw(0, 0, "Git Diff Viewer: 1=files 2=view 3=commits | j/k=nav Space=mark A=all C=commit P=push | q=quit");
-            } else if (viewer.current_mode == MODE_FILE_VIEW) {
+            } else if (viewer.current_mode == NCURSES_MODE_FILE_VIEW) {
                 mvprintw(0, 0, "Git Diff Viewer: 1=files 2=view 3=commits | j/k=scroll Ctrl+U/D=30lines | q=quit");
             } else {
                 mvprintw(0, 0, "Git Diff Viewer: 1=files 2=view 3=commits | j/k=nav P=push | q=quit");

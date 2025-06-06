@@ -8,12 +8,12 @@
 #include "shell.h"
 #include "themes.h"
 #include <ctype.h>
+#include <pthread.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <pthread.h>
-#include <signal.h>
 #include <unistd.h>
 
 // Global timer state
@@ -24,7 +24,8 @@ static struct {
   char session_name[128];     // Optional session name
   pthread_t timer_thread;     // Timer thread ID
   BOOL should_exit;           // Flag to signal thread exit
-  BOOL is_temporarily_hidden; // Flag to hide timer while running external programs
+  BOOL is_temporarily_hidden; // Flag to hide timer while running external
+                              // programs
 } timer_state = {FALSE, 0, "", "", 0, FALSE, FALSE};
 
 /**
@@ -57,7 +58,8 @@ static void update_timer_display(void) {
 
   if (strlen(timer_state.session_name) > 0) {
     snprintf(timer_state.display_text, sizeof(timer_state.display_text),
-             "%s: %02d:%02d remaining", timer_state.session_name, minutes, seconds);
+             "%s: %02d:%02d remaining", timer_state.session_name, minutes,
+             seconds);
   } else {
     snprintf(timer_state.display_text, sizeof(timer_state.display_text),
              "Focus: %02d:%02d remaining", minutes, seconds);
@@ -81,7 +83,7 @@ static void *timer_thread_func(void *param) {
 
       // Update status bar with completion message
       update_timer_display();
-      
+
       // Keep thread running to display completion message
     }
 
@@ -109,7 +111,8 @@ int start_countdown_timer(int seconds, const char *name) {
 
   // Set optional session name
   if (name && *name) {
-    strncpy(timer_state.session_name, name, sizeof(timer_state.session_name) - 1);
+    strncpy(timer_state.session_name, name,
+            sizeof(timer_state.session_name) - 1);
     timer_state.session_name[sizeof(timer_state.session_name) - 1] = '\0';
   } else {
     timer_state.session_name[0] = '\0';
@@ -119,7 +122,8 @@ int start_countdown_timer(int seconds, const char *name) {
   update_timer_display();
 
   // Create timer thread
-  int ret = pthread_create(&timer_state.timer_thread, NULL, timer_thread_func, NULL);
+  int ret =
+      pthread_create(&timer_state.timer_thread, NULL, timer_thread_func, NULL);
   if (ret != 0) {
     fprintf(stderr, "Failed to create timer thread: %s\n", strerror(ret));
     timer_state.is_active = FALSE;
@@ -145,12 +149,12 @@ void stop_countdown_timer() {
 
   // Wait for thread to terminate (with timeout)
   // Use a more portable approach since pthread_timedjoin_np is GNU-specific
-  
+
   // Set a timeout of 2 seconds
   struct timespec timeout;
   timeout.tv_sec = 2;
   timeout.tv_nsec = 0;
-  
+
   // Sleep for the timeout period - the thread will keep running
   // and clean itself up since we detached it
   nanosleep(&timeout, NULL);
@@ -164,9 +168,7 @@ void stop_countdown_timer() {
 /**
  * Check if a timer is currently active
  */
-BOOL is_timer_active() {
-  return timer_state.is_active;
-}
+BOOL is_timer_active() { return timer_state.is_active; }
 
 /**
  * Get the current timer display text
@@ -181,16 +183,12 @@ const char *get_timer_display() {
 /**
  * Temporarily hide the timer display
  */
-void hide_timer_display(void) {
-  timer_state.is_temporarily_hidden = TRUE;
-}
+void hide_timer_display(void) { timer_state.is_temporarily_hidden = TRUE; }
 
 /**
  * Restore the timer display after it was hidden
  */
-void show_timer_display(void) {
-  timer_state.is_temporarily_hidden = FALSE;
-}
+void show_timer_display(void) { timer_state.is_temporarily_hidden = FALSE; }
 
 /**
  * Parse time string in format "XhYmZs" to seconds
@@ -262,11 +260,15 @@ int lsh_focus_timer(char **args) {
     // No arguments - show help
     printf("Usage: focus_timer [start|stop] [duration] [session name]\n");
     printf("Examples:\n");
-    printf("  focus_timer start 25m \"Coding session\"   # Start a 25-minute timer\n");
-    printf("  focus_timer start 1h30m                  # Start a 1 hour 30 minute timer\n");
-    printf("  focus_timer stop                         # Stop the current timer\n");
-    printf("Current status: %s\n",
-           timer_state.is_active ? timer_state.display_text : "No active timer");
+    printf("  focus_timer start 25m \"Coding session\"   # Start a 25-minute "
+           "timer\n");
+    printf("  focus_timer start 1h30m                  # Start a 1 hour 30 "
+           "minute timer\n");
+    printf("  focus_timer stop                         # Stop the current "
+           "timer\n");
+    printf("Current status: %s\n", timer_state.is_active
+                                       ? timer_state.display_text
+                                       : "No active timer");
     return 1;
   }
 

@@ -36,9 +36,9 @@ typedef struct {
 } NCursesCommit;
 
 typedef enum {
-    MODE_FILE_LIST,
-    MODE_FILE_VIEW,
-    MODE_COMMIT_LIST
+    NCURSES_MODE_FILE_LIST,
+    NCURSES_MODE_FILE_VIEW,
+    NCURSES_MODE_COMMIT_LIST
 } NCursesViewMode;
 
 typedef struct {

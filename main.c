@@ -1,4 +1,3 @@
-// brih
 /**
  * main.c
  * Entry point for the LSH shell program

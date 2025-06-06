@@ -30,6 +30,7 @@ int init_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
     cbreak();
     noecho();
     keypad(stdscr, TRUE);
+    nodelay(stdscr, TRUE); // Make getch() non-blocking
     
     // Enable colors
     if (has_colors()) {
@@ -508,8 +509,16 @@ int commit_marked_files(NCursesDiffViewer *viewer, const char *commit_title) {
 int push_commit(NCursesDiffViewer *viewer, int commit_index) {
     if (!viewer || commit_index < 0 || commit_index >= viewer->commit_count) return 0;
     
-    // Set pushing status
+    // Set pushing status and show it
     viewer->sync_status = SYNC_STATUS_PUSHING;
+    render_status_bar(viewer);
+    
+    // Show pushing animation for a moment
+    for (int i = 0; i < 10; i++) {
+        viewer->spinner_frame++;
+        render_status_bar(viewer);
+        usleep(100000); // 100ms delays for animation
+    }
     
     // Push to origin (hide output)
     int result = system("git push origin 2>/dev/null >/dev/null");
@@ -836,13 +845,15 @@ void update_sync_status(NCursesDiffViewer *viewer) {
     
     time_t current_time = time(NULL);
     
-    // Check if it's time to sync (every 10 seconds)
-    if (current_time - viewer->last_sync_time >= 10) {
+    // Check if it's time to sync (every 5 seconds for more responsive updates)
+    if (current_time - viewer->last_sync_time >= 5) {
         viewer->sync_status = SYNC_STATUS_SYNCING;
-        viewer->last_sync_time = current_time;
+        
+        // Show syncing animation for a brief moment
+        render_status_bar(viewer);
+        usleep(200000); // 200ms delay to show syncing status
         
         // Get updated file list
-        int old_count = viewer->file_count;
         get_ncurses_changed_files(viewer);
         
         // If we're viewing a file and it's still valid, reload it
@@ -854,9 +865,10 @@ void update_sync_status(NCursesDiffViewer *viewer) {
         get_commit_history(viewer);
         
         viewer->sync_status = SYNC_STATUS_SYNCED;
+        viewer->last_sync_time = current_time;
     }
     
-    // Update spinner frame
+    // Always update spinner frame for animation
     viewer->spinner_frame++;
     if (viewer->spinner_frame > 100) viewer->spinner_frame = 0; // Reset to prevent overflow
 }
@@ -1123,7 +1135,12 @@ int run_ncurses_diff_viewer(void) {
         render_status_bar(&viewer);
         
         int c = getch();
-        running = handle_ncurses_diff_input(&viewer, c);
+        if (c != ERR) { // Only process if a key was actually pressed
+            running = handle_ncurses_diff_input(&viewer, c);
+        }
+        
+        // Small delay to prevent excessive CPU usage and allow animations
+        usleep(50000); // 50ms delay
     }
     
     cleanup_ncurses_diff_viewer(&viewer);

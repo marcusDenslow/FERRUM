@@ -1,6 +1,8 @@
+// bruh
 #ifndef SYSTEM_MONITOR_H
 #define SYSTEM_MONITOR_H
 
+#include <ctype.h>
 #include <dirent.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -11,7 +13,6 @@
 #include <termios.h>
 #include <time.h>
 #include <unistd.h>
-#include <ctype.h>
 
 typedef struct {
   float cpu_percent;
@@ -46,4 +47,4 @@ void draw_progress_bar(int percentage, int width);
 void format_progress_bar(int percentage, int width, char *buffer);
 void format_bytes(unsigned long bytes, char *buffer);
 
-#endif 
+#endif

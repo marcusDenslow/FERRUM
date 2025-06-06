@@ -290,6 +290,51 @@ int get_commit_history(NCursesDiffViewer *viewer) {
     viewer->commit_count = 0;
     char line[512];
     
+    // Get list of unpushed commits first
+    char unpushed_hashes[MAX_COMMITS][16];
+    int unpushed_count = 0;
+    
+    FILE *unpushed_fp = popen("git log origin/HEAD..HEAD --format=\"%h\" 2>/dev/null", "r");
+    if (unpushed_fp) {
+        while (fgets(line, sizeof(line), unpushed_fp) != NULL && unpushed_count < MAX_COMMITS) {
+            char *newline = strchr(line, '\n');
+            if (newline) *newline = '\0';
+            strncpy(unpushed_hashes[unpushed_count], line, sizeof(unpushed_hashes[unpushed_count]) - 1);
+            unpushed_hashes[unpushed_count][sizeof(unpushed_hashes[unpushed_count]) - 1] = '\0';
+            unpushed_count++;
+        }
+        pclose(unpushed_fp);
+    }
+    
+    // If origin/HEAD doesn't exist, try origin/main and origin/master
+    if (unpushed_count == 0) {
+        unpushed_fp = popen("git log origin/main..HEAD --format=\"%h\" 2>/dev/null", "r");
+        if (unpushed_fp) {
+            while (fgets(line, sizeof(line), unpushed_fp) != NULL && unpushed_count < MAX_COMMITS) {
+                char *newline = strchr(line, '\n');
+                if (newline) *newline = '\0';
+                strncpy(unpushed_hashes[unpushed_count], line, sizeof(unpushed_hashes[unpushed_count]) - 1);
+                unpushed_hashes[unpushed_count][sizeof(unpushed_hashes[unpushed_count]) - 1] = '\0';
+                unpushed_count++;
+            }
+            pclose(unpushed_fp);
+        }
+    }
+    
+    if (unpushed_count == 0) {
+        unpushed_fp = popen("git log origin/master..HEAD --format=\"%h\" 2>/dev/null", "r");
+        if (unpushed_fp) {
+            while (fgets(line, sizeof(line), unpushed_fp) != NULL && unpushed_count < MAX_COMMITS) {
+                char *newline = strchr(line, '\n');
+                if (newline) *newline = '\0';
+                strncpy(unpushed_hashes[unpushed_count], line, sizeof(unpushed_hashes[unpushed_count]) - 1);
+                unpushed_hashes[unpushed_count][sizeof(unpushed_hashes[unpushed_count]) - 1] = '\0';
+                unpushed_count++;
+            }
+            pclose(unpushed_fp);
+        }
+    }
+    
     while (fgets(line, sizeof(line), fp) != NULL && viewer->commit_count < MAX_COMMITS) {
         // Remove newline
         char *newline = strchr(line, '\n');
@@ -314,8 +359,14 @@ int get_commit_history(NCursesDiffViewer *viewer) {
             strncpy(viewer->commits[viewer->commit_count].title, title, MAX_COMMIT_TITLE_LEN - 1);
             viewer->commits[viewer->commit_count].title[MAX_COMMIT_TITLE_LEN - 1] = '\0';
             
-            // Check if commit is pushed (for now, assume all existing commits are pushed)
-            viewer->commits[viewer->commit_count].is_pushed = 1;
+            // Check if this commit is in the unpushed list
+            viewer->commits[viewer->commit_count].is_pushed = 1; // Default to pushed
+            for (int i = 0; i < unpushed_count; i++) {
+                if (strcmp(viewer->commits[viewer->commit_count].hash, unpushed_hashes[i]) == 0) {
+                    viewer->commits[viewer->commit_count].is_pushed = 0;
+                    break;
+                }
+            }
             
             viewer->commit_count++;
         }
@@ -335,13 +386,23 @@ void toggle_file_mark(NCursesDiffViewer *viewer, int file_index) {
 }
 
 /**
- * Mark all files for commit
+ * Mark all files for commit (or unmark if all are already marked)
  */
 void mark_all_files(NCursesDiffViewer *viewer) {
     if (!viewer) return;
     
+    // Check if all files are already marked
+    int all_marked = 1;
     for (int i = 0; i < viewer->file_count; i++) {
-        viewer->files[i].marked_for_commit = 1;
+        if (!viewer->files[i].marked_for_commit) {
+            all_marked = 0;
+            break;
+        }
+    }
+    
+    // If all are marked, unmark all. Otherwise, mark all
+    for (int i = 0; i < viewer->file_count; i++) {
+        viewer->files[i].marked_for_commit = all_marked ? 0 : 1;
     }
 }
 
@@ -351,12 +412,18 @@ void mark_all_files(NCursesDiffViewer *viewer) {
 int get_commit_title_input(char *title, int max_len) {
     if (!title) return 0;
     
+    // Save current screen
+    WINDOW *saved_screen = dupwin(stdscr);
+    
     // Create a temporary window for input
     int start_y = LINES / 2 - 2;
     int start_x = COLS / 2 - 25;
     WINDOW *input_win = newwin(5, 50, start_y, start_x);
     
-    if (!input_win) return 0;
+    if (!input_win) {
+        if (saved_screen) delwin(saved_screen);
+        return 0;
+    }
     
     box(input_win, 0, 0);
     mvwprintw(input_win, 0, 2, " Commit Title ");
@@ -378,12 +445,14 @@ int get_commit_title_input(char *title, int max_len) {
     
     delwin(input_win);
     
-    // Clear the area where the input window was
-    for (int y = start_y; y < start_y + 5; y++) {
-        for (int x = start_x; x < start_x + 50; x++) {
-            mvprintw(y, x, " ");
-        }
+    // Restore the screen
+    if (saved_screen) {
+        overwrite(saved_screen, stdscr);
+        delwin(saved_screen);
     }
+    
+    // Force a complete redraw
+    clear();
     refresh();
     
     return strlen(title) > 0 ? 1 : 0;
@@ -399,25 +468,20 @@ int commit_marked_files(NCursesDiffViewer *viewer, const char *commit_title) {
     for (int i = 0; i < viewer->file_count; i++) {
         if (viewer->files[i].marked_for_commit) {
             char cmd[1024];
-            snprintf(cmd, sizeof(cmd), "git add \"%s\"", viewer->files[i].filename);
+            snprintf(cmd, sizeof(cmd), "git add \"%s\" 2>/dev/null >/dev/null", viewer->files[i].filename);
             system(cmd);
         }
     }
     
     // Commit with the provided title
     char commit_cmd[1024];
-    snprintf(commit_cmd, sizeof(commit_cmd), "git commit -m \"%s\"", commit_title);
+    snprintf(commit_cmd, sizeof(commit_cmd), "git commit -m \"%s\" 2>/dev/null >/dev/null", commit_title);
     int result = system(commit_cmd);
     
     if (result == 0) {
         // Refresh file list and commit history
         get_ncurses_changed_files(viewer);
         get_commit_history(viewer);
-        
-        // Mark the new commit as unpushed (it will be the first in the list)
-        if (viewer->commit_count > 0) {
-            viewer->commits[0].is_pushed = 0;
-        }
         
         return 1;
     }
@@ -431,14 +495,12 @@ int commit_marked_files(NCursesDiffViewer *viewer, const char *commit_title) {
 int push_commit(NCursesDiffViewer *viewer, int commit_index) {
     if (!viewer || commit_index < 0 || commit_index >= viewer->commit_count) return 0;
     
-    // Push to origin
-    int result = system("git push origin");
+    // Push to origin (hide output)
+    int result = system("git push origin 2>/dev/null >/dev/null");
     
     if (result == 0) {
-        // Mark all commits as pushed
-        for (int i = 0; i < viewer->commit_count; i++) {
-            viewer->commits[i].is_pushed = 1;
-        }
+        // Refresh commit history to get proper push status
+        get_commit_history(viewer);
         return 1;
     }
     

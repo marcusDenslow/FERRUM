@@ -249,6 +249,10 @@ int rename_git_branch(const char *old_name, const char *new_name);
 
 int show_delete_branch_dialog(const char *branch_name);
 
+void show_error_popup(const char *error_message);
+
+int get_current_branch_name(char *branch_name, int max_len);
+
 int branch_has_upstream(const char *branch_name);
 
 int delete_git_branch(const char *branch_name, DeleteBranchOption option);

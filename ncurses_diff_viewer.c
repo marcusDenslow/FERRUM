@@ -1215,6 +1215,24 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
   if (!viewer || commit_index < 0 || commit_index >= viewer->commit_count)
     return 0;
 
+  // Check if current branch has upstream
+  char current_branch[256];
+  if (!get_current_branch_name(current_branch, sizeof(current_branch))) {
+    show_error_popup("Failed to get current branch name");
+    viewer->sync_status = SYNC_STATUS_IDLE;
+    return 0;
+  }
+
+  if (!branch_has_upstream(current_branch)) {
+    char error_msg[512];
+    snprintf(error_msg, sizeof(error_msg), 
+             "Branch '%s' has no upstream. Use: git push --set-upstream origin %s", 
+             current_branch, current_branch);
+    show_error_popup(error_msg);
+    viewer->sync_status = SYNC_STATUS_IDLE;
+    return 0;
+  }
+
   // Check for branch divergence first
   int commits_ahead = 0;
   int commits_behind = 0;
@@ -1224,6 +1242,7 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
   if (is_diverged) {
     if (!show_diverged_branch_dialog(commits_ahead, commits_behind)) {
       // User cancelled
+      viewer->sync_status = SYNC_STATUS_IDLE;
       return 0;
     }
   }
@@ -1250,7 +1269,8 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
     get_commit_history(viewer);
     return 1;
   } else {
-    // Push failed, reset to idle
+    // Push failed, show error
+    show_error_popup("Push failed. Check your network connection and authentication.");
     viewer->sync_status = SYNC_STATUS_IDLE;
   }
 
@@ -2915,10 +2935,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
         
         // Don't allow deleting the current branch
         if (viewer->branches[viewer->selected_branch].status == 1) {
-          // Show error message briefly
-          mvprintw(0, 0, "Cannot delete current branch!");
-          refresh();
-          napms(1500); // Show for 1.5 seconds
+          show_error_popup("Cannot delete current branch!");
           break;
         }
         
@@ -3662,6 +3679,67 @@ int show_delete_branch_dialog(const char *branch_name) {
 }
 
 /**
+ * Show universal error popup
+ */
+void show_error_popup(const char *error_message) {
+  if (!error_message) return;
+  
+  int max_y, max_x;
+  getmaxyx(stdscr, max_y, max_x);
+  
+  int popup_height = 5;
+  int popup_width = strlen(error_message) + 6;
+  if (popup_width > max_x - 4) {
+    popup_width = max_x - 4;
+  }
+  
+  int start_y = (max_y - popup_height) / 2;
+  int start_x = (max_x - popup_width) / 2;
+  
+  WINDOW *popup_win = newwin(popup_height, popup_width, start_y, start_x);
+  
+  wattron(popup_win, COLOR_PAIR(1));
+  box(popup_win, 0, 0);
+  
+  mvwprintw(popup_win, 1, 2, "Error:");
+  mvwprintw(popup_win, 2, 2, "%.*s", popup_width - 4, error_message);
+  mvwprintw(popup_win, 3, 2, "Press any key to continue...");
+  
+  wattroff(popup_win, COLOR_PAIR(1));
+  wrefresh(popup_win);
+  
+  // Wait for user input
+  getch();
+  
+  delwin(popup_win);
+  clear();
+  refresh();
+}
+
+/**
+ * Get current git branch name
+ */
+int get_current_branch_name(char *branch_name, int max_len) {
+  if (!branch_name) return 0;
+  
+  FILE *fp = popen("git rev-parse --abbrev-ref HEAD 2>/dev/null", "r");
+  if (!fp) return 0;
+  
+  if (fgets(branch_name, max_len, fp) != NULL) {
+    // Remove trailing newline
+    int len = strlen(branch_name);
+    if (len > 0 && branch_name[len-1] == '\n') {
+      branch_name[len-1] = '\0';
+    }
+    pclose(fp);
+    return 1;
+  }
+  
+  pclose(fp);
+  return 0;
+}
+
+/**
  * Check if a branch has an upstream
  */
 int branch_has_upstream(const char *branch_name) {
@@ -3683,9 +3761,7 @@ int delete_git_branch(const char *branch_name, DeleteBranchOption option) {
   if (option == DELETE_REMOTE || option == DELETE_BOTH) {
     if (!branch_has_upstream(branch_name)) {
       // Show error message for branches without upstream
-      mvprintw(0, 0, "Error: The selected branch has no upstream (tip: delete the branch locally)");
-      refresh();
-      napms(3000); // Show for 3 seconds
+      show_error_popup("The selected branch has no upstream (tip: delete the branch locally)");
       return 0; // Don't proceed with deletion
     }
   }

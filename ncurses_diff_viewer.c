@@ -1216,15 +1216,7 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
     }
   }
 
-  // Start pushing animation immediately
-  viewer->sync_status = SYNC_STATUS_PUSHING_APPEARING;
-  viewer->animation_frame = 0;
-  viewer->text_char_count = 0;
-
-  // Force render and refresh to show immediate animation start
-  render_status_bar(viewer);
-  wrefresh(viewer->status_bar_win);
-  refresh();
+  // Animation already started by key handler for immediate feedback
 
   // Do the actual push work
   int result;
@@ -2562,6 +2554,14 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     case 'P': // Push commit
       if (viewer->commit_count > 0 &&
           viewer->selected_commit < viewer->commit_count) {
+        // Show immediate feedback
+        viewer->sync_status = SYNC_STATUS_PUSHING_APPEARING;
+        viewer->animation_frame = 0;
+        viewer->text_char_count = 0;
+        // Force a quick render to show "Pushing!" immediately
+        render_status_bar(viewer);
+        wrefresh(viewer->status_bar_win);
+        // Now do the actual push
         push_commit(viewer, viewer->selected_commit);
       }
       break;

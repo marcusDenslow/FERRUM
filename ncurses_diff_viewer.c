@@ -1928,7 +1928,7 @@ void render_status_bar(NCursesDiffViewer *viewer) {
   char sync_text[64] = "";
   char *spinner_chars[] = {"|", "/", "-", "\\"};
   int spinner_idx =
-      viewer->spinner_frame % 4; // Change every frame (~50ms per character)
+      (viewer->spinner_frame / 1) % 4; // Change every frame (~20ms per character)
 
   if (viewer->sync_status == SYNC_STATUS_IDLE) {
     // Show nothing when idle
@@ -2161,12 +2161,9 @@ void update_sync_status(NCursesDiffViewer *viewer) {
           viewer->animation_frame = 0;
         }
       } else if (viewer->sync_status == SYNC_STATUS_PUSHING_VISIBLE) {
-        // Visible with spinner for 1.2 seconds (60 frames at 20ms) - faster
-        if (viewer->animation_frame >= 60) {
-          viewer->sync_status = SYNC_STATUS_PUSHING_DISAPPEARING;
-          viewer->animation_frame = 0;
-          viewer->text_char_count = 7;
-        }
+        // Visible with spinner - keep spinning until push_commit changes status
+        // Don't auto-transition, let push_commit function handle the transition
+        // This allows the spinner to keep going during the blocking git push
       } else if (viewer->sync_status == SYNC_STATUS_PUSHING_DISAPPEARING) {
         // Disappearing: remove one character every frame (0.05s)
         int chars_to_remove = viewer->animation_frame;

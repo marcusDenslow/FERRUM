@@ -1,4 +1,5 @@
 /**
+ * this is a test
  * bookmarks.c
  * Implementation of directory bookmarks functionality
  */
@@ -230,7 +231,7 @@ BookmarkEntry *find_bookmark(const char *name) {
  */
 int lsh_bookmark(char **args) {
   char cwd[PATH_MAX];
-  
+
   // No arguments - add bookmark for current directory
   if (args[1] == NULL) {
     printf("Usage: bookmark <name> [path]\n");
@@ -279,14 +280,15 @@ int lsh_bookmarks(char **args) {
         if (pager) {
           fprintf(pager, "LSH Bookmarks:\n\n");
           for (int i = 0; i < bookmark_count; i++) {
-            fprintf(pager, "  %s -> %s\n", bookmarks[i].name, bookmarks[i].path);
+            fprintf(pager, "  %s -> %s\n", bookmarks[i].name,
+                    bookmarks[i].path);
           }
           pclose(pager);
           return 1;
         }
       }
       pclose(test_nvim);
-      
+
       // Try vim
       FILE *test_vim = popen("which vim 2>/dev/null", "r");
       if (test_vim) {
@@ -297,7 +299,8 @@ int lsh_bookmarks(char **args) {
           if (pager) {
             fprintf(pager, "LSH Bookmarks:\n\n");
             for (int i = 0; i < bookmark_count; i++) {
-              fprintf(pager, "  %s -> %s\n", bookmarks[i].name, bookmarks[i].path);
+              fprintf(pager, "  %s -> %s\n", bookmarks[i].name,
+                      bookmarks[i].path);
             }
             pclose(pager);
             return 1;
@@ -310,13 +313,13 @@ int lsh_bookmarks(char **args) {
 
   // Simple output if no pager available or bookmark count is small
   printf("LSH Bookmarks:\n\n");
-  
+
   // Use ANSI escape codes for colored output
   for (int i = 0; i < bookmark_count; i++) {
-    printf("  " ANSI_COLOR_GREEN "%s" ANSI_COLOR_RESET " -> %s\n", 
+    printf("  " ANSI_COLOR_GREEN "%s" ANSI_COLOR_RESET " -> %s\n",
            bookmarks[i].name, bookmarks[i].path);
   }
-  
+
   return 1;
 }
 
@@ -400,7 +403,8 @@ char *find_matching_bookmark(const char *partial_name) {
 
   // Look for partial matches
   for (int i = 0; i < bookmark_count; i++) {
-    if (strncasecmp(bookmarks[i].name, partial_name, strlen(partial_name)) == 0) {
+    if (strncasecmp(bookmarks[i].name, partial_name, strlen(partial_name)) ==
+        0) {
       return strdup(bookmarks[i].name);
     }
   }

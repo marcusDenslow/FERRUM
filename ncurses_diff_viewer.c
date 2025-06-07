@@ -1224,11 +1224,26 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
   }
 
   if (!branch_has_upstream(current_branch)) {
-    char error_msg[512];
-    snprintf(error_msg, sizeof(error_msg), 
-             "Branch '%s' has no upstream. Use: git push --set-upstream origin %s", 
-             current_branch, current_branch);
-    show_error_popup(error_msg);
+    // Show upstream selection dialog
+    char upstream_selection[512];
+    if (show_upstream_selection_dialog(current_branch, upstream_selection, sizeof(upstream_selection))) {
+      // User selected an upstream, set it up
+      char cmd[1024];
+      snprintf(cmd, sizeof(cmd), "git push --set-upstream %s >/dev/null 2>&1", upstream_selection);
+      
+      int result = system(cmd);
+      if (result == 0) {
+        // Upstream set successfully, show success and refresh
+        viewer->sync_status = SYNC_STATUS_PUSHED_APPEARING;
+        viewer->animation_frame = 0;
+        viewer->text_char_count = 0;
+        get_commit_history(viewer);
+        return 1;
+      } else {
+        show_error_popup("Failed to set upstream and push. Check your connection.");
+      }
+    }
+    
     viewer->sync_status = SYNC_STATUS_IDLE;
     return 0;
   }
@@ -3714,6 +3729,158 @@ void show_error_popup(const char *error_message) {
   delwin(popup_win);
   clear();
   refresh();
+}
+
+/**
+ * Get available git remotes
+ */
+int get_git_remotes(char remotes[][256], int max_remotes) {
+  FILE *fp = popen("git remote 2>/dev/null", "r");
+  if (!fp) return 0;
+  
+  int count = 0;
+  char line[256];
+  
+  while (fgets(line, sizeof(line), fp) && count < max_remotes) {
+    // Remove trailing newline
+    int len = strlen(line);
+    if (len > 0 && line[len-1] == '\n') {
+      line[len-1] = '\0';
+    }
+    
+    if (strlen(line) > 0) {
+      strncpy(remotes[count], line, 255);
+      remotes[count][255] = '\0';
+      count++;
+    }
+  }
+  
+  pclose(fp);
+  return count;
+}
+
+/**
+ * Show upstream selection dialog
+ */
+int show_upstream_selection_dialog(const char *branch_name, char *upstream_result, int max_len) {
+  if (!branch_name || !upstream_result) return 0;
+  
+  int max_y, max_x;
+  getmaxyx(stdscr, max_y, max_x);
+  
+  int dialog_height = 12;
+  int dialog_width = 60;
+  int start_y = (max_y - dialog_height) / 2;
+  int start_x = (max_x - dialog_width) / 2;
+  
+  WINDOW *dialog_win = newwin(dialog_height, dialog_width, start_y, start_x);
+  
+  // Get available remotes
+  char remotes[10][256];
+  int remote_count = get_git_remotes(remotes, 10);
+  
+  char input_buffer[256] = "";
+  int cursor_pos = 0;
+  int selected_suggestion = 0;
+  
+  // Default suggestion
+  if (remote_count > 0) {
+    snprintf(input_buffer, sizeof(input_buffer), "%s %s", remotes[0], branch_name);
+    cursor_pos = strlen(input_buffer);
+  }
+  
+  while (1) {
+    werase(dialog_win);
+    box(dialog_win, 0, 0);
+    
+    // Title
+    mvwprintw(dialog_win, 1, 2, "Set Upstream Branch");
+    mvwprintw(dialog_win, 2, 2, "Enter upstream as <remote> <branchname>");
+    
+    // Input field
+    mvwprintw(dialog_win, 4, 2, "Upstream: %s", input_buffer);
+    
+    // Suggestions header
+    mvwprintw(dialog_win, 6, 2, "Suggestions (press <tab> to focus):");
+    
+    // Show suggestions
+    for (int i = 0; i < remote_count && i < 3; i++) {
+      char suggestion[256];
+      snprintf(suggestion, sizeof(suggestion), "%s %s", remotes[i], branch_name);
+      
+      if (i == selected_suggestion) {
+        wattron(dialog_win, A_REVERSE);
+      }
+      mvwprintw(dialog_win, 7 + i, 4, "%s", suggestion);
+      if (i == selected_suggestion) {
+        wattroff(dialog_win, A_REVERSE);
+      }
+    }
+    
+    // Instructions
+    mvwprintw(dialog_win, dialog_height - 2, 2, "Enter: Set | Esc: Cancel");
+    
+    wrefresh(dialog_win);
+    
+    int key = getch();
+    
+    switch (key) {
+    case 27: // ESC
+      delwin(dialog_win);
+      return 0;
+      
+    case '\n':
+    case '\r':
+    case KEY_ENTER:
+      if (strlen(input_buffer) > 0) {
+        strncpy(upstream_result, input_buffer, max_len - 1);
+        upstream_result[max_len - 1] = '\0';
+        delwin(dialog_win);
+        return 1;
+      }
+      break;
+      
+    case '\t':
+      // Tab to select suggestion
+      if (remote_count > 0 && selected_suggestion < remote_count) {
+        snprintf(input_buffer, sizeof(input_buffer), "%s %s", 
+                remotes[selected_suggestion], branch_name);
+        cursor_pos = strlen(input_buffer);
+      }
+      break;
+      
+    case KEY_UP:
+      if (selected_suggestion > 0) {
+        selected_suggestion--;
+      }
+      break;
+      
+    case KEY_DOWN:
+      if (selected_suggestion < remote_count - 1) {
+        selected_suggestion++;
+      }
+      break;
+      
+    case KEY_BACKSPACE:
+    case 127:
+      if (cursor_pos > 0) {
+        cursor_pos--;
+        input_buffer[cursor_pos] = '\0';
+      }
+      break;
+      
+    default:
+      if (isprint(key) && cursor_pos < (int)sizeof(input_buffer) - 1) {
+        input_buffer[cursor_pos] = key;
+        cursor_pos++;
+        input_buffer[cursor_pos] = '\0';
+      }
+      break;
+    }
+  }
+  
+  delwin(dialog_win);
+  return 0;
 }
 
 /**

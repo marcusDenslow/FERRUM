@@ -251,6 +251,10 @@ int show_delete_branch_dialog(const char *branch_name);
 
 void show_error_popup(const char *error_message);
 
+int get_git_remotes(char remotes[][256], int max_remotes);
+
+int show_upstream_selection_dialog(const char *branch_name, char *upstream_result, int max_len);
+
 int get_current_branch_name(char *branch_name, int max_len);
 
 int branch_has_upstream(const char *branch_name);

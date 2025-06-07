@@ -1231,6 +1231,10 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
       char cmd[1024];
       snprintf(cmd, sizeof(cmd), "git push --set-upstream %s >/dev/null 2>&1", upstream_selection);
       
+      // Clear screen to prevent output interference
+      clear();
+      refresh();
+      
       int result = system(cmd);
       if (result == 0) {
         // Upstream set successfully, show success and refresh
@@ -1238,6 +1242,13 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
         viewer->animation_frame = 0;
         viewer->text_char_count = 0;
         get_commit_history(viewer);
+        
+        // Force immediate visual refresh of all panels
+        render_file_list_window(viewer);
+        render_commit_list_window(viewer);
+        render_branch_list_window(viewer);
+        render_status_bar(viewer);
+        
         return 1;
       } else {
         show_error_popup("Failed to set upstream and push. Check your connection.");
@@ -1263,15 +1274,19 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
   }
 
   // Animation already started by key handler for immediate feedback
+  
+  // Clear screen to prevent output interference
+  clear();
+  refresh();
 
   // Do the actual push work
   int result;
   if (is_diverged) {
     // Use force push with lease for safety
-    result = system("git push --force-with-lease origin >/dev/null");
+    result = system("git push --force-with-lease origin >/dev/null 2>&1");
   } else {
     // Normal push
-    result = system("git push origin >/dev/null");
+    result = system("git push origin >/dev/null 2>&1");
   }
 
   if (result == 0) {
@@ -1282,6 +1297,13 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
 
     // Refresh commit history to get proper push status
     get_commit_history(viewer);
+    
+    // Force immediate visual refresh of all panels
+    render_file_list_window(viewer);
+    render_commit_list_window(viewer);
+    render_branch_list_window(viewer);
+    render_status_bar(viewer);
+    
     return 1;
   } else {
     // Push failed, show error

@@ -23,6 +23,7 @@ int init_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
   memset(viewer, 0, sizeof(NCursesDiffViewer));
   viewer->selected_file = 0;
   viewer->file_scroll_offset = 0;
+  viewer->file_cursor_line = 0;
   viewer->selected_stash = 0;
   viewer->current_mode = NCURSES_MODE_FILE_LIST;
   viewer->sync_status = SYNC_STATUS_IDLE;
@@ -198,6 +199,7 @@ int load_full_file_with_diff(NCursesDiffViewer *viewer, const char *filename) {
 
   viewer->file_line_count = 0;
   viewer->file_scroll_offset = 0;
+  viewer->file_cursor_line = 0;
 
   // Check if this is a new file
   if (is_ncurses_new_file(filename)) {
@@ -1577,7 +1579,9 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
   // Show content if available
   if (viewer->file_line_count > 0) {
 
-    int max_lines_visible = viewer->terminal_height - 4;
+    int height, width;
+    getmaxyx(viewer->file_content_win, height, width);
+    int max_lines_visible = height - 2;
     int content_width = viewer->terminal_width - viewer->file_panel_width - 3;
 
     for (int i = 0; i < max_lines_visible &&
@@ -1588,9 +1592,15 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
       NCursesFileLine *line = &viewer->file_lines[line_idx];
 
       int y = i + 1;
+      int is_cursor_line = (line_idx == viewer->file_cursor_line);
+      
+      // Apply line highlighting for cursor line
+      if (is_cursor_line) {
+        wattron(viewer->file_content_win, A_REVERSE);
+      }
 
       // Handle commit header coloring
-      if (line->type == 'h') {
+      if (line->type == 'h' && viewer->current_mode == NCURSES_MODE_FILE_VIEW) {
         // Commit header line with special coloring for hash and branches
         char display_line[1024];
         if ((int)strlen(line->line) > content_width - 2) {
@@ -1695,8 +1705,26 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
             x++;
           }
         }
-      } else if (line->type == 'i') {
-        // Commit info lines (Author, Date) in white with colored labels
+      } else if (line->type == 'h') {
+        // In commit/stash view, show header lines as plain white text
+        char display_line[1024];
+        if ((int)strlen(line->line) > content_width - 2) {
+          strncpy(display_line, line->line, content_width - 5);
+          display_line[content_width - 5] = '\0';
+          strcat(display_line, "...");
+        } else {
+          strcpy(display_line, line->line);
+        }
+        mvwprintw(viewer->file_content_win, y, 1, "%s", display_line);
+        
+        // For cursor line on blank lines, fill with spaces to show highlighting
+        if (is_cursor_line && strlen(display_line) == 0) {
+          for (int x = 1; x < content_width; x++) {
+            mvwaddch(viewer->file_content_win, y, x, ' ');
+          }
+        }
+      } else if (line->type == 'i' && viewer->current_mode == NCURSES_MODE_FILE_VIEW) {
+        // Commit info lines (Author, Date) in white with colored labels - only in file view
         char display_line[1024];
         if ((int)strlen(line->line) > content_width - 2) {
           strncpy(display_line, line->line, content_width - 5);
@@ -1719,6 +1747,24 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
           mvwprintw(viewer->file_content_win, y, 7, "%s", &display_line[6]);
         } else {
           mvwprintw(viewer->file_content_win, y, 1, "%s", display_line);
+        }
+      } else if (line->type == 'i') {
+        // In commit/stash view, just show plain white text
+        char display_line[1024];
+        if ((int)strlen(line->line) > content_width - 2) {
+          strncpy(display_line, line->line, content_width - 5);
+          display_line[content_width - 5] = '\0';
+          strcat(display_line, "...");
+        } else {
+          strcpy(display_line, line->line);
+        }
+        mvwprintw(viewer->file_content_win, y, 1, "%s", display_line);
+        
+        // For cursor line on blank lines, fill with spaces to show highlighting
+        if (is_cursor_line && strlen(display_line) == 0) {
+          for (int x = 1; x < content_width; x++) {
+            mvwaddch(viewer->file_content_win, y, x, ' ');
+          }
         }
       } else if (line->type == 's') {
         // File statistics line - need to color + and - characters and byte changes
@@ -1807,6 +1853,13 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
         }
 
         mvwprintw(viewer->file_content_win, y, 1, "%s", display_line);
+        
+        // For cursor line on blank lines, fill with spaces to show highlighting
+        if (is_cursor_line && strlen(display_line) == 0) {
+          for (int x = 1; x < content_width; x++) {
+            mvwaddch(viewer->file_content_win, y, x, ' ');
+          }
+        }
 
         // Reset color
         if (line->type == '+') {
@@ -1816,6 +1869,11 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
         } else if (line->type == '@') {
           wattroff(viewer->file_content_win, COLOR_PAIR(3));
         }
+      }
+      
+      // Turn off line highlighting if it was applied
+      if (is_cursor_line) {
+        wattroff(viewer->file_content_win, A_REVERSE);
       }
     }
 
@@ -2384,38 +2442,66 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
 
     case KEY_UP:
     case 'k':
-      // Scroll content up
-      if (viewer->file_scroll_offset > 0) {
-        viewer->file_scroll_offset--;
+      // Move cursor up (vim-style)
+      if (viewer->file_cursor_line > 0) {
+        viewer->file_cursor_line--;
+        // Scroll up if cursor gets within 3 lines of top
+        if (viewer->file_cursor_line < viewer->file_scroll_offset + 3 && viewer->file_scroll_offset > 0) {
+          viewer->file_scroll_offset--;
+        }
       }
       break;
 
     case KEY_DOWN:
     case 'j':
-      // Scroll content down
-      if (viewer->file_line_count > max_lines_visible &&
-          viewer->file_scroll_offset <
-              viewer->file_line_count - max_lines_visible) {
-        viewer->file_scroll_offset++;
+      // Move cursor down (vim-style)
+      if (viewer->file_cursor_line < viewer->file_line_count - 1) {
+        viewer->file_cursor_line++;
+        // Scroll down if cursor gets within 3 lines of bottom
+        if (viewer->file_cursor_line >= viewer->file_scroll_offset + max_lines_visible - 3 && 
+            viewer->file_scroll_offset < viewer->file_line_count - max_lines_visible) {
+          viewer->file_scroll_offset++;
+        }
       }
       break;
 
-    case 21: // Ctrl+U
-      // Scroll up 30 lines
-      viewer->file_scroll_offset -= 30;
+    case KEY_PPAGE: // Page Up
+      // Scroll content up by page
+      viewer->file_scroll_offset -= max_lines_visible;
       if (viewer->file_scroll_offset < 0) {
         viewer->file_scroll_offset = 0;
       }
       break;
 
+    case 21: // Ctrl+U
+      // Move cursor up half page
+      viewer->file_cursor_line -= max_lines_visible / 2;
+      if (viewer->file_cursor_line < 0) {
+        viewer->file_cursor_line = 0;
+      }
+      // Adjust scroll to keep cursor visible with padding
+      if (viewer->file_cursor_line < viewer->file_scroll_offset + 3) {
+        viewer->file_scroll_offset = viewer->file_cursor_line - 3;
+        if (viewer->file_scroll_offset < 0) {
+          viewer->file_scroll_offset = 0;
+        }
+      }
+      break;
+
     case 4: // Ctrl+D
-      // Scroll down 30 lines
-      if (viewer->file_line_count > max_lines_visible) {
-        viewer->file_scroll_offset += 30;
-        if (viewer->file_scroll_offset >
-            viewer->file_line_count - max_lines_visible) {
-          viewer->file_scroll_offset =
-              viewer->file_line_count - max_lines_visible;
+      // Move cursor down half page
+      viewer->file_cursor_line += max_lines_visible / 2;
+      if (viewer->file_cursor_line >= viewer->file_line_count) {
+        viewer->file_cursor_line = viewer->file_line_count - 1;
+      }
+      // Adjust scroll to keep cursor visible with padding
+      if (viewer->file_cursor_line >= viewer->file_scroll_offset + max_lines_visible - 3) {
+        viewer->file_scroll_offset = viewer->file_cursor_line - max_lines_visible + 4;
+        if (viewer->file_scroll_offset > viewer->file_line_count - max_lines_visible) {
+          viewer->file_scroll_offset = viewer->file_line_count - max_lines_visible;
+        }
+        if (viewer->file_scroll_offset < 0) {
+          viewer->file_scroll_offset = 0;
         }
       }
       break;
@@ -2430,14 +2516,6 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
           viewer->file_scroll_offset =
               viewer->file_line_count - max_lines_visible;
         }
-      }
-      break;
-
-    case KEY_PPAGE: // Page Up
-      // Scroll content up by page
-      viewer->file_scroll_offset -= max_lines_visible;
-      if (viewer->file_scroll_offset < 0) {
-        viewer->file_scroll_offset = 0;
       }
       break;
     }
@@ -2630,38 +2708,58 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
 
     case KEY_UP:
     case 'k':
-      // Scroll content up
-      if (viewer->file_scroll_offset > 0) {
-        viewer->file_scroll_offset--;
+      // Move cursor up (vim-style)
+      if (viewer->file_cursor_line > 0) {
+        viewer->file_cursor_line--;
+        // Scroll up if cursor gets within 3 lines of top
+        if (viewer->file_cursor_line < viewer->file_scroll_offset + 3 && viewer->file_scroll_offset > 0) {
+          viewer->file_scroll_offset--;
+        }
       }
       break;
 
     case KEY_DOWN:
     case 'j':
-      // Scroll content down
-      if (viewer->file_line_count > max_lines_visible &&
-          viewer->file_scroll_offset <
-              viewer->file_line_count - max_lines_visible) {
-        viewer->file_scroll_offset++;
+      // Move cursor down (vim-style)
+      if (viewer->file_cursor_line < viewer->file_line_count - 1) {
+        viewer->file_cursor_line++;
+        // Scroll down if cursor gets within 3 lines of bottom
+        if (viewer->file_cursor_line >= viewer->file_scroll_offset + max_lines_visible - 3 && 
+            viewer->file_scroll_offset < viewer->file_line_count - max_lines_visible) {
+          viewer->file_scroll_offset++;
+        }
       }
       break;
 
     case 21: // Ctrl+U
-      // Scroll up 30 lines
-      viewer->file_scroll_offset -= 30;
-      if (viewer->file_scroll_offset < 0) {
-        viewer->file_scroll_offset = 0;
+      // Move cursor up half page
+      viewer->file_cursor_line -= max_lines_visible / 2;
+      if (viewer->file_cursor_line < 0) {
+        viewer->file_cursor_line = 0;
+      }
+      // Adjust scroll to keep cursor visible with padding
+      if (viewer->file_cursor_line < viewer->file_scroll_offset + 3) {
+        viewer->file_scroll_offset = viewer->file_cursor_line - 3;
+        if (viewer->file_scroll_offset < 0) {
+          viewer->file_scroll_offset = 0;
+        }
       }
       break;
 
     case 4: // Ctrl+D
-      // Scroll down 30 lines
-      if (viewer->file_line_count > max_lines_visible) {
-        viewer->file_scroll_offset += 30;
-        if (viewer->file_scroll_offset >
-            viewer->file_line_count - max_lines_visible) {
-          viewer->file_scroll_offset =
-              viewer->file_line_count - max_lines_visible;
+      // Move cursor down half page
+      viewer->file_cursor_line += max_lines_visible / 2;
+      if (viewer->file_cursor_line >= viewer->file_line_count) {
+        viewer->file_cursor_line = viewer->file_line_count - 1;
+      }
+      // Adjust scroll to keep cursor visible with padding
+      if (viewer->file_cursor_line >= viewer->file_scroll_offset + max_lines_visible - 3) {
+        viewer->file_scroll_offset = viewer->file_cursor_line - max_lines_visible + 4;
+        if (viewer->file_scroll_offset > viewer->file_line_count - max_lines_visible) {
+          viewer->file_scroll_offset = viewer->file_line_count - max_lines_visible;
+        }
+        if (viewer->file_scroll_offset < 0) {
+          viewer->file_scroll_offset = 0;
         }
       }
       break;
@@ -2696,38 +2794,58 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
 
     case KEY_UP:
     case 'k':
-      // Scroll content up
-      if (viewer->file_scroll_offset > 0) {
-        viewer->file_scroll_offset--;
+      // Move cursor up (vim-style)
+      if (viewer->file_cursor_line > 0) {
+        viewer->file_cursor_line--;
+        // Scroll up if cursor gets within 3 lines of top
+        if (viewer->file_cursor_line < viewer->file_scroll_offset + 3 && viewer->file_scroll_offset > 0) {
+          viewer->file_scroll_offset--;
+        }
       }
       break;
 
     case KEY_DOWN:
     case 'j':
-      // Scroll content down
-      if (viewer->file_line_count > max_lines_visible &&
-          viewer->file_scroll_offset <
-              viewer->file_line_count - max_lines_visible) {
-        viewer->file_scroll_offset++;
+      // Move cursor down (vim-style)
+      if (viewer->file_cursor_line < viewer->file_line_count - 1) {
+        viewer->file_cursor_line++;
+        // Scroll down if cursor gets within 3 lines of bottom
+        if (viewer->file_cursor_line >= viewer->file_scroll_offset + max_lines_visible - 3 && 
+            viewer->file_scroll_offset < viewer->file_line_count - max_lines_visible) {
+          viewer->file_scroll_offset++;
+        }
       }
       break;
 
     case 21: // Ctrl+U
-      // Scroll up 30 lines
-      viewer->file_scroll_offset -= 30;
-      if (viewer->file_scroll_offset < 0) {
-        viewer->file_scroll_offset = 0;
+      // Move cursor up half page
+      viewer->file_cursor_line -= max_lines_visible / 2;
+      if (viewer->file_cursor_line < 0) {
+        viewer->file_cursor_line = 0;
+      }
+      // Adjust scroll to keep cursor visible with padding
+      if (viewer->file_cursor_line < viewer->file_scroll_offset + 3) {
+        viewer->file_scroll_offset = viewer->file_cursor_line - 3;
+        if (viewer->file_scroll_offset < 0) {
+          viewer->file_scroll_offset = 0;
+        }
       }
       break;
 
     case 4: // Ctrl+D
-      // Scroll down 30 lines
-      if (viewer->file_line_count > max_lines_visible) {
-        viewer->file_scroll_offset += 30;
-        if (viewer->file_scroll_offset >
-            viewer->file_line_count - max_lines_visible) {
-          viewer->file_scroll_offset =
-              viewer->file_line_count - max_lines_visible;
+      // Move cursor down half page
+      viewer->file_cursor_line += max_lines_visible / 2;
+      if (viewer->file_cursor_line >= viewer->file_line_count) {
+        viewer->file_cursor_line = viewer->file_line_count - 1;
+      }
+      // Adjust scroll to keep cursor visible with padding
+      if (viewer->file_cursor_line >= viewer->file_scroll_offset + max_lines_visible - 3) {
+        viewer->file_scroll_offset = viewer->file_cursor_line - max_lines_visible + 4;
+        if (viewer->file_scroll_offset > viewer->file_line_count - max_lines_visible) {
+          viewer->file_scroll_offset = viewer->file_line_count - max_lines_visible;
+        }
+        if (viewer->file_scroll_offset < 0) {
+          viewer->file_scroll_offset = 0;
         }
       }
       break;
@@ -3167,6 +3285,7 @@ int parse_content_lines(NCursesDiffViewer *viewer, const char *content) {
 
   viewer->file_line_count = 0;
   viewer->file_scroll_offset = 0;
+  viewer->file_cursor_line = 0;
 
   // Parse line by line, preserving empty lines
   const char *line_start = content;

@@ -78,6 +78,7 @@ typedef struct {
   NCursesFileLine file_lines[MAX_FULL_FILE_LINES];
   int file_line_count;
   int file_scroll_offset;
+  int file_cursor_line;
   NCursesCommit commits[MAX_COMMITS];
   int commit_count;
   int selected_commit;

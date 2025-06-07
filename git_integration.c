@@ -441,7 +441,7 @@ int get_commit_details(const char *commit_hash, char *commit_info, size_t info_s
   }
 
   char cmd[512];
-  snprintf(cmd, sizeof(cmd), "git show --stat=120 --format=\"commit %%H %%d%%n%%nAuthor: %%an <%%ae>%%n%%nDate: %%ad%%n%%n%%n    %%s%%n%%n%%n    %%b%%n%%n\" %s 2>/dev/null", commit_hash);
+  snprintf(cmd, sizeof(cmd), "git show --stat=120 --format=\"commit %%H %%d%%n%%nAuthor: %%an <%%ae>%%n%%nDate: %%ad%%n%%n%%n    %%s%%n%%n%%n    %%b%%n%%n%%n\" %s 2>/dev/null", commit_hash);
   
   FILE *fp = popen(cmd, "r");
   if (!fp) {
@@ -472,9 +472,9 @@ int get_commit_details(const char *commit_hash, char *commit_info, size_t info_s
   }
   
   // Add spacing after file stats, before diff content
-  if (total_read < info_size - 4) {
-    strcat(commit_info, "\n\n");
-    total_read += 2;
+  if (total_read < info_size - 6) {
+    strcat(commit_info, "\n\n\n");
+    total_read += 3;
   }
   
   // Read all the diff content (this includes diff --git headers, @@ hunks, and +/- lines)

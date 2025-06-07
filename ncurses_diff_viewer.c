@@ -1231,10 +1231,6 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
       char cmd[1024];
       snprintf(cmd, sizeof(cmd), "git push --set-upstream %s >/dev/null 2>&1", upstream_selection);
       
-      // Clear screen to prevent output interference
-      clear();
-      refresh();
-      
       int result = system(cmd);
       if (result == 0) {
         // Upstream set successfully, show success and refresh
@@ -1243,11 +1239,10 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
         viewer->text_char_count = 0;
         get_commit_history(viewer);
         
-        // Force immediate visual refresh of all panels
-        render_file_list_window(viewer);
+        // Only refresh the commit pane
+        werase(viewer->commit_list_win);
         render_commit_list_window(viewer);
-        render_branch_list_window(viewer);
-        render_status_bar(viewer);
+        wrefresh(viewer->commit_list_win);
         
         return 1;
       } else {
@@ -1274,10 +1269,6 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
   }
 
   // Animation already started by key handler for immediate feedback
-  
-  // Clear screen to prevent output interference
-  clear();
-  refresh();
 
   // Do the actual push work
   int result;
@@ -1298,11 +1289,10 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
     // Refresh commit history to get proper push status
     get_commit_history(viewer);
     
-    // Force immediate visual refresh of all panels
-    render_file_list_window(viewer);
+    // Only refresh the commit pane
+    werase(viewer->commit_list_win);
     render_commit_list_window(viewer);
-    render_branch_list_window(viewer);
-    render_status_bar(viewer);
+    wrefresh(viewer->commit_list_win);
     
     return 1;
   } else {

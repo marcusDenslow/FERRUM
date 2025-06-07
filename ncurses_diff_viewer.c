@@ -1234,11 +1234,10 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
   int result;
   if (is_diverged) {
     // Use force push with lease for safety
-    result =
-        system("git push --force-with-lease origin 2>/dev/null >/dev/null");
+    result = system("git push --force-with-lease origin >/dev/null");
   } else {
     // Normal push
-    result = system("git push origin 2>/dev/null >/dev/null");
+    result = system("git push origin >/dev/null");
   }
 
   if (result == 0) {

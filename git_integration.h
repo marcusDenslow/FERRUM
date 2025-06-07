@@ -86,4 +86,24 @@ int pop_git_stash(int stash_index);
  */
 int drop_git_stash(int stash_index);
 
+/**
+ * Get detailed commit information including diff
+ *
+ * @param commit_hash The commit hash to get info for
+ * @param commit_info Buffer to store formatted commit info
+ * @param info_size Size of commit_info buffer
+ * @return 1 if successful, 0 otherwise
+ */
+int get_commit_details(const char *commit_hash, char *commit_info, size_t info_size);
+
+/**
+ * Get stash diff information
+ *
+ * @param stash_index Index of stash to get diff for
+ * @param stash_diff Buffer to store formatted stash diff
+ * @param diff_size Size of stash_diff buffer
+ * @return 1 if successful, 0 otherwise
+ */
+int get_stash_diff(int stash_index, char *stash_diff, size_t diff_size);
+
 #endif // GIT_INTEGRATION_H

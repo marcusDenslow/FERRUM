@@ -431,3 +431,100 @@ int drop_git_stash(int stash_index) {
   int result = system(cmd);
   return (result == 0) ? 1 : 0;
 }
+
+/**
+ * Get detailed commit information including diff
+ */
+int get_commit_details(const char *commit_hash, char *commit_info, size_t info_size) {
+  if (!commit_hash || !commit_info || info_size == 0) {
+    return 0;
+  }
+
+  char cmd[512];
+  snprintf(cmd, sizeof(cmd), "git show --stat=120 --format=\"commit %%H (HEAD -> %%D)%%n%%nAuthor: %%an <%%ae>%%n%%nDate: %%ad%%n%%n    %%s%%n%%n    %%b%%n\" %s 2>/dev/null", commit_hash);
+  
+  FILE *fp = popen(cmd, "r");
+  if (!fp) {
+    return 0;
+  }
+
+  size_t total_read = 0;
+  char buffer[1024];
+  
+  while (fgets(buffer, sizeof(buffer), fp) != NULL && total_read < info_size - 1) {
+    size_t line_len = strlen(buffer);
+    if (total_read + line_len < info_size - 1) {
+      strcpy(commit_info + total_read, buffer);
+      total_read += line_len;
+    } else {
+      break;
+    }
+  }
+  
+  commit_info[total_read] = '\0';
+  pclose(fp);
+  
+  // Add spacing before diff content
+  if (total_read < info_size - 5) {
+    strcat(commit_info, "\n\n\n");
+    total_read += 3;
+  }
+  
+  // Now get the full diff content with all the @@ hunks and +/- lines
+  snprintf(cmd, sizeof(cmd), "git diff %s^..%s 2>/dev/null", commit_hash, commit_hash);
+  fp = popen(cmd, "r");
+  if (!fp) {
+    return total_read > 0 ? 1 : 0;
+  }
+  
+  // Read all the diff content (this includes diff --git headers, @@ hunks, and +/- lines)
+  while (fgets(buffer, sizeof(buffer), fp) != NULL && total_read < info_size - 1) {
+    size_t line_len = strlen(buffer);
+    if (total_read + line_len < info_size - 1) {
+      strcpy(commit_info + total_read, buffer);
+      total_read += line_len;
+    } else {
+      break;
+    }
+  }
+  
+  commit_info[total_read] = '\0';
+  pclose(fp);
+  
+  return 1;
+}
+
+/**
+ * Get stash diff information
+ */
+int get_stash_diff(int stash_index, char *stash_diff, size_t diff_size) {
+  if (stash_index < 0 || !stash_diff || diff_size == 0) {
+    return 0;
+  }
+
+  char cmd[256];
+  snprintf(cmd, sizeof(cmd), "git stash show -p stash@{%d} 2>/dev/null", stash_index);
+  
+  FILE *fp = popen(cmd, "r");
+  if (!fp) {
+    return 0;
+  }
+
+  size_t total_read = 0;
+  char buffer[1024];
+  
+  while (fgets(buffer, sizeof(buffer), fp) != NULL && total_read < diff_size - 1) {
+    size_t line_len = strlen(buffer);
+    if (total_read + line_len < diff_size - 1) {
+      strcpy(stash_diff + total_read, buffer);
+      total_read += line_len;
+    } else {
+      break;
+    }
+  }
+  
+  stash_diff[total_read] = '\0';
+  pclose(fp);
+  
+  return total_read > 0 ? 1 : 0;
+}

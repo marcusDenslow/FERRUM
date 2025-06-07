@@ -49,7 +49,7 @@ int init_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
     init_pair(2, COLOR_RED, COLOR_BLACK);    // Deletions
     init_pair(3, COLOR_CYAN, COLOR_BLACK);   // Headers
     init_pair(4, COLOR_YELLOW, COLOR_BLACK); // Selected
-    init_pair(5, COLOR_WHITE, COLOR_BLUE);   // Highlighted selection
+    init_pair(5, COLOR_BLACK, COLOR_WHITE);   // Highlighted selection - low opacity line highlight
   }
 
   getmaxyx(stdscr, viewer->terminal_height, viewer->terminal_width);
@@ -1325,20 +1325,33 @@ void render_file_list_window(NCursesDiffViewer *viewer) {
     if (i >= viewer->file_count)
       continue;
 
-    // Show selection indicator
-    if (i == viewer->selected_file) {
-      if (viewer->current_mode == NCURSES_MODE_FILE_LIST) {
-        wattron(viewer->file_list_win, COLOR_PAIR(5));
-        mvwprintw(viewer->file_list_win, y, 1, ">");
-      } else {
-        wattron(viewer->file_list_win, COLOR_PAIR(1));
-        mvwprintw(viewer->file_list_win, y, 1, "*");
-      }
+    // Check if this line should be highlighted
+    int is_selected = (i == viewer->selected_file && 
+                       viewer->current_mode == NCURSES_MODE_FILE_LIST);
+    int is_marked = (i == viewer->selected_file && 
+                     viewer->current_mode != NCURSES_MODE_FILE_LIST);
+    
+    // Apply line highlight if selected
+    if (is_selected) {
+      wattron(viewer->file_list_win, COLOR_PAIR(5));
+    }
+
+    // Show selection indicator  
+    if (is_selected) {
+      mvwprintw(viewer->file_list_win, y, 1, ">");
+    } else if (is_marked) {
+      wattron(viewer->file_list_win, COLOR_PAIR(1));
+      mvwprintw(viewer->file_list_win, y, 1, "*");
+      wattroff(viewer->file_list_win, COLOR_PAIR(1));
     } else {
       mvwprintw(viewer->file_list_win, y, 1, " ");
     }
 
-    // Status indicator
+    // Status indicator - turn off highlight temporarily for colored status
+    if (is_selected) {
+      wattroff(viewer->file_list_win, COLOR_PAIR(5));
+    }
+    
     char status = viewer->files[i].status;
     if (status == 'M') {
       wattron(viewer->file_list_win, COLOR_PAIR(4));
@@ -1355,6 +1368,11 @@ void render_file_list_window(NCursesDiffViewer *viewer) {
     } else {
       mvwprintw(viewer->file_list_win, y, 2, "%c", status);
     }
+    
+    // Restore highlight if it was on
+    if (is_selected) {
+      wattron(viewer->file_list_win, COLOR_PAIR(5));
+    }
 
     // Filename (truncated to fit panel with "..")
     int max_name_len = viewer->file_panel_width - 6; // Leave space for border
@@ -1367,21 +1385,24 @@ void render_file_list_window(NCursesDiffViewer *viewer) {
       strcpy(truncated_name, viewer->files[i].filename);
     }
 
-    // Color filename green if marked for commit
+    // Check if marked for commit and apply green color
     if (viewer->files[i].marked_for_commit) {
-      wattron(viewer->file_list_win, COLOR_PAIR(1));
-    }
-    mvwprintw(viewer->file_list_win, y, 4, "%s", truncated_name);
-    if (viewer->files[i].marked_for_commit) {
-      wattroff(viewer->file_list_win, COLOR_PAIR(1));
-    }
-
-    if (i == viewer->selected_file) {
-      if (viewer->current_mode == NCURSES_MODE_FILE_LIST) {
+      if (is_selected) {
         wattroff(viewer->file_list_win, COLOR_PAIR(5));
-      } else {
-        wattroff(viewer->file_list_win, COLOR_PAIR(1));
       }
+      wattron(viewer->file_list_win, COLOR_PAIR(1));
+      mvwprintw(viewer->file_list_win, y, 4, "%s", truncated_name);
+      wattroff(viewer->file_list_win, COLOR_PAIR(1));
+      if (is_selected) {
+        wattron(viewer->file_list_win, COLOR_PAIR(5));
+      }
+    } else {
+      mvwprintw(viewer->file_list_win, y, 4, "%s", truncated_name);
+    }
+    
+    // Turn off line highlight if it was applied
+    if (is_selected) {
+      wattroff(viewer->file_list_win, COLOR_PAIR(5));
     }
   }
 
@@ -1419,17 +1440,27 @@ void render_commit_list_window(NCursesDiffViewer *viewer) {
     if (i >= viewer->commit_count)
       continue;
 
-    // Show selection indicator for commit list mode
-    if (i == viewer->selected_commit &&
-        viewer->current_mode == NCURSES_MODE_COMMIT_LIST) {
+    // Check if this commit line should be highlighted
+    int is_selected_commit = (i == viewer->selected_commit &&
+                             viewer->current_mode == NCURSES_MODE_COMMIT_LIST);
+    
+    // Apply line highlight if selected
+    if (is_selected_commit) {
       wattron(viewer->commit_list_win, COLOR_PAIR(5));
+    }
+    
+    // Show selection indicator
+    if (is_selected_commit) {
       mvwprintw(viewer->commit_list_win, y, 1, ">");
-      wattroff(viewer->commit_list_win, COLOR_PAIR(5));
     } else {
       mvwprintw(viewer->commit_list_win, y, 1, " ");
     }
 
     // Show commit hash with color based on push status
+    if (is_selected_commit) {
+      wattroff(viewer->commit_list_win, COLOR_PAIR(5));
+    }
+    
     if (viewer->commits[i].is_pushed) {
       wattron(viewer->commit_list_win, COLOR_PAIR(1)); // Green for pushed
     } else {
@@ -1455,6 +1486,10 @@ void render_commit_list_window(NCursesDiffViewer *viewer) {
     } else {
       wattroff(viewer->commit_list_win, COLOR_PAIR(2));
     }
+    
+    if (is_selected_commit) {
+      wattron(viewer->commit_list_win, COLOR_PAIR(5));
+    }
 
     // Show commit title (always white, truncated to fit with "..")
     int max_title_len = viewer->file_panel_width - 15; // Leave space for border
@@ -1468,6 +1503,11 @@ void render_commit_list_window(NCursesDiffViewer *viewer) {
     }
 
     mvwprintw(viewer->commit_list_win, y, 13, "%s", truncated_title);
+    
+    // Turn off selection highlighting if this was the selected commit
+    if (is_selected_commit) {
+      wattroff(viewer->commit_list_win, COLOR_PAIR(5));
+    }
   }
 
   wrefresh(viewer->commit_list_win);
@@ -1493,7 +1533,34 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
   // Draw rounded border
   draw_rounded_box(viewer->file_content_win);
 
-  if (viewer->file_count > 0 && viewer->selected_file < viewer->file_count) {
+  // Determine what content to show based on current mode
+  if (viewer->current_mode == NCURSES_MODE_COMMIT_LIST || viewer->current_mode == NCURSES_MODE_COMMIT_VIEW) {
+    // Show commit info
+    if (viewer->commit_count > 0 && viewer->selected_commit < viewer->commit_count) {
+      if (viewer->current_mode == NCURSES_MODE_COMMIT_LIST) {
+        mvwprintw(viewer->file_content_win, 0, 2, " 2. Commit %s (Preview) ",
+                  viewer->commits[viewer->selected_commit].hash);
+      } else {
+        mvwprintw(viewer->file_content_win, 0, 2, " 2. Commit %s (Scrollable) ",
+                  viewer->commits[viewer->selected_commit].hash);
+      }
+    } else {
+      mvwprintw(viewer->file_content_win, 0, 2, " 2. Commit View ");
+    }
+  } else if (viewer->current_mode == NCURSES_MODE_STASH_LIST || viewer->current_mode == NCURSES_MODE_STASH_VIEW) {
+    // Show stash info
+    if (viewer->stash_count > 0 && viewer->selected_stash < viewer->stash_count) {
+      if (viewer->current_mode == NCURSES_MODE_STASH_LIST) {
+        mvwprintw(viewer->file_content_win, 0, 2, " 2. Stash@{%d} (Preview) ",
+                  viewer->selected_stash);
+      } else {
+        mvwprintw(viewer->file_content_win, 0, 2, " 2. Stash@{%d} (Scrollable) ",
+                  viewer->selected_stash);
+      }
+    } else {
+      mvwprintw(viewer->file_content_win, 0, 2, " 2. Stash View ");
+    }
+  } else if (viewer->file_count > 0 && viewer->selected_file < viewer->file_count) {
     // Show file content (preview in list mode, scrollable in view mode)
     if (viewer->current_mode == NCURSES_MODE_FILE_LIST) {
       mvwprintw(viewer->file_content_win, 0, 2, " 2. %s (Preview) ",
@@ -1502,6 +1569,12 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
       mvwprintw(viewer->file_content_win, 0, 2, " 2. %s (Scrollable) ",
                 viewer->files[viewer->selected_file].filename);
     }
+  } else {
+    mvwprintw(viewer->file_content_win, 0, 2, " 2. Content View ");
+  }
+
+  // Show content if available
+  if (viewer->file_line_count > 0) {
 
     int max_lines_visible = viewer->terminal_height - 4;
     int content_width = viewer->terminal_width - viewer->file_panel_width - 3;
@@ -1515,35 +1588,176 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
 
       int y = i + 1;
 
-      // Apply color based on line type
-      if (line->type == '+') {
-        wattron(viewer->file_content_win, COLOR_PAIR(1)); // Green for additions
-      } else if (line->type == '-') {
-        wattron(viewer->file_content_win, COLOR_PAIR(2)); // Red for deletions
-      } else if (line->type == '@') {
-        wattron(viewer->file_content_win,
-                COLOR_PAIR(3)); // Cyan for hunk headers
-      }
+      // Handle commit header coloring
+      if (line->type == 'h') {
+        // Commit header line with special coloring for hash and branches
+        char display_line[1024];
+        if ((int)strlen(line->line) > content_width - 2) {
+          strncpy(display_line, line->line, content_width - 5);
+          display_line[content_width - 5] = '\0';
+          strcat(display_line, "...");
+        } else {
+          strcpy(display_line, line->line);
+        }
 
-      // Truncate line to fit window
-      char display_line[1024];
-      if ((int)strlen(line->line) > content_width - 2) {
-        strncpy(display_line, line->line, content_width - 5);
-        display_line[content_width - 5] = '\0';
-        strcat(display_line, "...");
+        // Print character by character with appropriate colors
+        int x = 1;
+        for (int j = 0; display_line[j] != '\0' && x < content_width; j++) {
+          char c = display_line[j];
+          
+          // Look for specific patterns to color
+          if (strstr(&display_line[j], "commit ") == &display_line[j]) {
+            // Color "commit" in cyan
+            wattron(viewer->file_content_win, COLOR_PAIR(3));
+            mvwprintw(viewer->file_content_win, y, x, "commit ");
+            wattroff(viewer->file_content_win, COLOR_PAIR(3));
+            x += 7;
+            j += 6; // Skip "commit"
+          } else if (strstr(&display_line[j], "HEAD") == &display_line[j]) {
+            // Color "HEAD" in yellow
+            wattron(viewer->file_content_win, COLOR_PAIR(4));
+            mvwprintw(viewer->file_content_win, y, x, "HEAD");
+            wattroff(viewer->file_content_win, COLOR_PAIR(4));
+            x += 4;
+            j += 3; // Skip "HEAD"
+          } else if (c == '(' || c == ')' || c == ',' || strstr(&display_line[j], "->") == &display_line[j]) {
+            // Color branch separators in cyan
+            wattron(viewer->file_content_win, COLOR_PAIR(3));
+            if (strstr(&display_line[j], "->") == &display_line[j]) {
+              mvwprintw(viewer->file_content_win, y, x, "->");
+              x += 2;
+              j += 1; // Will be incremented by loop
+            } else {
+              mvwaddch(viewer->file_content_win, y, x, c);
+              x++;
+            }
+            wattroff(viewer->file_content_win, COLOR_PAIR(3));
+          } else {
+            mvwaddch(viewer->file_content_win, y, x, c);
+            x++;
+          }
+        }
+      } else if (line->type == 'i') {
+        // Commit info lines (Author, Date) in white with colored labels
+        char display_line[1024];
+        if ((int)strlen(line->line) > content_width - 2) {
+          strncpy(display_line, line->line, content_width - 5);
+          display_line[content_width - 5] = '\0';
+          strcat(display_line, "...");
+        } else {
+          strcpy(display_line, line->line);
+        }
+
+        // Color the label part
+        if (strncmp(display_line, "Author: ", 8) == 0) {
+          wattron(viewer->file_content_win, COLOR_PAIR(3));
+          mvwprintw(viewer->file_content_win, y, 1, "Author: ");
+          wattroff(viewer->file_content_win, COLOR_PAIR(3));
+          mvwprintw(viewer->file_content_win, y, 9, "%s", &display_line[8]);
+        } else if (strncmp(display_line, "Date: ", 6) == 0) {
+          wattron(viewer->file_content_win, COLOR_PAIR(3));
+          mvwprintw(viewer->file_content_win, y, 1, "Date: ");
+          wattroff(viewer->file_content_win, COLOR_PAIR(3));
+          mvwprintw(viewer->file_content_win, y, 7, "%s", &display_line[6]);
+        } else {
+          mvwprintw(viewer->file_content_win, y, 1, "%s", display_line);
+        }
+      } else if (line->type == 's') {
+        // File statistics line - need to color + and - characters and byte changes
+        char display_line[1024];
+        if ((int)strlen(line->line) > content_width - 2) {
+          strncpy(display_line, line->line, content_width - 5);
+          display_line[content_width - 5] = '\0';
+          strcat(display_line, "...");
+        } else {
+          strcpy(display_line, line->line);
+        }
+
+        // Print the line character by character with appropriate colors
+        int x = 1;
+        for (int j = 0; display_line[j] != '\0' && x < content_width; j++) {
+          char c = display_line[j];
+          
+          // Color + characters green, - characters red
+          if (c == '+') {
+            wattron(viewer->file_content_win, COLOR_PAIR(1)); // Green
+            mvwaddch(viewer->file_content_win, y, x, c);
+            wattroff(viewer->file_content_win, COLOR_PAIR(1));
+          } else if (c == '-') {
+            wattron(viewer->file_content_win, COLOR_PAIR(2)); // Red
+            mvwaddch(viewer->file_content_win, y, x, c);
+            wattroff(viewer->file_content_win, COLOR_PAIR(2));
+          } else if (strstr(&display_line[j], "Bin ") == &display_line[j]) {
+            // Handle binary file byte changes
+            char *arrow = strstr(&display_line[j], " -> ");
+            if (arrow) {
+              // Print "Bin " normally
+              mvwprintw(viewer->file_content_win, y, x, "Bin ");
+              x += 4;
+              j += 3; // Skip "Bin"
+              
+              // Print bytes before arrow in red
+              wattron(viewer->file_content_win, COLOR_PAIR(2));
+              while (display_line[j] != '\0' && &display_line[j] < arrow) {
+                mvwaddch(viewer->file_content_win, y, x, display_line[j]);
+                x++;
+                j++;
+              }
+              wattroff(viewer->file_content_win, COLOR_PAIR(2));
+              
+              // Print arrow normally
+              mvwprintw(viewer->file_content_win, y, x, " -> ");
+              x += 4;
+              j += 3; // Skip " -> "
+              
+              // Print bytes after arrow in green
+              wattron(viewer->file_content_win, COLOR_PAIR(1));
+              while (display_line[j] != '\0' && display_line[j] != ' ') {
+                mvwaddch(viewer->file_content_win, y, x, display_line[j]);
+                x++;
+                j++;
+              }
+              wattroff(viewer->file_content_win, COLOR_PAIR(1));
+              j--; // Adjust for loop increment
+            } else {
+              mvwaddch(viewer->file_content_win, y, x, c);
+            }
+          } else {
+            mvwaddch(viewer->file_content_win, y, x, c);
+          }
+          x++;
+        }
       } else {
-        strcpy(display_line, line->line);
-      }
+        // Regular line coloring
+        if (line->type == '+') {
+          wattron(viewer->file_content_win, COLOR_PAIR(1)); // Green for additions
+        } else if (line->type == '-') {
+          wattron(viewer->file_content_win, COLOR_PAIR(2)); // Red for deletions
+        } else if (line->type == '@') {
+          wattron(viewer->file_content_win,
+                  COLOR_PAIR(3)); // Cyan for hunk headers
+        }
 
-      mvwprintw(viewer->file_content_win, y, 1, "%s", display_line);
+        // Truncate line to fit window
+        char display_line[1024];
+        if ((int)strlen(line->line) > content_width - 2) {
+          strncpy(display_line, line->line, content_width - 5);
+          display_line[content_width - 5] = '\0';
+          strcat(display_line, "...");
+        } else {
+          strcpy(display_line, line->line);
+        }
 
-      // Reset color
-      if (line->type == '+') {
-        wattroff(viewer->file_content_win, COLOR_PAIR(1));
-      } else if (line->type == '-') {
-        wattroff(viewer->file_content_win, COLOR_PAIR(2));
-      } else if (line->type == '@') {
-        wattroff(viewer->file_content_win, COLOR_PAIR(3));
+        mvwprintw(viewer->file_content_win, y, 1, "%s", display_line);
+
+        // Reset color
+        if (line->type == '+') {
+          wattroff(viewer->file_content_win, COLOR_PAIR(1));
+        } else if (line->type == '-') {
+          wattroff(viewer->file_content_win, COLOR_PAIR(2));
+        } else if (line->type == '@') {
+          wattroff(viewer->file_content_win, COLOR_PAIR(3));
+        }
       }
     }
 
@@ -1593,6 +1807,10 @@ void render_status_bar(NCursesDiffViewer *viewer) {
   } else if (viewer->current_mode == NCURSES_MODE_STASH_LIST) {
     strcpy(keybindings, "Apply: <space> | Pop: g | Drop: d | Nav: j/k");
   } else if (viewer->current_mode == NCURSES_MODE_FILE_VIEW) {
+    strcpy(keybindings, "Scroll: j/k | Page: Ctrl+U/D | Back: Esc");
+  } else if (viewer->current_mode == NCURSES_MODE_COMMIT_VIEW) {
+    strcpy(keybindings, "Scroll: j/k | Page: Ctrl+U/D | Back: Esc");
+  } else if (viewer->current_mode == NCURSES_MODE_STASH_VIEW) {
     strcpy(keybindings, "Scroll: j/k | Page: Ctrl+U/D | Back: Esc");
   }
 
@@ -1764,11 +1982,28 @@ void update_sync_status(NCursesDiffViewer *viewer) {
 
     // Do the actual sync work immediately
     get_ncurses_changed_files(viewer);
-    if (viewer->selected_file < viewer->file_count && viewer->file_count > 0) {
+    
+    // Only reload file diff if we're actually in a file-related mode
+    if ((viewer->current_mode == NCURSES_MODE_FILE_LIST || 
+         viewer->current_mode == NCURSES_MODE_FILE_VIEW) &&
+        viewer->selected_file < viewer->file_count && viewer->file_count > 0) {
       load_full_file_with_diff(viewer,
                                viewer->files[viewer->selected_file].filename);
     }
+    
     get_commit_history(viewer);
+    
+    // If we're in commit view mode, reload the current commit
+    if (viewer->current_mode == NCURSES_MODE_COMMIT_VIEW &&
+        viewer->commit_count > 0 && viewer->selected_commit < viewer->commit_count) {
+      load_commit_for_viewing(viewer, viewer->commits[viewer->selected_commit].hash);
+    }
+    
+    // If we're in stash view mode, reload the current stash  
+    if (viewer->current_mode == NCURSES_MODE_STASH_VIEW &&
+        viewer->stash_count > 0 && viewer->selected_stash < viewer->stash_count) {
+      load_stash_for_viewing(viewer, viewer->selected_stash);
+    }
   }
 
   // Handle all animation states
@@ -1978,6 +2213,11 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
   switch (key) {
   case '1':
     viewer->current_mode = NCURSES_MODE_FILE_LIST;
+    // Load the selected file content when switching to file list mode
+    if (viewer->file_count > 0 && viewer->selected_file < viewer->file_count) {
+      load_full_file_with_diff(viewer,
+                               viewer->files[viewer->selected_file].filename);
+    }
     break;
   case '2':
     // Switch to file view mode and load selected file
@@ -1989,9 +2229,17 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     break;
   case '3':
     viewer->current_mode = NCURSES_MODE_COMMIT_LIST;
+    // Auto-preview the selected commit
+    if (viewer->commit_count > 0) {
+      load_commit_for_viewing(viewer, viewer->commits[viewer->selected_commit].hash);
+    }
     break;
   case '4':
     viewer->current_mode = NCURSES_MODE_STASH_LIST;
+    // Auto-preview the selected stash
+    if (viewer->stash_count > 0) {
+      load_stash_for_viewing(viewer, viewer->selected_stash);
+    }
     break;
   }
 
@@ -2147,6 +2395,10 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     case 'k':
       if (viewer->selected_commit > 0) {
         viewer->selected_commit--;
+        // Auto-preview the selected commit
+        if (viewer->commit_count > 0) {
+          load_commit_for_viewing(viewer, viewer->commits[viewer->selected_commit].hash);
+        }
       }
       break;
 
@@ -2154,6 +2406,20 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     case 'j':
       if (viewer->selected_commit < viewer->commit_count - 1) {
         viewer->selected_commit++;
+        // Auto-preview the selected commit
+        if (viewer->commit_count > 0) {
+          load_commit_for_viewing(viewer, viewer->commits[viewer->selected_commit].hash);
+        }
+      }
+      break;
+
+    case '\n':
+    case '\r':
+    case KEY_ENTER:
+      // Enter commit view mode
+      if (viewer->commit_count > 0 && viewer->selected_commit < viewer->commit_count) {
+        load_commit_for_viewing(viewer, viewer->commits[viewer->selected_commit].hash);
+        viewer->current_mode = NCURSES_MODE_COMMIT_VIEW;
       }
       break;
 
@@ -2199,6 +2465,10 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     case 'k':
       if (viewer->selected_stash > 0) {
         viewer->selected_stash--;
+        // Auto-preview the selected stash
+        if (viewer->stash_count > 0) {
+          load_stash_for_viewing(viewer, viewer->selected_stash);
+        }
       }
       break;
 
@@ -2206,6 +2476,20 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     case 'j':
       if (viewer->selected_stash < viewer->stash_count - 1) {
         viewer->selected_stash++;
+        // Auto-preview the selected stash
+        if (viewer->stash_count > 0) {
+          load_stash_for_viewing(viewer, viewer->selected_stash);
+        }
+      }
+      break;
+
+    case '\n':
+    case '\r':
+    case KEY_ENTER:
+      // Enter stash view mode
+      if (viewer->stash_count > 0 && viewer->selected_stash < viewer->stash_count) {
+        load_stash_for_viewing(viewer, viewer->selected_stash);
+        viewer->current_mode = NCURSES_MODE_STASH_VIEW;
       }
       break;
 
@@ -2279,6 +2563,138 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
       }
       break;
     }
+  } else if (viewer->current_mode == NCURSES_MODE_COMMIT_VIEW) {
+    // Commit view mode navigation (same as file view)
+    switch (key) {
+    case 27:                                           // ESC
+      viewer->current_mode = NCURSES_MODE_COMMIT_LIST; // Return to commit list mode
+      break;
+
+    case KEY_UP:
+    case 'k':
+      // Scroll content up
+      if (viewer->file_scroll_offset > 0) {
+        viewer->file_scroll_offset--;
+      }
+      break;
+
+    case KEY_DOWN:
+    case 'j':
+      // Scroll content down
+      if (viewer->file_line_count > max_lines_visible &&
+          viewer->file_scroll_offset <
+              viewer->file_line_count - max_lines_visible) {
+        viewer->file_scroll_offset++;
+      }
+      break;
+
+    case 21: // Ctrl+U
+      // Scroll up 30 lines
+      viewer->file_scroll_offset -= 30;
+      if (viewer->file_scroll_offset < 0) {
+        viewer->file_scroll_offset = 0;
+      }
+      break;
+
+    case 4: // Ctrl+D
+      // Scroll down 30 lines
+      if (viewer->file_line_count > max_lines_visible) {
+        viewer->file_scroll_offset += 30;
+        if (viewer->file_scroll_offset >
+            viewer->file_line_count - max_lines_visible) {
+          viewer->file_scroll_offset =
+              viewer->file_line_count - max_lines_visible;
+        }
+      }
+      break;
+
+    case KEY_NPAGE: // Page Down
+    case ' ':
+      // Scroll content down by page
+      if (viewer->file_line_count > max_lines_visible) {
+        viewer->file_scroll_offset += max_lines_visible;
+        if (viewer->file_scroll_offset >
+            viewer->file_line_count - max_lines_visible) {
+          viewer->file_scroll_offset =
+              viewer->file_line_count - max_lines_visible;
+        }
+      }
+      break;
+
+    case KEY_PPAGE: // Page Up
+      // Scroll content up by page
+      viewer->file_scroll_offset -= max_lines_visible;
+      if (viewer->file_scroll_offset < 0) {
+        viewer->file_scroll_offset = 0;
+      }
+      break;
+    }
+  } else if (viewer->current_mode == NCURSES_MODE_STASH_VIEW) {
+    // Stash view mode navigation (same as file view)
+    switch (key) {
+    case 27:                                         // ESC
+      viewer->current_mode = NCURSES_MODE_STASH_LIST; // Return to stash list mode
+      break;
+
+    case KEY_UP:
+    case 'k':
+      // Scroll content up
+      if (viewer->file_scroll_offset > 0) {
+        viewer->file_scroll_offset--;
+      }
+      break;
+
+    case KEY_DOWN:
+    case 'j':
+      // Scroll content down
+      if (viewer->file_line_count > max_lines_visible &&
+          viewer->file_scroll_offset <
+              viewer->file_line_count - max_lines_visible) {
+        viewer->file_scroll_offset++;
+      }
+      break;
+
+    case 21: // Ctrl+U
+      // Scroll up 30 lines
+      viewer->file_scroll_offset -= 30;
+      if (viewer->file_scroll_offset < 0) {
+        viewer->file_scroll_offset = 0;
+      }
+      break;
+
+    case 4: // Ctrl+D
+      // Scroll down 30 lines
+      if (viewer->file_line_count > max_lines_visible) {
+        viewer->file_scroll_offset += 30;
+        if (viewer->file_scroll_offset >
+            viewer->file_line_count - max_lines_visible) {
+          viewer->file_scroll_offset =
+              viewer->file_line_count - max_lines_visible;
+        }
+      }
+      break;
+
+    case KEY_NPAGE: // Page Down
+    case ' ':
+      // Scroll content down by page
+      if (viewer->file_line_count > max_lines_visible) {
+        viewer->file_scroll_offset += max_lines_visible;
+        if (viewer->file_scroll_offset >
+            viewer->file_line_count - max_lines_visible) {
+          viewer->file_scroll_offset =
+              viewer->file_line_count - max_lines_visible;
+        }
+      }
+      break;
+
+    case KEY_PPAGE: // Page Up
+      // Scroll content up by page
+      viewer->file_scroll_offset -= max_lines_visible;
+      if (viewer->file_scroll_offset < 0) {
+        viewer->file_scroll_offset = 0;
+      }
+      break;
+    }
   }
 
   return 1; // Continue
@@ -2308,6 +2724,16 @@ int run_ncurses_diff_viewer(void) {
   // Load the first file by default
   if (viewer.file_count > 0) {
     load_full_file_with_diff(&viewer, viewer.files[0].filename);
+  }
+
+  // Load initial commit preview if available
+  if (viewer.commit_count > 0) {
+    load_commit_for_viewing(&viewer, viewer.commits[0].hash);
+  }
+
+  // Load initial stash preview if available
+  if (viewer.stash_count > 0) {
+    load_stash_for_viewing(&viewer, 0);
   }
 
   // Initial display
@@ -2623,12 +3049,18 @@ void render_stash_list_window(NCursesDiffViewer *viewer) {
     for (int i = 0; i < max_stashes_visible && i < viewer->stash_count; i++) {
       int y = i + 1;
 
-      // Show selection indicator for stash list mode
-      if (i == viewer->selected_stash &&
-          viewer->current_mode == NCURSES_MODE_STASH_LIST) {
+      // Check if this stash line should be highlighted
+      int is_selected_stash = (i == viewer->selected_stash &&
+                               viewer->current_mode == NCURSES_MODE_STASH_LIST);
+      
+      // Apply line highlight if selected
+      if (is_selected_stash) {
         wattron(viewer->stash_list_win, COLOR_PAIR(5));
+      }
+      
+      // Show selection indicator
+      if (is_selected_stash) {
         mvwprintw(viewer->stash_list_win, y, 1, ">");
-        wattroff(viewer->stash_list_win, COLOR_PAIR(5));
       } else {
         mvwprintw(viewer->stash_list_win, y, 1, " ");
       }
@@ -2644,14 +3076,130 @@ void render_stash_list_window(NCursesDiffViewer *viewer) {
         strcpy(truncated_stash, viewer->stashes[i].stash_info);
       }
 
-      // Color stash entries yellow
+      // Show stash info with yellow color
+      if (is_selected_stash) {
+        wattroff(viewer->stash_list_win, COLOR_PAIR(5));
+      }
+      
       wattron(viewer->stash_list_win, COLOR_PAIR(4));
       mvwprintw(viewer->stash_list_win, y, 2, "%s", truncated_stash);
       wattroff(viewer->stash_list_win, COLOR_PAIR(4));
+      
+      if (is_selected_stash) {
+        wattron(viewer->stash_list_win, COLOR_PAIR(5));
+      }
+      
+      // Turn off selection highlighting if this was the selected stash
+      if (is_selected_stash) {
+        wattroff(viewer->stash_list_win, COLOR_PAIR(5));
+      }
     }
   }
 
   wrefresh(viewer->stash_list_win);
+}
+
+/**
+ * Parse and load content lines from text with diff highlighting
+ */
+int parse_content_lines(NCursesDiffViewer *viewer, const char *content) {
+  if (!viewer || !content) {
+    return 0;
+  }
+
+  viewer->file_line_count = 0;
+  viewer->file_scroll_offset = 0;
+
+  char *content_copy = malloc(strlen(content) + 1);
+  if (!content_copy) {
+    return 0;
+  }
+  strcpy(content_copy, content);
+
+  char *line = strtok(content_copy, "\n");
+  while (line != NULL && viewer->file_line_count < MAX_FULL_FILE_LINES) {
+    NCursesFileLine *file_line = &viewer->file_lines[viewer->file_line_count];
+    
+    // Determine line type for syntax highlighting
+    if (strncmp(line, "diff --git", 10) == 0 || 
+        strncmp(line, "index ", 6) == 0 ||
+        strncmp(line, "--- ", 4) == 0 ||
+        strncmp(line, "+++ ", 4) == 0) {
+      file_line->type = '@'; // Use @ for headers
+    } else if (line[0] == '@' && line[1] == '@') {
+      file_line->type = '@'; // Hunk headers
+    } else if (line[0] == '+') {
+      file_line->type = '+'; // Added lines
+    } else if (line[0] == '-') {
+      file_line->type = '-'; // Removed lines
+    } else if (strstr(line, " | ") && (strstr(line, "+") || strstr(line, "-") || strstr(line, "Bin"))) {
+      file_line->type = 's'; // File statistics lines (special type)
+    } else if (strstr(line, " files changed") || strstr(line, " insertions") || strstr(line, " deletions")) {
+      file_line->type = 's'; // Summary statistics lines
+    } else if (strncmp(line, "commit ", 7) == 0) {
+      file_line->type = 'h'; // Commit header
+    } else if (strncmp(line, "Author: ", 8) == 0 || strncmp(line, "Date: ", 6) == 0) {
+      file_line->type = 'i'; // Commit info lines
+    } else {
+      file_line->type = ' '; // Normal/context lines
+    }
+    
+    strncpy(file_line->line, line, sizeof(file_line->line) - 1);
+    file_line->line[sizeof(file_line->line) - 1] = '\0';
+    file_line->is_diff_line = (file_line->type != ' ') ? 1 : 0;
+    
+    viewer->file_line_count++;
+    line = strtok(NULL, "\n");
+  }
+
+  free(content_copy);
+  return viewer->file_line_count;
+}
+
+/**
+ * Load commit details for viewing
+ */
+int load_commit_for_viewing(NCursesDiffViewer *viewer, const char *commit_hash) {
+  if (!viewer || !commit_hash) {
+    return 0;
+  }
+
+  char *commit_content = malloc(50000); // Large buffer for commit details
+  if (!commit_content) {
+    return 0;
+  }
+
+  if (get_commit_details(commit_hash, commit_content, 50000)) {
+    int result = parse_content_lines(viewer, commit_content);
+    free(commit_content);
+    return result;
+  }
+
+  free(commit_content);
+  return 0;
+}
+
+/**
+ * Load stash details for viewing
+ */
+int load_stash_for_viewing(NCursesDiffViewer *viewer, int stash_index) {
+  if (!viewer || stash_index < 0) {
+    return 0;
+  }
+
+  char *stash_content = malloc(50000); // Large buffer for stash details
+  if (!stash_content) {
+    return 0;
+  }
+
+  if (get_stash_diff(stash_index, stash_content, 50000)) {
+    int result = parse_content_lines(viewer, stash_content);
+    free(stash_content);
+    return result;
+  }
+
+  free(stash_content);
+  return 0;
 }
 
 /**

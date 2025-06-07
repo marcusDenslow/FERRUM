@@ -44,7 +44,9 @@ typedef enum {
   NCURSES_MODE_FILE_LIST,
   NCURSES_MODE_FILE_VIEW,
   NCURSES_MODE_COMMIT_LIST,
-  NCURSES_MODE_STASH_LIST
+  NCURSES_MODE_COMMIT_VIEW,
+  NCURSES_MODE_STASH_LIST,
+  NCURSES_MODE_STASH_VIEW
 } NCursesViewMode;
 
 typedef enum {
@@ -216,5 +218,15 @@ int create_ncurses_git_stash(NCursesDiffViewer *viewer);
 int get_stash_name_input(char *stash_name, int max_len);
 
 void render_stash_list_window(NCursesDiffViewer *viewer);
+
+/**
+ * Load commit details for viewing
+ */
+int load_commit_for_viewing(NCursesDiffViewer *viewer, const char *commit_hash);
+
+/**
+ * Load stash details for viewing
+ */
+int load_stash_for_viewing(NCursesDiffViewer *viewer, int stash_index);
 
 #endif // NCURSES_DIFF_VIEWER_H

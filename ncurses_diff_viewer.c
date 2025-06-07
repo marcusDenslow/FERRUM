@@ -2555,9 +2555,9 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
       if (viewer->commit_count > 0 &&
           viewer->selected_commit < viewer->commit_count) {
         // Show immediate feedback
-        viewer->sync_status = SYNC_STATUS_PUSHING_APPEARING;
+        viewer->sync_status = SYNC_STATUS_PUSHING_VISIBLE;
         viewer->animation_frame = 0;
-        viewer->text_char_count = 0;
+        viewer->text_char_count = 7; // Show full "Pushing" immediately
         // Force a quick render to show "Pushing!" immediately
         render_status_bar(viewer);
         wrefresh(viewer->status_bar_win);

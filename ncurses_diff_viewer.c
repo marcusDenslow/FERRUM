@@ -50,6 +50,7 @@ int init_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
     init_pair(3, COLOR_CYAN, COLOR_BLACK);   // Headers
     init_pair(4, COLOR_YELLOW, COLOR_BLACK); // Selected
     init_pair(5, COLOR_BLACK, COLOR_WHITE);   // Highlighted selection - low opacity line highlight
+    init_pair(6, COLOR_MAGENTA, COLOR_BLACK); // Orange-ish color for commit hash
   }
 
   getmaxyx(stdscr, viewer->terminal_height, viewer->terminal_width);
@@ -1613,6 +1614,63 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
             wattroff(viewer->file_content_win, COLOR_PAIR(3));
             x += 7;
             j += 6; // Skip "commit"
+            
+            // Now check if the next characters are a commit hash (40 hex chars)
+            if (j + 1 < (int)strlen(display_line) && display_line[j + 1] != '\0') {
+              int hash_start = j + 1;
+              int hash_len = 0;
+              // Count consecutive hex characters
+              while (hash_start + hash_len < (int)strlen(display_line) && 
+                     hash_len < 40 &&
+                     ((display_line[hash_start + hash_len] >= '0' && display_line[hash_start + hash_len] <= '9') ||
+                      (display_line[hash_start + hash_len] >= 'a' && display_line[hash_start + hash_len] <= 'f') ||
+                      (display_line[hash_start + hash_len] >= 'A' && display_line[hash_start + hash_len] <= 'F'))) {
+                hash_len++;
+              }
+              
+              // If we found a hash (typically 40 chars, but could be shorter), color it orange
+              if (hash_len >= 7) { // At least 7 characters for short hash
+                wattron(viewer->file_content_win, COLOR_PAIR(6));
+                for (int h = 0; h < hash_len; h++) {
+                  mvwaddch(viewer->file_content_win, y, x, display_line[hash_start + h]);
+                  x++;
+                }
+                wattroff(viewer->file_content_win, COLOR_PAIR(6));
+                j += hash_len; // Skip the hash characters
+              }
+            }
+          } else if (strstr(&display_line[j], "origin/main") == &display_line[j]) {
+            // Color "origin/main" in red
+            wattron(viewer->file_content_win, COLOR_PAIR(2));
+            mvwprintw(viewer->file_content_win, y, x, "origin/main");
+            wattroff(viewer->file_content_win, COLOR_PAIR(2));
+            x += 11;
+            j += 10; // Skip "origin/main"
+          } else if (strstr(&display_line[j], "origin/HEAD") == &display_line[j]) {
+            // Color "origin/HEAD" in red
+            wattron(viewer->file_content_win, COLOR_PAIR(2));
+            mvwprintw(viewer->file_content_win, y, x, "origin/HEAD");
+            wattroff(viewer->file_content_win, COLOR_PAIR(2));
+            x += 11;
+            j += 10; // Skip "origin/HEAD"
+          } else if (strstr(&display_line[j], "main") == &display_line[j]) {
+            // Color "main" in green (but only if not part of origin/main)
+            // Check that it's not preceded by "origin/"
+            int is_standalone_main = 1;
+            if (j >= 7 && strncmp(&display_line[j-7], "origin/", 7) == 0) {
+              is_standalone_main = 0;
+            }
+            
+            if (is_standalone_main) {
+              wattron(viewer->file_content_win, COLOR_PAIR(1));
+              mvwprintw(viewer->file_content_win, y, x, "main");
+              wattroff(viewer->file_content_win, COLOR_PAIR(1));
+              x += 4;
+              j += 3; // Skip "main"
+            } else {
+              mvwaddch(viewer->file_content_win, y, x, c);
+              x++;
+            }
           } else if (strstr(&display_line[j], "HEAD") == &display_line[j]) {
             // Color "HEAD" in yellow
             wattron(viewer->file_content_win, COLOR_PAIR(4));

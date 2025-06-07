@@ -16,6 +16,8 @@
 #define MAX_COMMIT_TITLE_LEN 256
 #define MAX_AUTHOR_INITIALS 3
 #define MAX_STASHES 20
+#define MAX_BRANCHES 5
+#define MAX_BRANCHNAME_LEN 256
 
 typedef struct {
   char stash_info[512];
@@ -26,6 +28,11 @@ typedef struct {
   char status;           // 'M' = modified, 'A' = added, 'D' = deleted
   int marked_for_commit; // 1 if marked for commit, 0 otherwise
 } NCursesChangedFile;
+
+typedef struct {
+  char name[MAX_BRANCHNAME_LEN];
+  int status;
+} NCursesBranches;
 
 typedef struct {
   char line[1024];
@@ -46,7 +53,9 @@ typedef enum {
   NCURSES_MODE_COMMIT_LIST,
   NCURSES_MODE_COMMIT_VIEW,
   NCURSES_MODE_STASH_LIST,
-  NCURSES_MODE_STASH_VIEW
+  NCURSES_MODE_STASH_VIEW,
+  NCURSES_MODE_BRANCH_VIEW,
+  NCURSES_MODE_BRANCH_LIST
 } NCursesViewMode;
 
 typedef enum {
@@ -83,12 +92,16 @@ typedef struct {
   int commit_count;
   int selected_commit;
   NCursesStash stashes[MAX_STASHES];
+  NCursesBranches branches[MAX_BRANCHES];
   int stash_count;
+  int branch_count;
   int selected_stash;
+  int selected_branch;
   WINDOW *file_list_win;
   WINDOW *file_content_win;
   WINDOW *commit_list_win;
   WINDOW *stash_list_win;
+  WINDOW *branch_list_win;
   WINDOW *status_bar_win;
   int terminal_width;
   int terminal_height;
@@ -96,6 +109,7 @@ typedef struct {
   int file_panel_height;
   int commit_panel_height;
   int stash_panel_height;
+  int branch_panel_height;
   int status_bar_height;
   NCursesViewMode current_mode;
   SyncStatus sync_status;
@@ -207,12 +221,37 @@ void draw_rounded_box(WINDOW *win);
  */
 void render_status_bar(NCursesDiffViewer *viewer);
 
+void render_branch_list_window(NCursesDiffViewer *viewer);
+
 /**
  * Update sync status and check for new files
  */
 void update_sync_status(NCursesDiffViewer *viewer);
 
 int get_ncurses_git_stashes(NCursesDiffViewer *viewer);
+
+int get_ncurses_git_branches(NCursesDiffViewer *viewer);
+
+typedef enum {
+  DELETE_LOCAL = 0,
+  DELETE_REMOTE = 1,
+  DELETE_BOTH = 2,
+  DELETE_CANCEL = 3
+} DeleteBranchOption;
+
+int get_branch_name_input(char *branch_name, int max_len);
+
+int create_git_branch(const char *branch_name);
+
+int get_rename_branch_input(const char *current_name, char *new_name, int max_len);
+
+int rename_git_branch(const char *old_name, const char *new_name);
+
+int show_delete_branch_dialog(const char *branch_name);
+
+int branch_has_upstream(const char *branch_name);
+
+int delete_git_branch(const char *branch_name, DeleteBranchOption option);
 
 int create_ncurses_git_stash(NCursesDiffViewer *viewer);
 

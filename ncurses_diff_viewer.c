@@ -3168,49 +3168,64 @@ int parse_content_lines(NCursesDiffViewer *viewer, const char *content) {
   viewer->file_line_count = 0;
   viewer->file_scroll_offset = 0;
 
-  char *content_copy = malloc(strlen(content) + 1);
-  if (!content_copy) {
-    return 0;
-  }
-  strcpy(content_copy, content);
-
-  char *line = strtok(content_copy, "\n");
-  while (line != NULL && viewer->file_line_count < MAX_FULL_FILE_LINES) {
+  // Parse line by line, preserving empty lines
+  const char *line_start = content;
+  const char *line_end;
+  
+  while (*line_start && viewer->file_line_count < MAX_FULL_FILE_LINES) {
     NCursesFileLine *file_line = &viewer->file_lines[viewer->file_line_count];
     
+    // Find end of current line
+    line_end = strchr(line_start, '\n');
+    if (!line_end) {
+      line_end = line_start + strlen(line_start);
+    }
+    
+    // Calculate line length
+    size_t line_len = line_end - line_start;
+    
+    // Copy line content (truncate if too long)
+    size_t copy_len = (line_len < sizeof(file_line->line) - 1) ? line_len : sizeof(file_line->line) - 1;
+    strncpy(file_line->line, line_start, copy_len);
+    file_line->line[copy_len] = '\0';
+    
     // Determine line type for syntax highlighting
-    if (strncmp(line, "diff --git", 10) == 0 || 
-        strncmp(line, "index ", 6) == 0 ||
-        strncmp(line, "--- ", 4) == 0 ||
-        strncmp(line, "+++ ", 4) == 0) {
+    if (line_len == 0) {
+      file_line->type = ' '; // Empty line
+    } else if (strncmp(file_line->line, "diff --git", 10) == 0 || 
+        strncmp(file_line->line, "index ", 6) == 0 ||
+        strncmp(file_line->line, "--- ", 4) == 0 ||
+        strncmp(file_line->line, "+++ ", 4) == 0) {
       file_line->type = '@'; // Use @ for headers
-    } else if (line[0] == '@' && line[1] == '@') {
+    } else if (line_len > 1 && file_line->line[0] == '@' && file_line->line[1] == '@') {
       file_line->type = '@'; // Hunk headers
-    } else if (line[0] == '+') {
+    } else if (line_len > 0 && file_line->line[0] == '+') {
       file_line->type = '+'; // Added lines
-    } else if (line[0] == '-') {
+    } else if (line_len > 0 && file_line->line[0] == '-') {
       file_line->type = '-'; // Removed lines
-    } else if (strstr(line, " | ") && (strstr(line, "+") || strstr(line, "-") || strstr(line, "Bin"))) {
+    } else if (strstr(file_line->line, " | ") && (strstr(file_line->line, "+") || strstr(file_line->line, "-") || strstr(file_line->line, "Bin"))) {
       file_line->type = 's'; // File statistics lines (special type)
-    } else if (strstr(line, " files changed") || strstr(line, " insertions") || strstr(line, " deletions")) {
+    } else if (strstr(file_line->line, " files changed") || strstr(file_line->line, " insertions") || strstr(file_line->line, " deletions")) {
       file_line->type = 's'; // Summary statistics lines
-    } else if (strncmp(line, "commit ", 7) == 0) {
+    } else if (strncmp(file_line->line, "commit ", 7) == 0) {
       file_line->type = 'h'; // Commit header
-    } else if (strncmp(line, "Author: ", 8) == 0 || strncmp(line, "Date: ", 6) == 0) {
+    } else if (strncmp(file_line->line, "Author: ", 8) == 0 || strncmp(file_line->line, "Date: ", 6) == 0) {
       file_line->type = 'i'; // Commit info lines
     } else {
       file_line->type = ' '; // Normal/context lines
     }
     
-    strncpy(file_line->line, line, sizeof(file_line->line) - 1);
-    file_line->line[sizeof(file_line->line) - 1] = '\0';
     file_line->is_diff_line = (file_line->type != ' ') ? 1 : 0;
     
     viewer->file_line_count++;
-    line = strtok(NULL, "\n");
+    
+    // Move to next line
+    if (*line_end == '\n') {
+      line_start = line_end + 1;
+    } else {
+      break; // End of content
+    }
   }
-
-  free(content_copy);
   return viewer->file_line_count;
 }
 

@@ -1,4 +1,5 @@
 /**
+ * testing
  * autocorrect.c
  * Implementation of command auto-correction functionality
  */
@@ -17,7 +18,8 @@ int levenshtein_distance(const char *s1, const char *s2) {
 
   // Create a matrix to store distances
   int **matrix = (int **)malloc((len1 + 1) * sizeof(int *));
-  if (!matrix) return -1;
+  if (!matrix)
+    return -1;
 
   for (int i = 0; i <= len1; i++) {
     matrix[i] = (int *)malloc((len2 + 1) * sizeof(int));
@@ -42,8 +44,8 @@ int levenshtein_distance(const char *s1, const char *s2) {
   for (int i = 1; i <= len1; i++) {
     for (int j = 1; j <= len2; j++) {
       int cost = (s1[i - 1] == s2[j - 1]) ? 0 : 1;
-      matrix[i][j] = min3(matrix[i - 1][j] + 1,      // deletion
-                          matrix[i][j - 1] + 1,      // insertion
+      matrix[i][j] = min3(matrix[i - 1][j] + 1,       // deletion
+                          matrix[i][j - 1] + 1,       // insertion
                           matrix[i - 1][j - 1] + cost // substitution
       );
     }
@@ -102,7 +104,7 @@ char **check_for_corrections(char **args) {
   }
 
   const char *command = args[0];
-  
+
   // Skip very short commands or commands that start with ./ or /
   if (strlen(command) < 3 || command[0] == '.' || command[0] == '/') {
     return NULL;
@@ -116,14 +118,16 @@ char **check_for_corrections(char **args) {
 
   // List of common commands to check against
   const char *common_commands[] = {
-      "ls", "cd", "grep", "find", "cat", "mv", "cp", "rm", "mkdir", "rmdir",
-      "chmod", "chown", "ps", "top", "df", "du", "free", "mount", "umount",
-      "tar", "zip", "unzip", "ssh", "scp", "ping", "netstat", "ifconfig",
-      "route", "traceroute", "wget", "curl", "apt", "apt-get", "yum", "dnf",
-      "pacman", "git", "make", "gcc", "g++", "python", "python3", "node",
-      "npm", "vim", "nano", "history", "clear", "exit", "alias", "man", "help", 
-      "touch", "echo", "pwd", "sudo", "shutdown", "reboot", NULL
-  };
+      "ls",     "cd",      "grep",     "find",   "cat",        "mv",
+      "cp",     "rm",      "mkdir",    "rmdir",  "chmod",      "chown",
+      "ps",     "top",     "df",       "du",     "free",       "mount",
+      "umount", "tar",     "zip",      "unzip",  "ssh",        "scp",
+      "ping",   "netstat", "ifconfig", "route",  "traceroute", "wget",
+      "curl",   "apt",     "apt-get",  "yum",    "dnf",        "pacman",
+      "git",    "make",    "gcc",      "g++",    "python",     "python3",
+      "node",   "npm",     "vim",      "nano",   "history",    "clear",
+      "exit",   "alias",   "man",      "help",   "touch",      "echo",
+      "pwd",    "sudo",    "shutdown", "reboot", NULL};
 
   // Check built-in commands too
   int best_distance = 3; // Maximum edit distance to consider a correction
@@ -152,7 +156,7 @@ char **check_for_corrections(char **args) {
     printf("Command '%s' not found. Did you mean '%s'?\n", command, best_match);
     // No longer waiting for input - just return NULL
   }
-  
+
   return NULL;
 }
 

@@ -1286,18 +1286,58 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
   viewer->branch_animation_frame = 0;
   viewer->branch_text_char_count = 7; // Show full "Pushing" immediately
 
+
+	 // Force immediate branch window refresh to show "Pushing" before the blocking git operation
   werase(viewer->branch_list_win);
   render_branch_list_window(viewer);
   wrefresh(viewer->branch_list_win);
 
-  // Do the actual push work
-  int result;
+  // Create a simple animated push with spinner updates
+  pid_t push_pid;
+  int result = 0;
+  
+  // Fork the git push process
   if (is_diverged) {
-    // Use force push with lease for safety
-    result = system("git push --force-with-lease origin >/dev/null 2>&1");
+    push_pid = fork();
+    if (push_pid == 0) {
+      // Child process: do the actual push
+      exit(system("git push --force-with-lease origin >/dev/null 2>&1"));
+    }
   } else {
-    // Normal push
-    result = system("git push origin >/dev/null 2>&1");
+    push_pid = fork();
+    if (push_pid == 0) {
+      // Child process: do the actual push
+      exit(system("git push origin >/dev/null 2>&1"));
+    }
+  }
+  
+  // Parent process: animate the spinner while push is happening
+  if (push_pid > 0) {
+    int status;
+    int spinner_counter = 0;
+    
+    while (waitpid(push_pid, &status, WNOHANG) == 0) {
+      // Update spinner animation
+      viewer->branch_animation_frame = spinner_counter;
+      spinner_counter = (spinner_counter + 1) % 40; // Cycle every 40 iterations
+      
+      // Refresh the branch window to show spinning animation
+      werase(viewer->branch_list_win);
+      render_branch_list_window(viewer);
+      wrefresh(viewer->branch_list_win);
+      
+      // Small delay for animation timing
+      usleep(100000); // 100ms delay
+    }
+    
+    // Get the exit status of the push command
+    if (WIFEXITED(status)) {
+      result = WEXITSTATUS(status);
+    } else {
+      result = 1; // Error
+    }
+  } else {
+    result = 1; // Fork failed
   }
 
   if (result == 0) {

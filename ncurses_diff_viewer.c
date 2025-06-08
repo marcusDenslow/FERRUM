@@ -2457,13 +2457,12 @@ void update_sync_status(NCursesDiffViewer *viewer) {
   viewer->spinner_frame++;
   if (viewer->spinner_frame > 100)
     viewer->spinner_frame = 0; // Reset to prevent overflow
-
-  // Handle branch-specific animations
-  if (viewer->branch_push_status != SYNC_STATUS_IDLE ||
-      viewer->branch_pull_status != SYNC_STATUS_IDLE) {
+	
+	 // Handle branch-specific animations (only for completed states)
+  if (viewer->branch_push_status != SYNC_STATUS_IDLE || viewer->branch_pull_status != SYNC_STATUS_IDLE) {
     viewer->branch_animation_frame++;
-
-    // Handle push animations
+    
+    // Handle push animations (only "Pushed!" phase)
     if (viewer->branch_push_status >= SYNC_STATUS_PUSHED_APPEARING &&
         viewer->branch_push_status <= SYNC_STATUS_PUSHED_DISAPPEARING) {
       if (viewer->branch_push_status == SYNC_STATUS_PUSHED_APPEARING) {
@@ -2479,8 +2478,7 @@ void update_sync_status(NCursesDiffViewer *viewer) {
           viewer->branch_animation_frame = 0;
           viewer->branch_text_char_count = 7;
         }
-      } else if (viewer->branch_push_status ==
-                 SYNC_STATUS_PUSHED_DISAPPEARING) {
+      } else if (viewer->branch_push_status == SYNC_STATUS_PUSHED_DISAPPEARING) {
         int chars_to_remove = viewer->branch_animation_frame;
         viewer->branch_text_char_count = 7 - chars_to_remove;
         if (viewer->branch_text_char_count <= 0) {
@@ -2490,8 +2488,8 @@ void update_sync_status(NCursesDiffViewer *viewer) {
         }
       }
     }
-
-    // Handle pull animations
+    
+    // Handle pull animations (only "Pulled!" phase)
     if (viewer->branch_pull_status >= SYNC_STATUS_PULLED_APPEARING &&
         viewer->branch_pull_status <= SYNC_STATUS_PULLED_DISAPPEARING) {
       if (viewer->branch_pull_status == SYNC_STATUS_PULLED_APPEARING) {
@@ -2507,8 +2505,7 @@ void update_sync_status(NCursesDiffViewer *viewer) {
           viewer->branch_animation_frame = 0;
           viewer->branch_text_char_count = 7;
         }
-      } else if (viewer->branch_pull_status ==
-                 SYNC_STATUS_PULLED_DISAPPEARING) {
+      } else if (viewer->branch_pull_status == SYNC_STATUS_PULLED_DISAPPEARING) {
         int chars_to_remove = viewer->branch_animation_frame / 2;
         viewer->branch_text_char_count = 7 - chars_to_remove;
         if (viewer->branch_text_char_count <= 0) {
@@ -2519,6 +2516,7 @@ void update_sync_status(NCursesDiffViewer *viewer) {
       }
     }
   }
+
 }
 
 /**
@@ -3229,7 +3227,6 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
 
           if (result == 0) {
             // Reset branch animation completely
-            viewer->pulling_branch_index = -1;
             viewer->branch_pull_status = SYNC_STATUS_IDLE;
             viewer->branch_animation_frame = 0;
             viewer->branch_text_char_count = 0;

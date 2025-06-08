@@ -33,6 +33,12 @@ int init_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
   viewer->last_sync_time = time(NULL);
   viewer->animation_frame = 0;
   viewer->text_char_count = 0;
+  viewer->pushing_branch_index = -1;
+  viewer->pulling_branch_index = -1;
+  viewer->branch_push_status = SYNC_STATUS_IDLE;
+  viewer->branch_pull_status = SYNC_STATUS_IDLE;
+  viewer->branch_animation_frame = 0;
+  viewer->branch_text_char_count = 0;
 
   // Set locale for Unicode support
   setlocale(LC_ALL, "");
@@ -1268,6 +1274,18 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
 
   // Animation already started by key handler for immediate feedback
 
+  for (int i = 0; i < viewer->branch_count; i++) {
+    if (viewer->branches[i].status == 1) { // Current branch
+      viewer->pushing_branch_index = i;
+      break;
+    }
+  }
+
+  // Set branch-specific push status
+  viewer->branch_push_status = SYNC_STATUS_PUSHING_VISIBLE;
+  viewer->branch_animation_frame = 0;
+  viewer->branch_text_char_count = 7; // Show full "Pushing" immediately
+
   // Do the actual push work
   int result;
   if (is_diverged) {
@@ -1284,16 +1302,20 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
     viewer->animation_frame = 0;
     viewer->text_char_count = 0;
 
+    // Set branch-specific pushed status
+    viewer->branch_push_status = SYNC_STATUS_PUSHED_APPEARING;
+    viewer->branch_animation_frame = 0;
+    viewer->branch_text_char_count = 0;
+
     // Refresh commit history to get proper push status
     get_commit_history(viewer);
-    get_ncurses_git_branches(viewer);
+    get_ncurses_git_branches(viewer); // Add this line to refresh branch status
 
-    // Only refresh the commit pane
+    // Refresh both commit and branch panes
     werase(viewer->commit_list_win);
     render_commit_list_window(viewer);
     wrefresh(viewer->commit_list_win);
 
-    // refresh the branch pane
     werase(viewer->branch_list_win);
     render_branch_list_window(viewer);
     wrefresh(viewer->branch_list_win);
@@ -1304,6 +1326,8 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
     show_error_popup(
         "Push failed. Check your network connection and authentication.");
     viewer->sync_status = SYNC_STATUS_IDLE;
+    viewer->pushing_branch_index = -1;
+    viewer->branch_push_status = SYNC_STATUS_IDLE;
   }
 
   return 0;
@@ -2388,6 +2412,65 @@ void update_sync_status(NCursesDiffViewer *viewer) {
   viewer->spinner_frame++;
   if (viewer->spinner_frame > 100)
     viewer->spinner_frame = 0; // Reset to prevent overflow
+	
+	 // Handle branch-specific animations
+  if (viewer->branch_push_status != SYNC_STATUS_IDLE || viewer->branch_pull_status != SYNC_STATUS_IDLE) {
+    viewer->branch_animation_frame++;
+    
+    // Handle push animations
+    if (viewer->branch_push_status >= SYNC_STATUS_PUSHED_APPEARING &&
+        viewer->branch_push_status <= SYNC_STATUS_PUSHED_DISAPPEARING) {
+      if (viewer->branch_push_status == SYNC_STATUS_PUSHED_APPEARING) {
+        viewer->branch_text_char_count = viewer->branch_animation_frame;
+        if (viewer->branch_text_char_count >= 7) {
+          viewer->branch_text_char_count = 7;
+          viewer->branch_push_status = SYNC_STATUS_PUSHED_VISIBLE;
+          viewer->branch_animation_frame = 0;
+        }
+      } else if (viewer->branch_push_status == SYNC_STATUS_PUSHED_VISIBLE) {
+        if (viewer->branch_animation_frame >= 100) {
+          viewer->branch_push_status = SYNC_STATUS_PUSHED_DISAPPEARING;
+          viewer->branch_animation_frame = 0;
+          viewer->branch_text_char_count = 7;
+        }
+      } else if (viewer->branch_push_status == SYNC_STATUS_PUSHED_DISAPPEARING) {
+        int chars_to_remove = viewer->branch_animation_frame;
+        viewer->branch_text_char_count = 7 - chars_to_remove;
+        if (viewer->branch_text_char_count <= 0) {
+          viewer->branch_text_char_count = 0;
+          viewer->branch_push_status = SYNC_STATUS_IDLE;
+          viewer->pushing_branch_index = -1;
+        }
+      }
+    }
+    
+    // Handle pull animations
+    if (viewer->branch_pull_status >= SYNC_STATUS_PULLED_APPEARING &&
+        viewer->branch_pull_status <= SYNC_STATUS_PULLED_DISAPPEARING) {
+      if (viewer->branch_pull_status == SYNC_STATUS_PULLED_APPEARING) {
+        viewer->branch_text_char_count = viewer->branch_animation_frame / 2;
+        if (viewer->branch_text_char_count >= 7) {
+          viewer->branch_text_char_count = 7;
+          viewer->branch_pull_status = SYNC_STATUS_PULLED_VISIBLE;
+          viewer->branch_animation_frame = 0;
+        }
+      } else if (viewer->branch_pull_status == SYNC_STATUS_PULLED_VISIBLE) {
+        if (viewer->branch_animation_frame >= 40) {
+          viewer->branch_pull_status = SYNC_STATUS_PULLED_DISAPPEARING;
+          viewer->branch_animation_frame = 0;
+          viewer->branch_text_char_count = 7;
+        }
+      } else if (viewer->branch_pull_status == SYNC_STATUS_PULLED_DISAPPEARING) {
+        int chars_to_remove = viewer->branch_animation_frame / 2;
+        viewer->branch_text_char_count = 7 - chars_to_remove;
+        if (viewer->branch_text_char_count <= 0) {
+          viewer->branch_text_char_count = 0;
+          viewer->branch_pull_status = SYNC_STATUS_IDLE;
+          viewer->pulling_branch_index = -1;
+        }
+      }
+    }
+  }
 }
 
 /**
@@ -3040,11 +3123,20 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
             viewer->branches[viewer->selected_branch].name;
 
         if (viewer->branches[viewer->selected_branch].commits_behind > 0) {
+          // Start pulling animation immediately
           viewer->sync_status = SYNC_STATUS_PULLING_APPEARING;
           viewer->animation_frame = 0;
           viewer->text_char_count = 0;
 
+          // Set branch-specific pull status
+          viewer->pulling_branch_index = viewer->selected_branch;
+          viewer->branch_pull_status = SYNC_STATUS_PULLING_VISIBLE;
+          viewer->branch_animation_frame = 0;
+          viewer->branch_text_char_count = 7; // Show full "Pulling" immediately
+
+          // Render immediately to show the animation start
           render_status_bar(viewer);
+          wrefresh(viewer->status_bar_win);
 
           char pull_cmd[512];
           snprintf(pull_cmd, sizeof(pull_cmd),
@@ -4513,6 +4605,99 @@ void render_branch_list_window(NCursesDiffViewer *viewer) {
         } else {
           wattroff(viewer->branch_list_win, COLOR_PAIR(1));
         }
+
+        if (is_selected_branch) {
+          wattron(viewer->branch_list_win, COLOR_PAIR(5));
+        }
+      }
+
+      // Add push/pull status indicators next to the branch
+      char branch_sync_text[32] = "";
+      char *spinner_chars[] = {"|", "/", "-", "\\"};
+      int spinner_idx = (viewer->branch_animation_frame / 1) % 4;
+
+      // Check if this branch is being pushed
+      if (i == viewer->pushing_branch_index) {
+        if (viewer->branch_push_status >= SYNC_STATUS_PUSHING_APPEARING &&
+            viewer->branch_push_status <= SYNC_STATUS_PUSHING_DISAPPEARING) {
+          if (viewer->branch_push_status == SYNC_STATUS_PUSHING_VISIBLE) {
+            snprintf(branch_sync_text, sizeof(branch_sync_text), " Pushing %s",
+                     spinner_chars[spinner_idx]);
+          } else {
+            char partial_text[16] = "";
+            int chars_to_show = viewer->branch_text_char_count;
+            if (chars_to_show > 7)
+              chars_to_show = 7;
+            if (chars_to_show > 0) {
+              strncpy(partial_text, "Pushing", chars_to_show);
+              partial_text[chars_to_show] = '\0';
+              snprintf(branch_sync_text, sizeof(branch_sync_text), " %s",
+                       partial_text);
+            }
+          }
+        } else if (viewer->branch_push_status >= SYNC_STATUS_PUSHED_APPEARING &&
+                   viewer->branch_push_status <=
+                       SYNC_STATUS_PUSHED_DISAPPEARING) {
+          char partial_text[16] = "";
+          int chars_to_show = viewer->branch_text_char_count;
+          if (chars_to_show > 7)
+            chars_to_show = 7;
+          if (chars_to_show > 0) {
+            strncpy(partial_text, "Pushed!", chars_to_show);
+            partial_text[chars_to_show] = '\0';
+            snprintf(branch_sync_text, sizeof(branch_sync_text), " %s",
+                     partial_text);
+          }
+        }
+      }
+
+      // Check if this branch is being pulled
+      if (i == viewer->pulling_branch_index) {
+        if (viewer->branch_pull_status >= SYNC_STATUS_PULLING_APPEARING &&
+            viewer->branch_pull_status <= SYNC_STATUS_PULLING_DISAPPEARING) {
+          if (viewer->branch_pull_status == SYNC_STATUS_PULLING_VISIBLE) {
+            snprintf(branch_sync_text, sizeof(branch_sync_text), " Pulling %s",
+                     spinner_chars[spinner_idx]);
+          } else {
+            char partial_text[16] = "";
+            int chars_to_show = viewer->branch_text_char_count;
+            if (chars_to_show > 7)
+              chars_to_show = 7;
+            if (chars_to_show > 0) {
+              strncpy(partial_text, "Pulling", chars_to_show);
+              partial_text[chars_to_show] = '\0';
+              snprintf(branch_sync_text, sizeof(branch_sync_text), " %s",
+                       partial_text);
+            }
+          }
+        } else if (viewer->branch_pull_status >= SYNC_STATUS_PULLED_APPEARING &&
+                   viewer->branch_pull_status <=
+                       SYNC_STATUS_PULLED_DISAPPEARING) {
+          char partial_text[16] = "";
+          int chars_to_show = viewer->branch_text_char_count;
+          if (chars_to_show > 7)
+            chars_to_show = 7;
+          if (chars_to_show > 0) {
+            strncpy(partial_text, "Pulled!", chars_to_show);
+            partial_text[chars_to_show] = '\0';
+            snprintf(branch_sync_text, sizeof(branch_sync_text), " %s",
+                     partial_text);
+          }
+        }
+      }
+
+      // Display the branch sync status
+      if (strlen(branch_sync_text) > 0) {
+        if (is_selected_branch) {
+          wattroff(viewer->branch_list_win, COLOR_PAIR(5));
+        }
+
+        wattron(viewer->branch_list_win,
+                COLOR_PAIR(4)); // Yellow for sync status
+        mvwprintw(viewer->branch_list_win, y,
+                  2 + strlen(display_branch) + strlen(status_indicator), "%s",
+                  branch_sync_text);
+        wattroff(viewer->branch_list_win, COLOR_PAIR(4));
 
         if (is_selected_branch) {
           wattron(viewer->branch_list_win, COLOR_PAIR(5));

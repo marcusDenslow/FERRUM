@@ -119,6 +119,13 @@ typedef struct {
   time_t last_sync_time;
   int animation_frame;
   int text_char_count;
+  int pushing_branch_index;
+  int pulling_branch_index;
+  SyncStatus branch_push_status;
+  SyncStatus branch_pull_status;
+  int branch_animation_frame;
+  int branch_text_char_count;
+
 } NCursesDiffViewer;
 
 /**

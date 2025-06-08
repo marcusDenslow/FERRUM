@@ -323,4 +323,3 @@ int lsh_cities(char **args) {
 
   return 1;
 }
-// testing the git diffs in branches here

@@ -1,5 +1,4 @@
 /**
- * this is a test
  * countdown_timer.c
  * Implementation of a focus timer that integrates with the shell status bar
  */

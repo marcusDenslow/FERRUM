@@ -13,6 +13,7 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
+#include <sys/wait.h>
 
 /**
  * Initialize the ncurses diff viewer
@@ -3175,20 +3176,55 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
           viewer->animation_frame = 0;
           viewer->text_char_count = 0;
 
-          // Set branch-specific pull status
+
+						// Set branch-specific pull status
           viewer->pulling_branch_index = viewer->selected_branch;
           viewer->branch_pull_status = SYNC_STATUS_PULLING_VISIBLE;
           viewer->branch_animation_frame = 0;
           viewer->branch_text_char_count = 7; // Show full "Pulling" immediately
-
-          // Render immediately to show the animation start
-          render_status_bar(viewer);
-          wrefresh(viewer->status_bar_win);
-
-          char pull_cmd[512];
-          snprintf(pull_cmd, sizeof(pull_cmd),
-                   "git pull origin %s 2>/dev/null >/dev/null", branch_name);
-          int result = system(pull_cmd);
+          
+          // Force immediate branch window refresh to show "Pulling" before the blocking git operation
+          werase(viewer->branch_list_win);
+          render_branch_list_window(viewer);
+          wrefresh(viewer->branch_list_win);
+          
+          // Create a simple animated pull with spinner updates
+          pid_t pull_pid = fork();
+          int result = 0;
+          
+          if (pull_pid == 0) {
+            // Child process: do the actual pull
+            exit(system("git pull 2>/dev/null >/dev/null"));
+          }
+          
+          // Parent process: animate the spinner while pull is happening
+          if (pull_pid > 0) {
+            int status;
+            int spinner_counter = 0;
+            
+            while (waitpid(pull_pid, &status, WNOHANG) == 0) {
+              // Update spinner animation
+              viewer->branch_animation_frame = spinner_counter;
+              spinner_counter = (spinner_counter + 1) % 40; // Cycle every 40 iterations
+              
+              // Refresh the branch window to show spinning animation
+              werase(viewer->branch_list_win);
+              render_branch_list_window(viewer);
+              wrefresh(viewer->branch_list_win);
+              
+              // Small delay for animation timing
+              usleep(100000); // 100ms delay
+            }
+            
+            // Get the exit status of the pull command
+            if (WIFEXITED(status)) {
+              result = WEXITSTATUS(status);
+            } else {
+              result = 1; // Error
+            }
+          } else {
+            result = 1; // Fork failed
+          }
 
           if (result == 0) {
             get_ncurses_changed_files(viewer);

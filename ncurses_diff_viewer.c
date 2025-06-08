@@ -681,13 +681,11 @@ int show_reset_confirmation_dialog(void) {
 /**
  * Get commit title and message input from user
  */
+
 int get_commit_title_input(char *title, int max_len, char *message,
                            int max_message_len) {
   if (!title)
     return 0;
-
-  // Save current screen
-  WINDOW *saved_screen = dupwin(stdscr);
 
   // Calculate window dimensions
   int input_width = COLS * 0.8; // 80% of screen width
@@ -703,8 +701,6 @@ int get_commit_title_input(char *title, int max_len, char *message,
       newwin(message_height, input_width, message_start_y, start_x);
 
   if (!title_win || !message_win) {
-    if (saved_screen)
-      delwin(saved_screen);
     if (title_win)
       delwin(title_win);
     if (message_win)
@@ -971,16 +967,6 @@ int get_commit_title_input(char *title, int max_len, char *message,
   delwin(title_win);
   delwin(message_win);
 
-  // Restore the screen
-  if (saved_screen) {
-    overwrite(saved_screen, stdscr);
-    delwin(saved_screen);
-  }
-
-  // Force a complete redraw
-  clear();
-  refresh();
-
   return strlen(title) > 0 ? 1 : 0;
 }
 
@@ -1021,7 +1007,7 @@ int commit_marked_files(NCursesDiffViewer *viewer, const char *commit_title,
     // Refresh file list and commit history
     get_ncurses_changed_files(viewer);
     get_commit_history(viewer);
-		get_ncurses_git_branches(viewer);
+    get_ncurses_git_branches(viewer);
 
     // Reset selection if no files remain
     if (viewer->file_count == 0) {
@@ -1038,9 +1024,9 @@ int commit_marked_files(NCursesDiffViewer *viewer, const char *commit_title,
                                viewer->files[viewer->selected_file].filename);
     }
 
-		werase(viewer->branch_list_win);
-		render_branch_list_window(viewer);
-		wrefresh(viewer->branch_list_win);
+    werase(viewer->branch_list_win);
+    render_branch_list_window(viewer);
+    wrefresh(viewer->branch_list_win);
 
     return 1;
   }

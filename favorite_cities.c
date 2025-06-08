@@ -72,7 +72,7 @@ void cleanup_favorite_cities(void) {
 void shutdown_favorite_cities(void) {
   // Save to file first
   save_favorite_cities();
-  
+
   // Then clean up resources
   cleanup_favorite_cities();
 }
@@ -311,7 +311,8 @@ int lsh_cities(char **args) {
     // Display cities in a nice format
     for (int i = 0; i < favorite_city_count; i++) {
       // Print city name with color
-      printf(ANSI_COLOR_CYAN "  %s" ANSI_COLOR_RESET "\n", favorite_cities[i].name);
+      printf(ANSI_COLOR_CYAN "  %s" ANSI_COLOR_RESET "\n",
+             favorite_cities[i].name);
     }
     printf("\n");
 
@@ -322,3 +323,4 @@ int lsh_cities(char **args) {
 
   return 1;
 }
+// testing the git diffs in branches here

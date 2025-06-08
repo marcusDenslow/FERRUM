@@ -1295,11 +1295,17 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
 
     // Refresh commit history to get proper push status
     get_commit_history(viewer);
+    get_ncurses_git_branches(viewer);
 
     // Only refresh the commit pane
     werase(viewer->commit_list_win);
     render_commit_list_window(viewer);
     wrefresh(viewer->commit_list_win);
+
+
+		werase(viewer->branch_list_win);
+		render_branch_list_window(viewer);
+		wrefresh(viewer->branch_list_win);
 
     return 1;
   } else {
@@ -2169,7 +2175,7 @@ void update_sync_status(NCursesDiffViewer *viewer) {
   time_t current_time = time(NULL);
 
   // Check if it's time to sync (every 30 seconds)
-	 if (current_time - viewer->last_sync_time >= 60) {
+  if (current_time - viewer->last_sync_time >= 60) {
     viewer->sync_status = SYNC_STATUS_SYNCING_APPEARING;
     viewer->last_sync_time = current_time;
     viewer->animation_frame = 0;
@@ -2188,7 +2194,8 @@ void update_sync_status(NCursesDiffViewer *viewer) {
     }
 
     get_commit_history(viewer);
-    get_ncurses_git_branches(viewer); // This will now show updated branch status
+    get_ncurses_git_branches(
+        viewer); // This will now show updated branch status
 
     // If we're in commit view mode, reload the current commit
     if (viewer->current_mode == NCURSES_MODE_COMMIT_VIEW &&
@@ -3419,10 +3426,10 @@ int get_ncurses_git_branches(NCursesDiffViewer *viewer) {
     return 0;
 
   viewer->branch_count = 0;
-  
+
   // First, fetch from all remotes to get latest status (like lazygit does)
   system("git fetch --all --quiet >/dev/null 2>&1");
-  
+
   // Use git branch (without -a) to only show local branches
   FILE *fp = popen("git branch 2>/dev/null", "r");
   if (!fp) {
@@ -3433,84 +3440,93 @@ int get_ncurses_git_branches(NCursesDiffViewer *viewer) {
   while (fgets(line, sizeof(line), fp) && viewer->branch_count < MAX_BRANCHES) {
     // Remove newline
     line[strcspn(line, "\n")] = 0;
-    
+
     // Skip empty lines
-    if (strlen(line) == 0) continue;
-    
+    if (strlen(line) == 0)
+      continue;
+
     // Check if this is the current branch (starts with *)
     int is_current = 0;
     char *branch_name = line;
-    
+
     // Skip leading spaces
-    while (*branch_name == ' ') branch_name++;
-    
+    while (*branch_name == ' ')
+      branch_name++;
+
     if (*branch_name == '*') {
       is_current = 1;
       branch_name++; // Skip the *
-      while (*branch_name == ' ') branch_name++; // Skip spaces after *
+      while (*branch_name == ' ')
+        branch_name++; // Skip spaces after *
     }
-    
-    // Skip any lines that contain "->" (symbolic references like origin/HEAD -> origin/main)
+
+    // Skip any lines that contain "->" (symbolic references like origin/HEAD ->
+    // origin/main)
     if (strstr(branch_name, "->") != NULL) {
       continue;
     }
-    
+
     // Skip remote branches (shouldn't appear with git branch, but just in case)
     if (strncmp(branch_name, "remotes/", 8) == 0) {
       continue;
     }
-    
+
     // Copy branch name
-    strncpy(viewer->branches[viewer->branch_count].name, branch_name, 
+    strncpy(viewer->branches[viewer->branch_count].name, branch_name,
             MAX_BRANCHNAME_LEN - 1);
     viewer->branches[viewer->branch_count].name[MAX_BRANCHNAME_LEN - 1] = '\0';
     viewer->branches[viewer->branch_count].status = is_current;
-    
+
     // Initialize ahead/behind counts
     viewer->branches[viewer->branch_count].commits_ahead = 0;
     viewer->branches[viewer->branch_count].commits_behind = 0;
-    
+
     // Get ahead/behind status using the exact method lazygit uses
     // First check if remote branch exists
     char remote_exists_cmd[512];
-    snprintf(remote_exists_cmd, sizeof(remote_exists_cmd), 
-             "git show-ref --verify --quiet refs/remotes/origin/%s", branch_name);
-    
+    snprintf(remote_exists_cmd, sizeof(remote_exists_cmd),
+             "git show-ref --verify --quiet refs/remotes/origin/%s",
+             branch_name);
+
     if (system(remote_exists_cmd) == 0) {
       // Remote branch exists, now get ahead/behind counts
-      
+
       // Get commits behind (how many commits remote has that we don't)
       char behind_cmd[512];
-      snprintf(behind_cmd, sizeof(behind_cmd), 
-               "git rev-list --count %s..origin/%s 2>/dev/null", branch_name, branch_name);
-      
+      snprintf(behind_cmd, sizeof(behind_cmd),
+               "git rev-list --count %s..origin/%s 2>/dev/null", branch_name,
+               branch_name);
+
       FILE *behind_fp = popen(behind_cmd, "r");
       if (behind_fp) {
         char behind_count[32];
         if (fgets(behind_count, sizeof(behind_count), behind_fp) != NULL) {
-          viewer->branches[viewer->branch_count].commits_behind = atoi(behind_count);
+          viewer->branches[viewer->branch_count].commits_behind =
+              atoi(behind_count);
         }
         pclose(behind_fp);
       }
-      
+
       // Get commits ahead (how many commits we have that remote doesn't)
       char ahead_cmd[512];
-      snprintf(ahead_cmd, sizeof(ahead_cmd), 
-               "git rev-list --count origin/%s..%s 2>/dev/null", branch_name, branch_name);
-      
+      snprintf(ahead_cmd, sizeof(ahead_cmd),
+               "git rev-list --count origin/%s..%s 2>/dev/null", branch_name,
+               branch_name);
+
       FILE *ahead_fp = popen(ahead_cmd, "r");
       if (ahead_fp) {
         char ahead_count[32];
         if (fgets(ahead_count, sizeof(ahead_count), ahead_fp) != NULL) {
-          viewer->branches[viewer->branch_count].commits_ahead = atoi(ahead_count);
+          viewer->branches[viewer->branch_count].commits_ahead =
+              atoi(ahead_count);
         }
         pclose(ahead_fp);
       }
     }
-    
+
     viewer->branch_count++;
   }
-  
+
   pclose(fp);
   return 1;
 }

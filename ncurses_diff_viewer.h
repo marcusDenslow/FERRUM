@@ -32,6 +32,8 @@ typedef struct {
 typedef struct {
   char name[MAX_BRANCHNAME_LEN];
   int status;
+  int commits_ahead;
+  int commits_behind;
 } NCursesBranches;
 
 typedef struct {
@@ -243,7 +245,8 @@ int get_branch_name_input(char *branch_name, int max_len);
 
 int create_git_branch(const char *branch_name);
 
-int get_rename_branch_input(const char *current_name, char *new_name, int max_len);
+int get_rename_branch_input(const char *current_name, char *new_name,
+                            int max_len);
 
 int rename_git_branch(const char *old_name, const char *new_name);
 
@@ -253,7 +256,8 @@ void show_error_popup(const char *error_message);
 
 int get_git_remotes(char remotes[][256], int max_remotes);
 
-int show_upstream_selection_dialog(const char *branch_name, char *upstream_result, int max_len);
+int show_upstream_selection_dialog(const char *branch_name,
+                                   char *upstream_result, int max_len);
 
 int get_current_branch_name(char *branch_name, int max_len);
 

@@ -70,29 +70,34 @@ int init_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
   int available_height =
       viewer->terminal_height - 1 -
       viewer->status_bar_height; // Subtract top bar and status bar
-  
+
   // Distribute height among 4 panels: file, commit, branch, stash
-  viewer->file_panel_height = available_height * 0.3;     // 30%
-  viewer->commit_panel_height = available_height * 0.3;   // 30%
-  viewer->branch_panel_height = available_height * 0.2;   // 20%
+  viewer->file_panel_height = available_height * 0.3;   // 30%
+  viewer->commit_panel_height = available_height * 0.3; // 30%
+  viewer->branch_panel_height = available_height * 0.2; // 20%
   viewer->stash_panel_height = available_height - viewer->file_panel_height -
-                               viewer->commit_panel_height - viewer->branch_panel_height - 3; // Rest minus separators
+                               viewer->commit_panel_height -
+                               viewer->branch_panel_height -
+                               3; // Rest minus separators
 
   // Position status bar right after the main content
   int status_bar_y = 1 + available_height;
 
-  // Create six windows: file_list, branch_list, commit_list, stash_list, file_content, status_bar
+  // Create six windows: file_list, branch_list, commit_list, stash_list,
+  // file_content, status_bar
   viewer->file_list_win =
       newwin(viewer->file_panel_height, viewer->file_panel_width, 1, 0);
   viewer->branch_list_win =
       newwin(viewer->branch_panel_height, viewer->file_panel_width,
              1 + viewer->file_panel_height + 1, 0);
-  viewer->commit_list_win =
-      newwin(viewer->commit_panel_height, viewer->file_panel_width,
-             1 + viewer->file_panel_height + 1 + viewer->branch_panel_height + 1, 0);
-  viewer->stash_list_win = newwin(
-      viewer->stash_panel_height, viewer->file_panel_width,
-      1 + viewer->file_panel_height + 1 + viewer->branch_panel_height + 1 + viewer->commit_panel_height + 1, 0);
+  viewer->commit_list_win = newwin(
+      viewer->commit_panel_height, viewer->file_panel_width,
+      1 + viewer->file_panel_height + 1 + viewer->branch_panel_height + 1, 0);
+  viewer->stash_list_win =
+      newwin(viewer->stash_panel_height, viewer->file_panel_width,
+             1 + viewer->file_panel_height + 1 + viewer->branch_panel_height +
+                 1 + viewer->commit_panel_height + 1,
+             0);
   viewer->file_content_win = newwin(
       available_height, viewer->terminal_width - viewer->file_panel_width - 1,
       1, viewer->file_panel_width + 1);
@@ -101,8 +106,7 @@ int init_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
 
   if (!viewer->file_list_win || !viewer->file_content_win ||
       !viewer->commit_list_win || !viewer->stash_list_win ||
-      !viewer->branch_list_win ||
-      !viewer->status_bar_win) {
+      !viewer->branch_list_win || !viewer->status_bar_win) {
     cleanup_ncurses_diff_viewer(viewer);
     return 0;
   }
@@ -1226,11 +1230,13 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
   if (!branch_has_upstream(current_branch)) {
     // Show upstream selection dialog
     char upstream_selection[512];
-    if (show_upstream_selection_dialog(current_branch, upstream_selection, sizeof(upstream_selection))) {
+    if (show_upstream_selection_dialog(current_branch, upstream_selection,
+                                       sizeof(upstream_selection))) {
       // User selected an upstream, set it up
       char cmd[1024];
-      snprintf(cmd, sizeof(cmd), "git push --set-upstream %s >/dev/null 2>&1", upstream_selection);
-      
+      snprintf(cmd, sizeof(cmd), "git push --set-upstream %s >/dev/null 2>&1",
+               upstream_selection);
+
       int result = system(cmd);
       if (result == 0) {
         // Upstream set successfully, show success and refresh
@@ -1238,18 +1244,19 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
         viewer->animation_frame = 0;
         viewer->text_char_count = 0;
         get_commit_history(viewer);
-        
+
         // Only refresh the commit pane
         werase(viewer->commit_list_win);
         render_commit_list_window(viewer);
         wrefresh(viewer->commit_list_win);
-        
+
         return 1;
       } else {
-        show_error_popup("Failed to set upstream and push. Check your connection.");
+        show_error_popup(
+            "Failed to set upstream and push. Check your connection.");
       }
     }
-    
+
     viewer->sync_status = SYNC_STATUS_IDLE;
     return 0;
   }
@@ -1288,16 +1295,17 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
 
     // Refresh commit history to get proper push status
     get_commit_history(viewer);
-    
+
     // Only refresh the commit pane
     werase(viewer->commit_list_win);
     render_commit_list_window(viewer);
     wrefresh(viewer->commit_list_win);
-    
+
     return 1;
   } else {
     // Push failed, show error
-    show_error_popup("Push failed. Check your network connection and authentication.");
+    show_error_popup(
+        "Push failed. Check your network connection and authentication.");
     viewer->sync_status = SYNC_STATUS_IDLE;
   }
 
@@ -1991,7 +1999,8 @@ void render_status_bar(NCursesDiffViewer *viewer) {
   } else if (viewer->current_mode == NCURSES_MODE_STASH_LIST) {
     strcpy(keybindings, "Apply: <space> | Pop: g | Drop: d | Nav: j/k");
   } else if (viewer->current_mode == NCURSES_MODE_BRANCH_LIST) {
-    strcpy(keybindings, "Checkout: c | New: n | Rename: r | Delete: d | Nav: j/k");
+    strcpy(keybindings,
+           "Checkout: c | New: n | Rename: r | Delete: d | Pull: p | Nav: j/k");
   } else if (viewer->current_mode == NCURSES_MODE_FILE_VIEW) {
     strcpy(keybindings, "Scroll: j/k | Page: Ctrl+U/D | Back: Esc");
   } else if (viewer->current_mode == NCURSES_MODE_COMMIT_VIEW) {
@@ -2659,10 +2668,6 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
       }
       break;
 
-    case 'p': // Pull commits
-      pull_commits(viewer);
-      break;
-
     case 'r': // Reset (soft) - undo commit but keep changes
       if (viewer->commit_count > 0 && viewer->selected_commit == 0) {
         reset_commit_soft(viewer, viewer->selected_commit);
@@ -2831,15 +2836,16 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
       if (viewer->branch_count > 0 &&
           viewer->selected_branch < viewer->branch_count) {
         char cmd[512];
-        snprintf(cmd, sizeof(cmd), "git checkout \"%s\" >/dev/null 2>&1", 
+        snprintf(cmd, sizeof(cmd), "git checkout \"%s\" >/dev/null 2>&1",
                  viewer->branches[viewer->selected_branch].name);
-        
+
         if (system(cmd) == 0) {
           // Refresh everything after branch switch
           get_ncurses_changed_files(viewer);
           get_commit_history(viewer);
-          get_ncurses_git_branches(viewer); // Refresh branch list to update current branch
-          
+          get_ncurses_git_branches(
+              viewer); // Refresh branch list to update current branch
+
           // Reset file selection if no files remain
           if (viewer->file_count == 0) {
             viewer->selected_file = 0;
@@ -2856,7 +2862,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
                 viewer, viewer->files[viewer->selected_file].filename);
           }
         }
-        
+
         // Force complete screen refresh after checkout
         clear();
         refresh();
@@ -2867,15 +2873,16 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
       if (viewer->branch_count > 0 &&
           viewer->selected_branch < viewer->branch_count) {
         char cmd[512];
-        snprintf(cmd, sizeof(cmd), "git checkout \"%s\" >/dev/null 2>&1", 
+        snprintf(cmd, sizeof(cmd), "git checkout \"%s\" >/dev/null 2>&1",
                  viewer->branches[viewer->selected_branch].name);
-        
+
         if (system(cmd) == 0) {
           // Refresh everything after branch switch
           get_ncurses_changed_files(viewer);
           get_commit_history(viewer);
-          get_ncurses_git_branches(viewer); // Refresh branch list to update current branch
-          
+          get_ncurses_git_branches(
+              viewer); // Refresh branch list to update current branch
+
           // Reset file selection if no files remain
           if (viewer->file_count == 0) {
             viewer->selected_file = 0;
@@ -2892,7 +2899,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
                 viewer, viewer->files[viewer->selected_file].filename);
           }
         }
-        
+
         // Force complete screen refresh after checkout
         clear();
         refresh();
@@ -2900,90 +2907,93 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
       break;
 
     case 'n': // New branch
-      {
-        char new_branch_name[256];
-        if (get_branch_name_input(new_branch_name, sizeof(new_branch_name))) {
-          if (create_git_branch(new_branch_name)) {
-            // Refresh everything after creating new branch
-            get_ncurses_changed_files(viewer);
-            get_commit_history(viewer);
-            get_ncurses_git_branches(viewer);
-            
-            // Find and select the new branch (need to look for the cleaned name with dashes)
-            char clean_branch_name[256];
-            strncpy(clean_branch_name, new_branch_name, sizeof(clean_branch_name) - 1);
-            clean_branch_name[sizeof(clean_branch_name) - 1] = '\0';
-            for (int j = 0; clean_branch_name[j] != '\0'; j++) {
-              if (clean_branch_name[j] == ' ') {
-                clean_branch_name[j] = '-';
-              }
-            }
-            
-            for (int i = 0; i < viewer->branch_count; i++) {
-              if (strcmp(viewer->branches[i].name, clean_branch_name) == 0) {
-                viewer->selected_branch = i;
-                break;
-              }
-            }
-            
-            // Reset file selection if no files remain
-            if (viewer->file_count == 0) {
-              viewer->selected_file = 0;
-              viewer->file_line_count = 0;
-              viewer->file_scroll_offset = 0;
-            } else if (viewer->selected_file >= viewer->file_count) {
-              viewer->selected_file = viewer->file_count - 1;
-            }
+    {
+      char new_branch_name[256];
+      if (get_branch_name_input(new_branch_name, sizeof(new_branch_name))) {
+        if (create_git_branch(new_branch_name)) {
+          // Refresh everything after creating new branch
+          get_ncurses_changed_files(viewer);
+          get_commit_history(viewer);
+          get_ncurses_git_branches(viewer);
 
-            // Reload current file if any files exist
-            if (viewer->file_count > 0 &&
-                viewer->selected_file < viewer->file_count) {
-              load_full_file_with_diff(
-                  viewer, viewer->files[viewer->selected_file].filename);
+          // Find and select the new branch (need to look for the cleaned name
+          // with dashes)
+          char clean_branch_name[256];
+          strncpy(clean_branch_name, new_branch_name,
+                  sizeof(clean_branch_name) - 1);
+          clean_branch_name[sizeof(clean_branch_name) - 1] = '\0';
+          for (int j = 0; clean_branch_name[j] != '\0'; j++) {
+            if (clean_branch_name[j] == ' ') {
+              clean_branch_name[j] = '-';
             }
           }
+
+          for (int i = 0; i < viewer->branch_count; i++) {
+            if (strcmp(viewer->branches[i].name, clean_branch_name) == 0) {
+              viewer->selected_branch = i;
+              break;
+            }
+          }
+
+          // Reset file selection if no files remain
+          if (viewer->file_count == 0) {
+            viewer->selected_file = 0;
+            viewer->file_line_count = 0;
+            viewer->file_scroll_offset = 0;
+          } else if (viewer->selected_file >= viewer->file_count) {
+            viewer->selected_file = viewer->file_count - 1;
+          }
+
+          // Reload current file if any files exist
+          if (viewer->file_count > 0 &&
+              viewer->selected_file < viewer->file_count) {
+            load_full_file_with_diff(
+                viewer, viewer->files[viewer->selected_file].filename);
+          }
         }
-        
-        // Force immediate branch window update
-        werase(viewer->branch_list_win);
-        render_branch_list_window(viewer);
-        wrefresh(viewer->branch_list_win);
-        
-        // Clear screen artifacts from dialog
-        clear();
-        refresh();
       }
-      break;
+
+      // Force immediate branch window update
+      werase(viewer->branch_list_win);
+      render_branch_list_window(viewer);
+      wrefresh(viewer->branch_list_win);
+
+      // Clear screen artifacts from dialog
+      clear();
+      refresh();
+    } break;
 
     case 'd': // Delete branch
       if (viewer->branch_count > 0 &&
           viewer->selected_branch < viewer->branch_count) {
-        const char *branch_to_delete = viewer->branches[viewer->selected_branch].name;
-        
+        const char *branch_to_delete =
+            viewer->branches[viewer->selected_branch].name;
+
         // Don't allow deleting the current branch
         if (viewer->branches[viewer->selected_branch].status == 1) {
           show_error_popup("Cannot delete current branch!");
           break;
         }
-        
+
         DeleteBranchOption option = show_delete_branch_dialog(branch_to_delete);
         if (option != DELETE_CANCEL) {
           if (delete_git_branch(branch_to_delete, option)) {
             // Refresh branch list after deletion
             get_ncurses_git_branches(viewer);
-            
+
             // Adjust selection if needed
-            if (viewer->selected_branch >= viewer->branch_count && viewer->branch_count > 0) {
+            if (viewer->selected_branch >= viewer->branch_count &&
+                viewer->branch_count > 0) {
               viewer->selected_branch = viewer->branch_count - 1;
             }
           }
         }
-        
+
         // Force immediate branch window update
         werase(viewer->branch_list_win);
         render_branch_list_window(viewer);
         wrefresh(viewer->branch_list_win);
-        
+
         // Clear screen artifacts from dialog
         clear();
         refresh();
@@ -2993,14 +3003,15 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     case 'r': // Rename branch
       if (viewer->branch_count > 0 &&
           viewer->selected_branch < viewer->branch_count) {
-        const char *current_name = viewer->branches[viewer->selected_branch].name;
+        const char *current_name =
+            viewer->branches[viewer->selected_branch].name;
         char new_name[256];
-        
+
         if (get_rename_branch_input(current_name, new_name, sizeof(new_name))) {
           if (rename_git_branch(current_name, new_name)) {
             // Refresh branch list after rename
             get_ncurses_git_branches(viewer);
-            
+
             // Find and select the renamed branch
             for (int i = 0; i < viewer->branch_count; i++) {
               if (strcmp(viewer->branches[i].name, new_name) == 0) {
@@ -3010,15 +3021,65 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
             }
           }
         }
-        
+
         // Force immediate branch window update
         werase(viewer->branch_list_win);
         render_branch_list_window(viewer);
         wrefresh(viewer->branch_list_win);
-        
+
         // Clear screen artifacts from dialog
         clear();
         refresh();
+      }
+      break;
+
+    case 'p':
+      if (viewer->branch_count > 0 &&
+          viewer->selected_branch < viewer->branch_count) {
+        const char *branch_name =
+            viewer->branches[viewer->selected_branch].name;
+
+        if (viewer->branches[viewer->selected_branch].commits_behind > 0) {
+          viewer->sync_status = SYNC_STATUS_PULLING_APPEARING;
+          viewer->animation_frame = 0;
+          viewer->text_char_count = 0;
+
+          render_status_bar(viewer);
+
+          char pull_cmd[512];
+          snprintf(pull_cmd, sizeof(pull_cmd),
+                   "git pull origin %s 2>/dev/null >/dev/null", branch_name);
+          int result = system(pull_cmd);
+
+          if (result == 0) {
+            get_ncurses_changed_files(viewer);
+            get_commit_history(viewer);
+            get_ncurses_git_branches(viewer);
+
+            if (viewer->file_count == 0) {
+              viewer->selected_file = 0;
+              viewer->file_line_count = 0;
+              viewer->file_scroll_offset = 0;
+            } else if (viewer->selected_file >= viewer->file_count) {
+              viewer->selected_file = viewer->file_count - 1;
+            }
+
+            if (viewer->file_count > 0 &&
+                viewer->selected_file < viewer->file_count) {
+              load_full_file_with_diff(
+                  viewer, viewer->files[viewer->selected_file].filename);
+            }
+
+            viewer->sync_status = SYNC_STATUS_PULLED_APPEARING;
+            viewer->animation_frame = 0;
+            viewer->text_char_count = 0;
+          } else {
+            show_error_popup("Pull failed. Check your network connection.");
+            viewer->sync_status = SYNC_STATUS_IDLE;
+          }
+        } else {
+          show_error_popup("No commits to pull from remote");
+        }
       }
       break;
     }
@@ -3257,19 +3318,22 @@ int run_ncurses_diff_viewer(void) {
   attron(COLOR_PAIR(3));
   if (viewer.current_mode == NCURSES_MODE_FILE_LIST) {
     mvprintw(0, 0,
-             "Git Diff Viewer: 1=files 2=view 3=branches 4=commits 5=stashes | j/k=nav "
+             "Git Diff Viewer: 1=files 2=view 3=branches 4=commits 5=stashes | "
+             "j/k=nav "
              "Space=mark "
              "A=all S=stash C=commit P=push | q=quit");
   } else if (viewer.current_mode == NCURSES_MODE_FILE_VIEW) {
     mvprintw(0, 0,
-             "Git Diff Viewer: 1=files 2=view 3=branches 4=commits 5=stashes | j/k=scroll "
+             "Git Diff Viewer: 1=files 2=view 3=branches 4=commits 5=stashes | "
+             "j/k=scroll "
              "Ctrl+U/D=30lines | q=quit");
   } else {
-    mvprintw(
-        0, 0,
-        "Git Diff Viewer: 1=files 2=view 3=branches 4=commits 5=stashes | j/k=nav P=push "
-        "p=pull r/R=reset a=amend | q=quit");
+    mvprintw(0, 0,
+             "Git Diff Viewer: 1=files 2=view 3=branches 4=commits 5=stashes | "
+             "j/k=nav P=push "
+             "r/R=reset a=amend | q=quit");
   }
+
   attroff(COLOR_PAIR(3));
   refresh();
 
@@ -3285,6 +3349,7 @@ int run_ncurses_diff_viewer(void) {
   NCursesViewMode last_mode = viewer.current_mode;
 
   while (running) {
+
     // Only update title if mode changed
     if (viewer.current_mode != last_mode) {
       // Clear just the title line
@@ -3293,26 +3358,26 @@ int run_ncurses_diff_viewer(void) {
 
       attron(COLOR_PAIR(3));
       if (viewer.current_mode == NCURSES_MODE_FILE_LIST) {
-        mvprintw(
-            0, 0,
-            "Git Diff Viewer: 1=files 2=view 3=branches 4=commits 5=stashes | j/k=nav "
-            "Space=mark A=all S=stash C=commit P=push | q=quit");
-      } else if (viewer.current_mode == NCURSES_MODE_FILE_VIEW) {
-        mvprintw(
-            0, 0,
-            "Git Diff Viewer: 1=files 2=view 3=branches 4=commits 5=stashes | j/k=scroll "
-            "Ctrl+U/D=30lines | q=quit");
-      } else {
         mvprintw(0, 0,
-                 "Git Diff Viewer: 1=files 2=view 3=branches 4=commits 5=stashes | "
-                 "j/k=nav P=push "
-                 "p=pull r/R=reset a=amend | q=quit");
+                 "Git Diff Viewer: 1=files 2=view 3=branches 4=commits "
+                 "5=stashes | j/k=nav "
+                 "Space=mark A=all S=stash C=commit P=push | q=quit");
+      } else if (viewer.current_mode == NCURSES_MODE_FILE_VIEW) {
+        mvprintw(0, 0,
+                 "Git Diff Viewer: 1=files 2=view 3=branches 4=commits "
+                 "5=stashes | j/k=scroll "
+                 "Ctrl+U/D=30lines | q=quit");
+      } else {
+        mvprintw(
+            0, 0,
+            "Git Diff Viewer: 1=files 2=view 3=branches 4=commits 5=stashes | "
+            "j/k=nav P=push "
+            "r/R=reset a=amend | q=quit");
       }
       attroff(COLOR_PAIR(3));
       refresh();
       last_mode = viewer.current_mode;
     }
-
     // Update sync status and check for new files
     update_sync_status(&viewer);
 
@@ -3346,13 +3411,13 @@ int run_ncurses_diff_viewer(void) {
 /**
  * Get list of git branches
  */
+
 int get_ncurses_git_branches(NCursesDiffViewer *viewer) {
   if (!viewer)
     return 0;
 
   viewer->branch_count = 0;
-  
-  // Use git branch (without -a) to only show local branches
+
   FILE *fp = popen("git branch 2>/dev/null", "r");
   if (!fp) {
     return 0;
@@ -3360,44 +3425,80 @@ int get_ncurses_git_branches(NCursesDiffViewer *viewer) {
 
   char line[512];
   while (fgets(line, sizeof(line), fp) && viewer->branch_count < MAX_BRANCHES) {
-    // Remove newline
     line[strcspn(line, "\n")] = 0;
-    
-    // Skip empty lines
-    if (strlen(line) == 0) continue;
-    
-    // Check if this is the current branch (starts with *)
+
+    if (strlen(line) == 0)
+      continue;
+
     int is_current = 0;
     char *branch_name = line;
-    
-    // Skip leading spaces
-    while (*branch_name == ' ') branch_name++;
-    
+
+    while (*branch_name == ' ')
+      branch_name++;
+
     if (*branch_name == '*') {
       is_current = 1;
-      branch_name++; // Skip the *
-      while (*branch_name == ' ') branch_name++; // Skip spaces after *
+      branch_name++;
+      while (*branch_name == ' ')
+        branch_name++;
     }
-    
-    // Skip any lines that contain "->" (symbolic references like origin/HEAD -> origin/main)
+
     if (strstr(branch_name, "->") != NULL) {
       continue;
     }
-    
-    // Skip remote branches (shouldn't appear with git branch, but just in case)
-    if (strncmp(branch_name, "remotes/", 8) == 0) {
-      continue;
-    }
-    
-    // Copy branch name
-    strncpy(viewer->branches[viewer->branch_count].name, branch_name, 
+
+    strncpy(viewer->branches[viewer->branch_count].name, branch_name,
             MAX_BRANCHNAME_LEN - 1);
     viewer->branches[viewer->branch_count].name[MAX_BRANCHNAME_LEN - 1] = '\0';
     viewer->branches[viewer->branch_count].status = is_current;
-    
+
+    viewer->branches[viewer->branch_count].commits_ahead = 0;
+    viewer->branches[viewer->branch_count].commits_behind = 0;
+
+    char remote_check_cmd[512];
+    snprintf(remote_check_cmd, sizeof(remote_check_cmd),
+             "git is-remote --heads origin %s 2>/dev/null", branch_name);
+
+    FILE *remote_fp = popen(remote_check_cmd, "r");
+    if (remote_fp) {
+      char remote_result[256];
+      int has_remote =
+          (fgets(remote_result, sizeof(remote_result), remote_fp) != NULL);
+      pclose(remote_fp);
+
+      if (has_remote) {
+        char ahead_cmd[512];
+        snprintf(ahead_cmd, sizeof(ahead_cmd),
+                 "git rev-list --count origin/%s..%s 2>/dev/null", branch_name,
+                 branch_name);
+
+        FILE *ahead_fp = popen(ahead_cmd, "r");
+        if (ahead_fp) {
+          char ahead_count[32];
+          if (fgets(ahead_count, sizeof(ahead_count), ahead_fp) != NULL) {
+            viewer->branches[viewer->branch_count].commits_ahead =
+                atoi(ahead_count);
+          }
+          pclose(ahead_fp);
+        }
+        char behind_cmd[512];
+        snprintf(behind_cmd, sizeof(behind_cmd),
+                 "git rev-list --count %s--origin/%s 2>/dev/null", branch_name,
+                 branch_name);
+
+        FILE *behind_fp = popen(behind_cmd, "r");
+        if (behind_fp) {
+          char behind_count[32];
+          if (fgets(behind_count, sizeof(behind_count), behind_fp) != NULL) {
+            viewer->branches[viewer->branch_count].commits_behind =
+                atoi(behind_count);
+          }
+          pclose(behind_fp);
+        }
+      }
+    }
     viewer->branch_count++;
   }
-  
   pclose(fp);
   return 1;
 }
@@ -3435,21 +3536,21 @@ int get_branch_name_input(char *branch_name, int max_len) {
     mvwprintw(input_win, 0, 2, " Create New Branch ");
     mvwprintw(input_win, 2, 2, "Branch name:");
     mvwprintw(input_win, 5, 2, "Enter: create | Esc: cancel");
-    
+
     // Show current input
     mvwprintw(input_win, 3, 2, "> %s", input);
-    
+
     // Position cursor at end of input
     wmove(input_win, 3, 4 + input_pos);
     wrefresh(input_win);
 
     int ch = wgetch(input_win);
-    
+
     switch (ch) {
     case 27: // ESC
       result = 0;
       goto cleanup;
-      
+
     case '\n':
     case '\r':
     case KEY_ENTER:
@@ -3459,7 +3560,7 @@ int get_branch_name_input(char *branch_name, int max_len) {
         result = 1;
       }
       goto cleanup;
-      
+
     case KEY_BACKSPACE:
     case 127:
     case '\b':
@@ -3468,7 +3569,7 @@ int get_branch_name_input(char *branch_name, int max_len) {
         input[input_pos] = '\0';
       }
       break;
-      
+
     default:
       // Add printable characters
       if (ch >= 32 && ch <= 126 && input_pos < max_len - 1) {
@@ -3485,7 +3586,7 @@ cleanup:
   noecho();
   curs_set(0);
   delwin(input_win);
-  
+
   return result;
 }
 
@@ -3500,7 +3601,7 @@ int create_git_branch(const char *branch_name) {
   char clean_branch_name[256];
   strncpy(clean_branch_name, branch_name, sizeof(clean_branch_name) - 1);
   clean_branch_name[sizeof(clean_branch_name) - 1] = '\0';
-  
+
   // Replace spaces with dashes
   for (int i = 0; clean_branch_name[i] != '\0'; i++) {
     if (clean_branch_name[i] == ' ') {
@@ -3509,15 +3610,17 @@ int create_git_branch(const char *branch_name) {
   }
 
   char cmd[512];
-  snprintf(cmd, sizeof(cmd), "git checkout -b \"%s\" >/dev/null 2>&1", clean_branch_name);
-  
+  snprintf(cmd, sizeof(cmd), "git checkout -b \"%s\" >/dev/null 2>&1",
+           clean_branch_name);
+
   return (system(cmd) == 0);
 }
 
 /**
  * Get new branch name input from user for branch renaming
  */
-int get_rename_branch_input(const char *current_name, char *new_name, int max_len) {
+int get_rename_branch_input(const char *current_name, char *new_name,
+                            int max_len) {
   if (!current_name || !new_name || max_len <= 0)
     return 0;
 
@@ -3552,21 +3655,21 @@ int get_rename_branch_input(const char *current_name, char *new_name, int max_le
     mvwprintw(input_win, 2, 2, "Current: %s", current_name);
     mvwprintw(input_win, 3, 2, "New name:");
     mvwprintw(input_win, 6, 2, "Enter: rename | Esc: cancel");
-    
+
     // Show current input
     mvwprintw(input_win, 4, 2, "> %s", input);
-    
+
     // Position cursor at end of input
     wmove(input_win, 4, 4 + input_pos);
     wrefresh(input_win);
 
     int ch = wgetch(input_win);
-    
+
     switch (ch) {
     case 27: // ESC
       result = 0;
       goto cleanup_rename;
-      
+
     case '\n':
     case '\r':
     case KEY_ENTER:
@@ -3576,7 +3679,7 @@ int get_rename_branch_input(const char *current_name, char *new_name, int max_le
         result = 1;
       }
       goto cleanup_rename;
-      
+
     case KEY_BACKSPACE:
     case 127:
     case '\b':
@@ -3585,7 +3688,7 @@ int get_rename_branch_input(const char *current_name, char *new_name, int max_le
         input[input_pos] = '\0';
       }
       break;
-      
+
     default:
       // Add printable characters
       if (ch >= 32 && ch <= 126 && input_pos < max_len - 1) {
@@ -3602,7 +3705,7 @@ cleanup_rename:
   noecho();
   curs_set(0);
   delwin(input_win);
-  
+
   return result;
 }
 
@@ -3614,8 +3717,9 @@ int rename_git_branch(const char *old_name, const char *new_name) {
     return 0;
 
   char cmd[512];
-  snprintf(cmd, sizeof(cmd), "git branch -m \"%s\" \"%s\" >/dev/null 2>&1", old_name, new_name);
-  
+  snprintf(cmd, sizeof(cmd), "git branch -m \"%s\" \"%s\" >/dev/null 2>&1",
+           old_name, new_name);
+
   return (system(cmd) == 0);
 }
 
@@ -3637,11 +3741,8 @@ int show_delete_branch_dialog(const char *branch_name) {
     return DELETE_CANCEL;
 
   int selected_option = DELETE_LOCAL;
-  const char* options[] = {
-    "Delete local (l)",
-    "Delete remote (r)", 
-    "Delete both (b)"
-  };
+  const char *options[] = {"Delete local (l)", "Delete remote (r)",
+                           "Delete both (b)"};
 
   while (1) {
     werase(dialog_win);
@@ -3669,33 +3770,33 @@ int show_delete_branch_dialog(const char *branch_name) {
     case 27: // ESC
       delwin(dialog_win);
       return DELETE_CANCEL;
-      
+
     case 'l':
       delwin(dialog_win);
       return DELETE_LOCAL;
-      
+
     case 'r':
       delwin(dialog_win);
       return DELETE_REMOTE;
-      
+
     case 'b':
       delwin(dialog_win);
       return DELETE_BOTH;
-      
+
     case KEY_UP:
     case 'k':
       if (selected_option > 0) {
         selected_option--;
       }
       break;
-      
+
     case KEY_DOWN:
     case 'j':
       if (selected_option < 2) {
         selected_option++;
       }
       break;
-      
+
     case '\n':
     case '\r':
     case KEY_ENTER:
@@ -3709,35 +3810,36 @@ int show_delete_branch_dialog(const char *branch_name) {
  * Show universal error popup
  */
 void show_error_popup(const char *error_message) {
-  if (!error_message) return;
-  
+  if (!error_message)
+    return;
+
   int max_y, max_x;
   getmaxyx(stdscr, max_y, max_x);
-  
+
   int popup_height = 5;
   int popup_width = strlen(error_message) + 6;
   if (popup_width > max_x - 4) {
     popup_width = max_x - 4;
   }
-  
+
   int start_y = (max_y - popup_height) / 2;
   int start_x = (max_x - popup_width) / 2;
-  
+
   WINDOW *popup_win = newwin(popup_height, popup_width, start_y, start_x);
-  
+
   wattron(popup_win, COLOR_PAIR(1));
   box(popup_win, 0, 0);
-  
+
   mvwprintw(popup_win, 1, 2, "Error:");
   mvwprintw(popup_win, 2, 2, "%.*s", popup_width - 4, error_message);
   mvwprintw(popup_win, 3, 2, "Press any key to continue...");
-  
+
   wattroff(popup_win, COLOR_PAIR(1));
   wrefresh(popup_win);
-  
+
   // Wait for user input
   getch();
-  
+
   delwin(popup_win);
   clear();
   refresh();
@@ -3748,25 +3850,26 @@ void show_error_popup(const char *error_message) {
  */
 int get_git_remotes(char remotes[][256], int max_remotes) {
   FILE *fp = popen("git remote 2>/dev/null", "r");
-  if (!fp) return 0;
-  
+  if (!fp)
+    return 0;
+
   int count = 0;
   char line[256];
-  
+
   while (fgets(line, sizeof(line), fp) && count < max_remotes) {
     // Remove trailing newline
     int len = strlen(line);
-    if (len > 0 && line[len-1] == '\n') {
-      line[len-1] = '\0';
+    if (len > 0 && line[len - 1] == '\n') {
+      line[len - 1] = '\0';
     }
-    
+
     if (strlen(line) > 0) {
       strncpy(remotes[count], line, 255);
       remotes[count][255] = '\0';
       count++;
     }
   }
-  
+
   pclose(fp);
   return count;
 }
@@ -3774,52 +3877,56 @@ int get_git_remotes(char remotes[][256], int max_remotes) {
 /**
  * Show upstream selection dialog
  */
-int show_upstream_selection_dialog(const char *branch_name, char *upstream_result, int max_len) {
-  if (!branch_name || !upstream_result) return 0;
-  
+int show_upstream_selection_dialog(const char *branch_name,
+                                   char *upstream_result, int max_len) {
+  if (!branch_name || !upstream_result)
+    return 0;
+
   int max_y, max_x;
   getmaxyx(stdscr, max_y, max_x);
-  
+
   int dialog_height = 12;
   int dialog_width = 60;
   int start_y = (max_y - dialog_height) / 2;
   int start_x = (max_x - dialog_width) / 2;
-  
+
   WINDOW *dialog_win = newwin(dialog_height, dialog_width, start_y, start_x);
-  
+
   // Get available remotes
   char remotes[10][256];
   int remote_count = get_git_remotes(remotes, 10);
-  
+
   char input_buffer[256] = "";
   int cursor_pos = 0;
   int selected_suggestion = 0;
-  
+
   // Default suggestion
   if (remote_count > 0) {
-    snprintf(input_buffer, sizeof(input_buffer), "%s %s", remotes[0], branch_name);
+    snprintf(input_buffer, sizeof(input_buffer), "%s %s", remotes[0],
+             branch_name);
     cursor_pos = strlen(input_buffer);
   }
-  
+
   while (1) {
     werase(dialog_win);
     box(dialog_win, 0, 0);
-    
+
     // Title
     mvwprintw(dialog_win, 1, 2, "Set Upstream Branch");
     mvwprintw(dialog_win, 2, 2, "Enter upstream as <remote> <branchname>");
-    
+
     // Input field
     mvwprintw(dialog_win, 4, 2, "Upstream: %s", input_buffer);
-    
+
     // Suggestions header
     mvwprintw(dialog_win, 6, 2, "Suggestions (press <tab> to focus):");
-    
+
     // Show suggestions
     for (int i = 0; i < remote_count && i < 3; i++) {
       char suggestion[256];
-      snprintf(suggestion, sizeof(suggestion), "%s %s", remotes[i], branch_name);
-      
+      snprintf(suggestion, sizeof(suggestion), "%s %s", remotes[i],
+               branch_name);
+
       if (i == selected_suggestion) {
         wattron(dialog_win, A_REVERSE);
       }
@@ -3828,19 +3935,19 @@ int show_upstream_selection_dialog(const char *branch_name, char *upstream_resul
         wattroff(dialog_win, A_REVERSE);
       }
     }
-    
+
     // Instructions
     mvwprintw(dialog_win, dialog_height - 2, 2, "Enter: Set | Esc: Cancel");
-    
+
     wrefresh(dialog_win);
-    
+
     int key = getch();
-    
+
     switch (key) {
     case 27: // ESC
       delwin(dialog_win);
       return 0;
-      
+
     case '\n':
     case '\r':
     case KEY_ENTER:
@@ -3851,28 +3958,28 @@ int show_upstream_selection_dialog(const char *branch_name, char *upstream_resul
         return 1;
       }
       break;
-      
+
     case '\t':
       // Tab to select suggestion
       if (remote_count > 0 && selected_suggestion < remote_count) {
-        snprintf(input_buffer, sizeof(input_buffer), "%s %s", 
-                remotes[selected_suggestion], branch_name);
+        snprintf(input_buffer, sizeof(input_buffer), "%s %s",
+                 remotes[selected_suggestion], branch_name);
         cursor_pos = strlen(input_buffer);
       }
       break;
-      
+
     case KEY_UP:
       if (selected_suggestion > 0) {
         selected_suggestion--;
       }
       break;
-      
+
     case KEY_DOWN:
       if (selected_suggestion < remote_count - 1) {
         selected_suggestion++;
       }
       break;
-      
+
     case KEY_BACKSPACE:
     case 127:
       if (cursor_pos > 0) {
@@ -3880,7 +3987,7 @@ int show_upstream_selection_dialog(const char *branch_name, char *upstream_resul
         input_buffer[cursor_pos] = '\0';
       }
       break;
-      
+
     default:
       if (isprint(key) && cursor_pos < (int)sizeof(input_buffer) - 1) {
         input_buffer[cursor_pos] = key;
@@ -3890,7 +3997,7 @@ int show_upstream_selection_dialog(const char *branch_name, char *upstream_resul
       break;
     }
   }
-  
+
   delwin(dialog_win);
   return 0;
 }
@@ -3899,21 +4006,23 @@ int show_upstream_selection_dialog(const char *branch_name, char *upstream_resul
  * Get current git branch name
  */
 int get_current_branch_name(char *branch_name, int max_len) {
-  if (!branch_name) return 0;
-  
+  if (!branch_name)
+    return 0;
+
   FILE *fp = popen("git rev-parse --abbrev-ref HEAD 2>/dev/null", "r");
-  if (!fp) return 0;
-  
+  if (!fp)
+    return 0;
+
   if (fgets(branch_name, max_len, fp) != NULL) {
     // Remove trailing newline
     int len = strlen(branch_name);
-    if (len > 0 && branch_name[len-1] == '\n') {
-      branch_name[len-1] = '\0';
+    if (len > 0 && branch_name[len - 1] == '\n') {
+      branch_name[len - 1] = '\0';
     }
     pclose(fp);
     return 1;
   }
-  
+
   pclose(fp);
   return 0;
 }
@@ -3922,10 +4031,13 @@ int get_current_branch_name(char *branch_name, int max_len) {
  * Check if a branch has an upstream
  */
 int branch_has_upstream(const char *branch_name) {
-  if (!branch_name) return 0;
-  
+  if (!branch_name)
+    return 0;
+
   char cmd[512];
-  snprintf(cmd, sizeof(cmd), "git rev-parse --abbrev-ref \"%s@{upstream}\" >/dev/null 2>&1", branch_name);
+  snprintf(cmd, sizeof(cmd),
+           "git rev-parse --abbrev-ref \"%s@{upstream}\" >/dev/null 2>&1",
+           branch_name);
   return (system(cmd) == 0);
 }
 
@@ -3940,7 +4052,8 @@ int delete_git_branch(const char *branch_name, DeleteBranchOption option) {
   if (option == DELETE_REMOTE || option == DELETE_BOTH) {
     if (!branch_has_upstream(branch_name)) {
       // Show error message for branches without upstream
-      show_error_popup("The selected branch has no upstream (tip: delete the branch locally)");
+      show_error_popup("The selected branch has no upstream (tip: delete the "
+                       "branch locally)");
       return 0; // Don't proceed with deletion
     }
   }
@@ -3950,27 +4063,31 @@ int delete_git_branch(const char *branch_name, DeleteBranchOption option) {
 
   switch (option) {
   case DELETE_LOCAL:
-    snprintf(cmd, sizeof(cmd), "git branch -D \"%s\" >/dev/null 2>&1", branch_name);
+    snprintf(cmd, sizeof(cmd), "git branch -D \"%s\" >/dev/null 2>&1",
+             branch_name);
     success = (system(cmd) == 0);
     break;
-    
+
   case DELETE_REMOTE:
-    snprintf(cmd, sizeof(cmd), "git push origin --delete \"%s\" >/dev/null 2>&1", branch_name);
+    snprintf(cmd, sizeof(cmd),
+             "git push origin --delete \"%s\" >/dev/null 2>&1", branch_name);
     success = (system(cmd) == 0);
     break;
-    
+
   case DELETE_BOTH:
     // Delete local first
-    snprintf(cmd, sizeof(cmd), "git branch -D \"%s\" >/dev/null 2>&1", branch_name);
+    snprintf(cmd, sizeof(cmd), "git branch -D \"%s\" >/dev/null 2>&1",
+             branch_name);
     success = (system(cmd) == 0);
-    
+
     // Then delete remote
     if (success) {
-      snprintf(cmd, sizeof(cmd), "git push origin --delete \"%s\" >/dev/null 2>&1", branch_name);
+      snprintf(cmd, sizeof(cmd),
+               "git push origin --delete \"%s\" >/dev/null 2>&1", branch_name);
       success = (system(cmd) == 0);
     }
     break;
-    
+
   case DELETE_CANCEL:
   default:
     return 0;
@@ -4291,7 +4408,8 @@ void render_branch_list_window(NCursesDiffViewer *viewer) {
       int is_selected_branch =
           (i == viewer->selected_branch &&
            viewer->current_mode == NCURSES_MODE_BRANCH_LIST);
-      int is_current_branch = viewer->branches[i].status; // status = 1 for current branch
+      int is_current_branch =
+          viewer->branches[i].status; // status = 1 for current branch
 
       if (is_selected_branch) {
         wattron(viewer->branch_list_win, COLOR_PAIR(5));
@@ -4304,17 +4422,35 @@ void render_branch_list_window(NCursesDiffViewer *viewer) {
         mvwprintw(viewer->branch_list_win, y, 1, " ");
       }
 
-      // Prepare branch display with asterisk for current branch
-      int max_branch_len = viewer->file_panel_width - 6; // Leave space for * and selection
+      // Prepare branch display with asterisk for current branch and status
+      int max_branch_len = viewer->file_panel_width -
+                           15; // Leave more space for status indicators
       char display_branch[300];
-      
-      if (is_current_branch) {
-        snprintf(display_branch, sizeof(display_branch), "* %s", viewer->branches[i].name);
-      } else {
-        snprintf(display_branch, sizeof(display_branch), "  %s", viewer->branches[i].name);
+      char status_indicator[50] = "";
+
+      // Create status indicator
+      if (viewer->branches[i].commits_ahead > 0 &&
+          viewer->branches[i].commits_behind > 0) {
+        snprintf(status_indicator, sizeof(status_indicator), " %d↑%d↓", 
+                 viewer->branches[i].commits_ahead,
+                 viewer->branches[i].commits_behind);
+      } else if (viewer->branches[i].commits_ahead > 0) {
+        snprintf(status_indicator, sizeof(status_indicator), " %d↑", 
+                 viewer->branches[i].commits_ahead);
+      } else if (viewer->branches[i].commits_behind > 0) {
+        snprintf(status_indicator, sizeof(status_indicator), " %d↓", 
+                 viewer->branches[i].commits_behind);
       }
 
-      // Truncate if too long
+      if (is_current_branch) {
+        snprintf(display_branch, sizeof(display_branch), "* %s",
+                 viewer->branches[i].name);
+      } else {
+        snprintf(display_branch, sizeof(display_branch), "  %s",
+                 viewer->branches[i].name);
+      }
+
+      // Truncate branch name if too long
       if ((int)strlen(display_branch) > max_branch_len) {
         display_branch[max_branch_len - 2] = '.';
         display_branch[max_branch_len - 1] = '.';
@@ -4323,17 +4459,45 @@ void render_branch_list_window(NCursesDiffViewer *viewer) {
 
       // Color the branch name
       if (is_current_branch) {
-        wattron(viewer->branch_list_win, COLOR_PAIR(1)); // Green for current branch
+        wattron(viewer->branch_list_win,
+                COLOR_PAIR(1)); // Green for current branch
       } else {
-        wattron(viewer->branch_list_win, COLOR_PAIR(4)); // Yellow for other branches
+        wattron(viewer->branch_list_win,
+                COLOR_PAIR(4)); // Yellow for other branches
       }
-      
+
       mvwprintw(viewer->branch_list_win, y, 2, "%s", display_branch);
-      
+
       if (is_current_branch) {
         wattroff(viewer->branch_list_win, COLOR_PAIR(1));
       } else {
         wattroff(viewer->branch_list_win, COLOR_PAIR(4));
+      }
+
+      // Add status indicator with appropriate colors
+      if (strlen(status_indicator) > 0) {
+        if (is_selected_branch) {
+          wattroff(viewer->branch_list_win, COLOR_PAIR(5));
+        }
+
+        if (viewer->branches[i].commits_behind > 0) {
+          wattron(viewer->branch_list_win, COLOR_PAIR(2)); // Red for behind
+        } else {
+          wattron(viewer->branch_list_win, COLOR_PAIR(1)); // Green for ahead
+        }
+
+        mvwprintw(viewer->branch_list_win, y, 2 + strlen(display_branch), "%s",
+                  status_indicator);
+
+        if (viewer->branches[i].commits_behind > 0) {
+          wattroff(viewer->branch_list_win, COLOR_PAIR(2));
+        } else {
+          wattroff(viewer->branch_list_win, COLOR_PAIR(1));
+        }
+
+        if (is_selected_branch) {
+          wattron(viewer->branch_list_win, COLOR_PAIR(5));
+        }
       }
 
       if (is_selected_branch) {

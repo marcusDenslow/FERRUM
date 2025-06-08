@@ -1302,10 +1302,10 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
     render_commit_list_window(viewer);
     wrefresh(viewer->commit_list_win);
 
-
-		werase(viewer->branch_list_win);
-		render_branch_list_window(viewer);
-		wrefresh(viewer->branch_list_win);
+    // refresh the branch pane
+    werase(viewer->branch_list_win);
+    render_branch_list_window(viewer);
+    wrefresh(viewer->branch_list_win);
 
     return 1;
   } else {

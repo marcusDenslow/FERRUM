@@ -1341,39 +1341,44 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
     result = 1; // Fork failed
   }
 
-  if (result == 0) {
-    // Immediately transition to "Pushed!" animation
-    viewer->sync_status = SYNC_STATUS_PUSHED_APPEARING;
-    viewer->animation_frame = 0;
-    viewer->text_char_count = 0;
 
-    // Set branch-specific pushed status
-    viewer->branch_push_status = SYNC_STATUS_PUSHED_APPEARING;
-    viewer->branch_animation_frame = 0;
-    viewer->branch_text_char_count = 0;
-
-    // Refresh commit history to get proper push status
-    get_commit_history(viewer);
-    get_ncurses_git_branches(viewer); // Add this line to refresh branch status
-
-    // Refresh both commit and branch panes
-    werase(viewer->commit_list_win);
-    render_commit_list_window(viewer);
-    wrefresh(viewer->commit_list_win);
-
-    werase(viewer->branch_list_win);
-    render_branch_list_window(viewer);
-    wrefresh(viewer->branch_list_win);
-
-    return 1;
-  } else {
-    // Push failed, show error
-    show_error_popup(
-        "Push failed. Check your network connection and authentication.");
-    viewer->sync_status = SYNC_STATUS_IDLE;
-    viewer->pushing_branch_index = -1;
-    viewer->branch_push_status = SYNC_STATUS_IDLE;
-  }
+	if (result == 0) {
+            // Stop the pulling animation immediately
+            viewer->branch_pull_status = SYNC_STATUS_PULLED_APPEARING;
+            viewer->branch_animation_frame = 0;
+            viewer->branch_text_char_count = 0;
+            
+            // Refresh everything after pull
+            get_ncurses_changed_files(viewer);
+            get_commit_history(viewer);
+            get_ncurses_git_branches(viewer); // Refresh branch status
+            
+            // Reset file selection if no files remain
+            if (viewer->file_count == 0) {
+              viewer->selected_file = 0;
+              viewer->file_line_count = 0;
+              viewer->file_scroll_offset = 0;
+            } else if (viewer->selected_file >= viewer->file_count) {
+              viewer->selected_file = viewer->file_count - 1;
+            }
+            
+            // Reload current file if any
+            if (viewer->file_count > 0 && viewer->selected_file < viewer->file_count) {
+              load_full_file_with_diff(viewer,
+                                       viewer->files[viewer->selected_file].filename);
+            }
+            
+            // Transition to "Pulled!" animation
+            viewer->sync_status = SYNC_STATUS_PULLED_APPEARING;
+            viewer->animation_frame = 0;
+            viewer->text_char_count = 0;
+          } else {
+            // Pull failed, show error
+            show_error_popup("Pull failed. Check your network connection.");
+            viewer->sync_status = SYNC_STATUS_IDLE;
+            viewer->pulling_branch_index = -1;
+            viewer->branch_pull_status = SYNC_STATUS_IDLE;
+          }
 
   return 0;
 }

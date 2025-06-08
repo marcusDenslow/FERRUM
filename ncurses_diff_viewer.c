@@ -1021,6 +1021,7 @@ int commit_marked_files(NCursesDiffViewer *viewer, const char *commit_title,
     // Refresh file list and commit history
     get_ncurses_changed_files(viewer);
     get_commit_history(viewer);
+		get_ncurses_git_branches(viewer);
 
     // Reset selection if no files remain
     if (viewer->file_count == 0) {
@@ -1036,6 +1037,10 @@ int commit_marked_files(NCursesDiffViewer *viewer, const char *commit_title,
       load_full_file_with_diff(viewer,
                                viewer->files[viewer->selected_file].filename);
     }
+
+		werase(viewer->branch_list_win);
+		render_branch_list_window(viewer);
+		wrefresh(viewer->branch_list_win);
 
     return 1;
   }

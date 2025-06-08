@@ -3269,7 +3269,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     switch (key) {
     case 27: // ESC
       viewer->current_mode =
-          NCURSES_MODE_COMMIT_LIST; // Return to commit list mode
+          NCURSES_MODE_COMMIT_LIST; // Return to commit list mode.
       break;
 
     case KEY_UP:

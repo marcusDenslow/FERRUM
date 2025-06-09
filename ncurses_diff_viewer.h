@@ -125,6 +125,7 @@ typedef struct {
   SyncStatus branch_pull_status;
   int branch_animation_frame;
   int branch_text_char_count;
+  int critical_operation_in_progress; // Prevent fetching during critical ops
 
 } NCursesDiffViewer;
 

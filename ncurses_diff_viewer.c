@@ -40,6 +40,7 @@ int init_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
   viewer->branch_pull_status = SYNC_STATUS_IDLE;
   viewer->branch_animation_frame = 0;
   viewer->branch_text_char_count = 0;
+  viewer->critical_operation_in_progress = 0;
 
   // Set locale for Unicode support
   setlocale(LC_ALL, "");
@@ -2236,7 +2237,7 @@ void update_sync_status(NCursesDiffViewer *viewer) {
   time_t current_time = time(NULL);
 
   // Check if it's time to sync (every 30 seconds)
-  if (current_time - viewer->last_sync_time >= 60) {
+  if (current_time - viewer->last_sync_time >= 30 && !viewer->critical_operation_in_progress) {
     viewer->sync_status = SYNC_STATUS_SYNCING_APPEARING;
     viewer->last_sync_time = current_time;
     viewer->animation_frame = 0;
@@ -2642,18 +2643,22 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
 
     case 's':
     case 'S':
+				viewer->critical_operation_in_progress = 1;
       create_ncurses_git_stash(viewer);
+				viewer->critical_operation_in_progress = 0;
       break;
 
-    case 'c':
+	case 'c':
     case 'C': // Commit marked files
     {
       char commit_title[MAX_COMMIT_TITLE_LEN];
       char commit_message[2048];
+      viewer->critical_operation_in_progress = 1; // Block fetching during commit
       if (get_commit_title_input(commit_title, MAX_COMMIT_TITLE_LEN,
                                  commit_message, sizeof(commit_message))) {
         commit_marked_files(viewer, commit_title, commit_message);
       }
+      viewer->critical_operation_in_progress = 0; // Re-enable fetching
     } break;
 
     case '\t': // Tab - switch to commit list mode
@@ -2809,9 +2814,10 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
       }
       break;
 
-    case 'P': // Push commit
+				case 'P': // Push commit
       if (viewer->commit_count > 0 &&
           viewer->selected_commit < viewer->commit_count) {
+        viewer->critical_operation_in_progress = 1; // Block fetching during push
         // Show immediate feedback
         viewer->sync_status = SYNC_STATUS_PUSHING_VISIBLE;
         viewer->animation_frame = 0;
@@ -2821,25 +2827,32 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
         wrefresh(viewer->status_bar_win);
         // Now do the actual push
         push_commit(viewer, viewer->selected_commit);
+        viewer->critical_operation_in_progress = 0; // Re-enable fetching
       }
       break;
 
-    case 'r': // Reset (soft) - undo commit but keep changes
-      if (viewer->commit_count > 0 && viewer->selected_commit == 0) {
-        reset_commit_soft(viewer, viewer->selected_commit);
-      }
-      break;
+			case 'r':
+				if (viewer->commit_count > 0 && viewer->selected_commit == 0) {
+					viewer->critical_operation_in_progress = 1; 
+					reset_commit_soft(viewer, viewer->selected_commit);
+					viewer->critical_operation_in_progress = 0;
+				}
+			break;
 
     case 'R': // Reset (hard) - undo commit and discard changes
       if (viewer->commit_count > 0 && viewer->selected_commit == 0) {
+					viewer->critical_operation_in_progress = 1;
         reset_commit_hard(viewer, viewer->selected_commit);
+					viewer->critical_operation_in_progress = 0;
       }
       break;
 
     case 'a':
     case 'A': // Amend most recent commit
       if (viewer->commit_count > 0) {
+					viewer->critical_operation_in_progress = 1;
         amend_commit(viewer);
+					viewer->critical_operation_in_progress = 0;
       }
       break;
     }
@@ -2887,6 +2900,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     case ' ': // Space - Apply stash (keeps stash in list)
       if (viewer->stash_count > 0 &&
           viewer->selected_stash < viewer->stash_count) {
+					viewer->critical_operation_in_progress = 1;
         if (apply_git_stash(viewer->selected_stash)) {
           // Refresh everything after applying stash
           get_ncurses_changed_files(viewer);
@@ -2908,6 +2922,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
                 viewer, viewer->files[viewer->selected_file].filename);
           }
         }
+					viewer->critical_operation_in_progress = 0;
       }
       break;
 
@@ -2915,6 +2930,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     case 'G': // Pop stash (applies and removes from list)
       if (viewer->stash_count > 0 &&
           viewer->selected_stash < viewer->stash_count) {
+					viewer->critical_operation_in_progress = 1;
         if (pop_git_stash(viewer->selected_stash)) {
           // Refresh everything after popping stash
           get_ncurses_changed_files(viewer);
@@ -2943,6 +2959,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
                 viewer, viewer->files[viewer->selected_file].filename);
           }
         }
+					viewer->critical_operation_in_progress = 0;
       }
       break;
 
@@ -2950,6 +2967,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     case 'D': // Drop stash (removes without applying)
       if (viewer->stash_count > 0 &&
           viewer->selected_stash < viewer->stash_count) {
+					viewer->critical_operation_in_progress = 1;
         if (drop_git_stash(viewer->selected_stash)) {
           // Refresh stash list after dropping
           get_ncurses_git_stashes(viewer);
@@ -2960,6 +2978,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
             viewer->selected_stash = viewer->stash_count - 1;
           }
         }
+					viewer->critical_operation_in_progress = 0;
       }
       break;
     }
@@ -2991,6 +3010,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
       // Enter - Switch to selected branch (same as space)
       if (viewer->branch_count > 0 &&
           viewer->selected_branch < viewer->branch_count) {
+					viewer->critical_operation_in_progress = 1;
         char cmd[512];
         snprintf(cmd, sizeof(cmd), "git checkout \"%s\" >/dev/null 2>&1",
                  viewer->branches[viewer->selected_branch].name);
@@ -3018,6 +3038,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
                 viewer, viewer->files[viewer->selected_file].filename);
           }
         }
+					viewer->critical_operation_in_progress = 0;
 
         // Force complete screen refresh after checkout
         clear();
@@ -3025,9 +3046,10 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
       }
       break;
 
-    case 'c': // c - Checkout selected branch
+				 case 'c': // c - Checkout selected branch
       if (viewer->branch_count > 0 &&
           viewer->selected_branch < viewer->branch_count) {
+        viewer->critical_operation_in_progress = 1; // Block fetching during checkout
         char cmd[512];
         snprintf(cmd, sizeof(cmd), "git checkout \"%s\" >/dev/null 2>&1",
                  viewer->branches[viewer->selected_branch].name);
@@ -3055,6 +3077,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
                 viewer, viewer->files[viewer->selected_file].filename);
           }
         }
+        viewer->critical_operation_in_progress = 0; // Re-enable fetching
 
         // Force complete screen refresh after checkout
         clear();
@@ -3064,6 +3087,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
 
     case 'n': // New branch
     {
+					viewer->critical_operation_in_progress = 1;
       char new_branch_name[256];
       if (get_branch_name_input(new_branch_name, sizeof(new_branch_name))) {
         if (create_git_branch(new_branch_name)) {
@@ -3117,11 +3141,13 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
       // Clear screen artifacts from dialog
       clear();
       refresh();
+					viewer->critical_operation_in_progress = 0;
     } break;
 
     case 'd': // Delete branch
       if (viewer->branch_count > 0 &&
           viewer->selected_branch < viewer->branch_count) {
+					viewer->critical_operation_in_progress = 1;
         const char *branch_to_delete =
             viewer->branches[viewer->selected_branch].name;
 
@@ -3153,12 +3179,14 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
         // Clear screen artifacts from dialog
         clear();
         refresh();
+					viewer->critical_operation_in_progress = 0;
       }
       break;
 
     case 'r': // Rename branch
       if (viewer->branch_count > 0 &&
           viewer->selected_branch < viewer->branch_count) {
+					viewer->critical_operation_in_progress = 1;
         const char *current_name =
             viewer->branches[viewer->selected_branch].name;
         char new_name[256];
@@ -3186,12 +3214,14 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
         // Clear screen artifacts from dialog
         clear();
         refresh();
+					viewer->critical_operation_in_progress = 0;
       }
       break;
 
     case 'p':
       if (viewer->branch_count > 0 &&
           viewer->selected_branch < viewer->branch_count) {
+					viewer->critical_operation_in_progress = 1;
         const char *branch_name =
             viewer->branches[viewer->selected_branch].name;
 
@@ -3286,6 +3316,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
         } else {
           show_error_popup("No commits to pull from remote");
         }
+					viewer->critical_operation_in_progress = 0;
       }
       break;
     }

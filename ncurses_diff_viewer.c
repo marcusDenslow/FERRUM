@@ -14,6 +14,65 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+#include <signal.h>
+
+static volatile int terminal_resized = 0;
+
+void handle_sigwinch(int sig) {
+	(void)sig;
+	terminal_resized = 1;
+}
+
+/**
+ * Handle terminal resize by recreating all windows
+ */
+void handle_terminal_resize(NCursesDiffViewer *viewer) {
+    if (!viewer) return;
+    
+    // Clean up old windows
+    if (viewer->file_list_win) delwin(viewer->file_list_win);
+    if (viewer->branch_list_win) delwin(viewer->branch_list_win);
+    if (viewer->commit_list_win) delwin(viewer->commit_list_win);
+    if (viewer->stash_list_win) delwin(viewer->stash_list_win);
+    if (viewer->file_content_win) delwin(viewer->file_content_win);
+    if (viewer->status_bar_win) delwin(viewer->status_bar_win);
+    
+    // Reinitialize ncurses with new terminal size
+    endwin();
+    refresh();
+    clear();
+    
+    // Get new terminal dimensions
+    getmaxyx(stdscr, viewer->terminal_height, viewer->terminal_width);
+    viewer->file_panel_width = viewer->terminal_width * 0.4;
+    viewer->status_bar_height = viewer->terminal_height * 0.05;
+    if (viewer->status_bar_height < 1) viewer->status_bar_height = 1;
+    
+    int available_height = viewer->terminal_height - 1 - viewer->status_bar_height;
+    viewer->file_panel_height = available_height * 0.3;
+    viewer->commit_panel_height = available_height * 0.3;
+    viewer->branch_panel_height = available_height * 0.2;
+    viewer->stash_panel_height = available_height - viewer->file_panel_height - 
+                                 viewer->commit_panel_height - viewer->branch_panel_height - 3;
+    
+    int status_bar_y = 1 + available_height;
+    
+    // Recreate all windows with new dimensions
+    viewer->file_list_win = newwin(viewer->file_panel_height, viewer->file_panel_width, 1, 0);
+    viewer->branch_list_win = newwin(viewer->branch_panel_height, viewer->file_panel_width, 
+                                     1 + viewer->file_panel_height + 1, 0);
+    viewer->commit_list_win = newwin(viewer->commit_panel_height, viewer->file_panel_width,
+                                     1 + viewer->file_panel_height + 1 + viewer->branch_panel_height + 1, 0);
+    viewer->stash_list_win = newwin(viewer->stash_panel_height, viewer->file_panel_width,
+                                    1 + viewer->file_panel_height + 1 + viewer->branch_panel_height + 1 + 
+                                    viewer->commit_panel_height + 1, 0);
+    viewer->file_content_win = newwin(available_height, viewer->terminal_width - viewer->file_panel_width - 1,
+                                      1, viewer->file_panel_width + 1);
+    viewer->status_bar_win = newwin(viewer->status_bar_height, viewer->terminal_width, status_bar_y, 0);
+    
+    // Force complete redraw
+    terminal_resized = 0;
+}
 
 /**
  * Initialize the ncurses diff viewer
@@ -3524,6 +3583,7 @@ int run_ncurses_diff_viewer(void) {
     printf("Failed to initialize ncurses diff viewer\n");
     return 1;
   }
+	signal(SIGWINCH, handle_sigwinch);
 
   // Get changed files (can be 0, that's okay)
   get_ncurses_changed_files(&viewer);
@@ -3576,6 +3636,10 @@ int run_ncurses_diff_viewer(void) {
   NCursesViewMode last_mode = viewer.current_mode;
 
   while (running) {
+
+		if (terminal_resized) {
+			handle_terminal_resize(&viewer);
+		}
 
     // Only update title if mode changed
     if (viewer.current_mode != last_mode) {

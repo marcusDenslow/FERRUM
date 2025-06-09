@@ -2852,7 +2852,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
       if (viewer->commit_count > 0) {
 					viewer->critical_operation_in_progress = 1;
         amend_commit(viewer);
-					viewer->critical_operation_in_progress = 0; //this is a test
+					viewer->critical_operation_in_progress = 0;
       }
       break;
     }

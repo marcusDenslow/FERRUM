@@ -250,6 +250,7 @@ int load_full_file_with_diff(NCursesDiffViewer *viewer, const char *filename) {
     }
 
     fclose(fp);
+
     return viewer->file_line_count;
   }
 
@@ -2249,8 +2250,32 @@ void update_sync_status(NCursesDiffViewer *viewer) {
     if ((viewer->current_mode == NCURSES_MODE_FILE_LIST ||
          viewer->current_mode == NCURSES_MODE_FILE_VIEW) &&
         viewer->selected_file < viewer->file_count && viewer->file_count > 0) {
+
+      // Preserve current scroll position during fetch
+      int preserved_scroll_offset = viewer->file_scroll_offset;
+      int preserved_cursor_line = viewer->file_cursor_line;
+
       load_full_file_with_diff(viewer,
                                viewer->files[viewer->selected_file].filename);
+
+      // Restore position after reload (only during fetch, not manual
+      // navigation)
+      if (viewer->file_line_count > 0) {
+        if (preserved_cursor_line < viewer->file_line_count) {
+          viewer->file_cursor_line = preserved_cursor_line;
+        }
+        if (preserved_scroll_offset <= viewer->file_line_count) {
+          viewer->file_scroll_offset = preserved_scroll_offset;
+          // Ensure scroll doesn't go beyond reasonable bounds
+          int max_lines_visible = viewer->terminal_height - 4;
+          int max_scroll = viewer->file_line_count - max_lines_visible;
+          if (max_scroll < 0)
+            max_scroll = 0;
+          if (viewer->file_scroll_offset > max_scroll) {
+            viewer->file_scroll_offset = max_scroll;
+          }
+        }
+      }
     }
 
     get_commit_history(viewer);
@@ -3269,7 +3294,8 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     switch (key) {
     case 27: // ESC
       viewer->current_mode =
-          NCURSES_MODE_COMMIT_LIST; // Return to commit list mode.
+          NCURSES_MODE_COMMIT_LIST; // Return to commit list mode
+                                    // this is another change
       break;
 
     case KEY_UP:
@@ -3480,19 +3506,8 @@ int run_ncurses_diff_viewer(void) {
   // Load commit history
   get_commit_history(&viewer);
 
-  // Load the first file by default
   if (viewer.file_count > 0) {
     load_full_file_with_diff(&viewer, viewer.files[0].filename);
-  }
-
-  // Load initial commit preview if available
-  if (viewer.commit_count > 0) {
-    load_commit_for_viewing(&viewer, viewer.commits[0].hash);
-  }
-
-  // Load initial stash preview if available
-  if (viewer.stash_count > 0) {
-    load_stash_for_viewing(&viewer, 0);
   }
 
   // Initial display

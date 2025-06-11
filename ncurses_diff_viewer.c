@@ -1657,10 +1657,18 @@ void render_commit_list_window(NCursesDiffViewer *viewer) {
       wattroff(viewer->commit_list_win, COLOR_PAIR(5));
     }
 
-    // Use yellow for commit hash (lazygit style)
-    wattron(viewer->commit_list_win, COLOR_PAIR(4)); // Yellow for commit hash
+    // Color commit hash based on push status: yellow for pushed, red for unpushed
+    if (viewer->commits[i].is_pushed) {
+      wattron(viewer->commit_list_win, COLOR_PAIR(4)); // Yellow for pushed commits
+    } else {
+      wattron(viewer->commit_list_win, COLOR_PAIR(2)); // Red for unpushed commits
+    }
     mvwprintw(viewer->commit_list_win, y, 2, "%s", viewer->commits[i].hash);
-    wattroff(viewer->commit_list_win, COLOR_PAIR(4));
+    if (viewer->commits[i].is_pushed) {
+      wattroff(viewer->commit_list_win, COLOR_PAIR(4));
+    } else {
+      wattroff(viewer->commit_list_win, COLOR_PAIR(2));
+    }
 
     // Show author initials - use cyan for a subtle contrast
     wattron(viewer->commit_list_win, COLOR_PAIR(3)); // Cyan for author initials

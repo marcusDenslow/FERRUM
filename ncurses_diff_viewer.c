@@ -1795,11 +1795,11 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
     if (viewer->stash_count > 0 &&
         viewer->selected_stash < viewer->stash_count) {
       if (viewer->current_mode == NCURSES_MODE_STASH_LIST) {
-        mvwprintw(viewer->file_content_win, 0, 2, " 2. Stash@{%d} (Preview) ",
+        mvwprintw(viewer->file_content_win, 0, 2, " 2. Stash # %d (Preview) ",
                   viewer->selected_stash);
       } else {
         mvwprintw(viewer->file_content_win, 0, 2,
-                  " 2. Stash@{%d} (Scrollable) ", viewer->selected_stash);
+                  " 2. Stash # %d (Scrollable) ", viewer->selected_stash);
       }
     } else {
       mvwprintw(viewer->file_content_win, 0, 2, " 2. Stash View ");
@@ -2953,7 +2953,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
       char commit_title[MAX_COMMIT_TITLE_LEN] = "";
       char commit_message[2048] = "";
       viewer->critical_operation_in_progress =
-          1; // Block fetching during commit
+          2; // Block fetching during commit
       if (get_commit_title_input(commit_title, MAX_COMMIT_TITLE_LEN,
                                  commit_message, sizeof(commit_message))) {
         commit_marked_files(viewer, commit_title, commit_message);
@@ -5062,23 +5062,68 @@ void render_stash_list_window(NCursesDiffViewer *viewer) {
         strcpy(truncated_stash, viewer->stashes[i].stash_info);
       }
 
-      // Show stash info with yellow color
-      if (is_selected_stash) {
-        wattroff(viewer->stash_list_win, COLOR_PAIR(5));
-      }
+			// Show stash info with yellow time part and white message part
+if (is_selected_stash) {
+  wattroff(viewer->stash_list_win, COLOR_PAIR(5));
+}
 
-      wattron(viewer->stash_list_win, COLOR_PAIR(4));
-      mvwprintw(viewer->stash_list_win, y, 2, "%s", truncated_stash);
-      wattroff(viewer->stash_list_win, COLOR_PAIR(4));
-
-      if (is_selected_stash) {
-        wattron(viewer->stash_list_win, COLOR_PAIR(5));
+			// Find the colon after "On [branch]:"
+char *colon_pos = strstr(truncated_stash, ": ");
+if (colon_pos) {
+  // Split at the colon
+  int time_part_len = colon_pos - truncated_stash + 1; // Include the ":"
+  
+  // Find where " On " starts to insert space before it for single digits
+  char *on_pos = strstr(truncated_stash, " On ");
+  
+  if (on_pos) {
+    // Check if time is single digit (e.g., "6h" or "4m")
+    int is_single_digit = 0;
+    int time_len = on_pos - truncated_stash;
+    if (time_len == 2) { // Single digit + letter (e.g., "6h", "4m")
+      char first_char = truncated_stash[0];
+      char second_char = truncated_stash[1];
+      if (first_char >= '1' && first_char <= '9' && 
+          (second_char == 'h' || second_char == 'm' || second_char == 'd' || second_char == 'w')) {
+        is_single_digit = 1;
       }
+    }
+    
+    // Print time part in yellow
+    wattron(viewer->stash_list_win, COLOR_PAIR(4));
+    mvwprintw(viewer->stash_list_win, y, 2, "%.*s", time_len, truncated_stash);
+    
+    // Add extra space for single digit times
+    if (is_single_digit) {
+      mvwprintw(viewer->stash_list_win, y, 2 + time_len, " ");
+      time_len++;
+    }
+    
+    // Print " On [branch]:" part in yellow
+    mvwprintw(viewer->stash_list_win, y, 2 + time_len, "%.*s", (int)(colon_pos - on_pos + 1), on_pos);
+    wattroff(viewer->stash_list_win, COLOR_PAIR(4));
+    
+    // Print message part in normal color (white)
+    mvwprintw(viewer->stash_list_win, y, 2 + time_part_len + (is_single_digit ? 1 : 0), "%s", colon_pos + 1);
+  } else {
+    // Fallback: print entire yellow part if no " On " found
+    wattron(viewer->stash_list_win, COLOR_PAIR(4));
+    mvwprintw(viewer->stash_list_win, y, 2, "%.*s", time_part_len, truncated_stash);
+    wattroff(viewer->stash_list_win, COLOR_PAIR(4));
+    
+    // Print message part in normal color (white)
+    mvwprintw(viewer->stash_list_win, y, 2 + time_part_len, "%s", colon_pos + 1);
+  }
+} else {
+  // Fallback: print entire string in yellow if no colon found
+  wattron(viewer->stash_list_win, COLOR_PAIR(4));
+  mvwprintw(viewer->stash_list_win, y, 2, "%s", truncated_stash);
+  wattroff(viewer->stash_list_win, COLOR_PAIR(4));
+}
 
-      // Turn off selection highlighting if this was the selected stash
-      if (is_selected_stash) {
-        wattroff(viewer->stash_list_win, COLOR_PAIR(5));
-      }
+if (is_selected_stash) {
+  wattron(viewer->stash_list_win, COLOR_PAIR(5));
+}
     }
   }
 

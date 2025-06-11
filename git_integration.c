@@ -366,7 +366,12 @@ int get_git_stashes(char stashes[][512], int max_stashes) {
     return 0;
   }
 
-  FILE *fp = popen("git stash list --format=\"%gd: %gs\" 2>/dev/null", "r");
+  FILE *fp =
+      popen("git stash list --format=\"%cr: %gs\" 2>/dev/null | sed 's/ "
+            "ago://' | sed 's/ minutes/m/' | sed 's/ minute/m/' | sed 's/ "
+            "hours/h/' | sed 's/ hour/h/' | sed 's/ days/d/' | sed 's/ day/d/' "
+            "| sed 's/ weeks/w/' | sed 's/ week/w/' | sed 's/WIP on /On /'",
+            "r");
   if (!fp) {
     return 0;
   }
@@ -545,14 +550,16 @@ int get_stash_diff(int stash_index, char *stash_diff, size_t diff_size) {
   return total_read > 0 ? 1 : 0;
 }
 
-int get_branch_commits(const char *branch_name, char commits[][2048], int max_commits) {
+int get_branch_commits(const char *branch_name, char commits[][2048],
+                       int max_commits) {
   if (!branch_name || !commits || max_commits <= 0) {
     return 0;
   }
 
   char cmd[1024];
-  snprintf(cmd, sizeof(cmd), 
-           "git log %s --format=\"commit %%H%%d%%nAuthor: %%an <%%ae>%%nDate: %%ar%%n%%n    %%s%%n%%n%%b%%n---END-COMMIT---\" -%d 2>/dev/null", 
+  snprintf(cmd, sizeof(cmd),
+           "git log %s --format=\"commit %%H%%d%%nAuthor: %%an <%%ae>%%nDate: "
+           "%%ar%%n%%n    %%s%%n%%n%%b%%n---END-COMMIT---\" -%d 2>/dev/null",
            branch_name, max_commits);
 
   FILE *fp = popen(cmd, "r");
@@ -563,7 +570,7 @@ int get_branch_commits(const char *branch_name, char commits[][2048], int max_co
   int count = 0;
   char buffer[8192];
   char current_commit[4096] = "";
-  
+
   while (fgets(buffer, sizeof(buffer), fp) != NULL && count < max_commits) {
     // Check for commit delimiter
     if (strstr(buffer, "---END-COMMIT---")) {
@@ -575,7 +582,8 @@ int get_branch_commits(const char *branch_name, char commits[][2048], int max_co
       }
     } else {
       // Accumulate commit content
-      if (strlen(current_commit) + strlen(buffer) < sizeof(current_commit) - 1) {
+      if (strlen(current_commit) + strlen(buffer) <
+          sizeof(current_commit) - 1) {
         strcat(current_commit, buffer);
       }
     }

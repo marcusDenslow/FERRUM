@@ -2964,12 +2964,26 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
       }
       viewer->critical_operation_in_progress = 0; // Re-enable fetching
 
-					render_file_list_window(viewer);
-render_file_content_window(viewer);
-render_commit_list_window(viewer);
-render_branch_list_window(viewer);
-render_stash_list_window(viewer);
-render_status_bar(viewer);
+
+					// Only update what actually changed (like push does)
+get_ncurses_changed_files(viewer);  // Files that were committed are no longer changed
+get_commit_history(viewer);         // New commit appears in list
+get_ncurses_git_branches(viewer);   // Ahead count might change
+
+// Only redraw the specific windows that changed
+render_file_list_window(viewer);    // File list changed (committed files removed)
+render_commit_list_window(viewer);  // New commit added
+render_branch_list_window(viewer);  // Branch arrows might update
+
+// Only update content view if current file was affected
+if (viewer->file_count == 0) {
+  // All files were committed, clear content view
+  render_file_content_window(viewer);
+} else if (viewer->selected_file < viewer->file_count) {
+  // Reload current file's diff (it might have changed)
+  load_full_file_with_diff(viewer, viewer->files[viewer->selected_file].filename);
+  render_file_content_window(viewer);
+}
 
     } break;
 

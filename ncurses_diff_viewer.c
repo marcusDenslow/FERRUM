@@ -1078,7 +1078,7 @@ int get_commit_title_input(char *title, int max_len, char *message,
     }
   }
 
-  // Clean up windows.
+  // Clean up windows
   delwin(title_win);
   delwin(message_win);
 

@@ -1082,7 +1082,6 @@ int get_commit_title_input(char *title, int max_len, char *message,
   delwin(title_win);
   delwin(message_win);
 
-
   return strlen(title) > 0 ? 1 : 0;
 }
 
@@ -1399,14 +1398,14 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
 
   // Force immediate branch window refresh to show "Pushing" before the blocking
   // git operation
-	
-	werase(viewer->branch_list_win);
-render_file_list_window(viewer);
-render_file_content_window(viewer);
-render_commit_list_window(viewer);
-render_branch_list_window(viewer);
-render_stash_list_window(viewer);
-render_status_bar(viewer);
+
+  werase(viewer->branch_list_win);
+  render_file_list_window(viewer);
+  render_file_content_window(viewer);
+  render_commit_list_window(viewer);
+  render_branch_list_window(viewer);
+  render_stash_list_window(viewer);
+  render_status_bar(viewer);
 
   // Create a simple animated push with spinner updates
   pid_t push_pid;
@@ -1432,22 +1431,22 @@ render_status_bar(viewer);
     int status;
     int spinner_counter = 0;
 
-		while (waitpid(push_pid, &status, WNOHANG) == 0) {
-  // Update spinner animation
-  viewer->branch_animation_frame = spinner_counter;
-  spinner_counter = (spinner_counter + 1) % 40;
+    while (waitpid(push_pid, &status, WNOHANG) == 0) {
+      // Update spinner animation
+      viewer->branch_animation_frame = spinner_counter;
+      spinner_counter = (spinner_counter + 1) % 40;
 
-  // Refresh ALL windows, not just branch window
-  render_file_list_window(viewer);
-  render_file_content_window(viewer);
-  render_commit_list_window(viewer);
-  render_branch_list_window(viewer);
-  render_stash_list_window(viewer);
-  render_status_bar(viewer);
+      // Refresh ALL windows, not just branch window
+      render_file_list_window(viewer);
+      render_file_content_window(viewer);
+      render_commit_list_window(viewer);
+      render_branch_list_window(viewer);
+      render_stash_list_window(viewer);
+      render_status_bar(viewer);
 
-  // Small delay for animation timing
-  usleep(100000); // 100ms delay
-}
+      // Small delay for animation timing
+      usleep(100000); // 100ms delay
+    }
 
     // Get the exit status of the push command
     if (WIFEXITED(status)) {
@@ -2951,8 +2950,8 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     case 'c':
     case 'C': // Commit marked files
     {
-      char commit_title[MAX_COMMIT_TITLE_LEN];
-      char commit_message[2048];
+      char commit_title[MAX_COMMIT_TITLE_LEN] = "";
+      char commit_message[2048] = "";
       viewer->critical_operation_in_progress =
           1; // Block fetching during commit
       if (get_commit_title_input(commit_title, MAX_COMMIT_TITLE_LEN,

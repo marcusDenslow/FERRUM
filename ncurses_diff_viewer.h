@@ -325,6 +325,4 @@ void check_background_fetch(NCursesDiffViewer *viewer);
  */
 void move_cursor_smart(NCursesDiffViewer *viewer, int direction);
 
-int has_staged_files(NCursesDiffViewer *viewer);
-
 #endif // NCURSES_DIFF_VIEWER_H

@@ -614,19 +614,6 @@ void mark_all_files(NCursesDiffViewer *viewer) {
   }
 }
 
-int has_staged_files(NCursesDiffViewer *viewer) {
-  if (!viewer) {
-    return 0;
-  }
-
-	for (int i = 0; i < viewer->file_count; i++) {
-		if (viewer->files[i].marked_for_commit) {
-			return 1;
-		}
-	}
-	return 0;
-}
-
 /**
  * Show confirmation dialog for diverged branch
  * Returns 1 for force push, 0 for cancel
@@ -1308,9 +1295,10 @@ int amend_commit(NCursesDiffViewer *viewer) {
       // Small delay to ensure git has processed the amend
       usleep(100000); // 100ms delay
 
-      // Refresh everything
+      // Refresh everything after ammending
       get_ncurses_changed_files(viewer);
       get_commit_history(viewer);
+      get_ncurses_git_branches(viewer);
 
       // Reset selection if no files remain
       if (viewer->file_count == 0) {

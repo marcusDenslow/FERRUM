@@ -320,4 +320,9 @@ void start_background_fetch(NCursesDiffViewer *viewer);
  */
 void check_background_fetch(NCursesDiffViewer *viewer);
 
+/**
+ * Move cursor up/down while skipping empty lines
+ */
+void move_cursor_smart(NCursesDiffViewer *viewer, int direction);
+
 #endif // NCURSES_DIFF_VIEWER_H

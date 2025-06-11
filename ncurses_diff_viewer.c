@@ -2912,30 +2912,14 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
 
     case KEY_UP:
     case 'k':
-      // Move cursor up (vim-style)
-      if (viewer->file_cursor_line > 0) {
-        viewer->file_cursor_line--;
-        // Scroll up if cursor gets within 3 lines of top
-        if (viewer->file_cursor_line < viewer->file_scroll_offset + 3 &&
-            viewer->file_scroll_offset > 0) {
-          viewer->file_scroll_offset--;
-        }
-      }
+      // Move cursor up while skipping empty lines
+      move_cursor_smart(viewer, -1);
       break;
 
     case KEY_DOWN:
     case 'j':
-      // Move cursor down (vim-style)
-      if (viewer->file_cursor_line < viewer->file_line_count - 1) {
-        viewer->file_cursor_line++;
-        // Scroll down if cursor gets within 3 lines of bottom
-        if (viewer->file_cursor_line >=
-                viewer->file_scroll_offset + max_lines_visible - 3 &&
-            viewer->file_scroll_offset <
-                viewer->file_line_count - max_lines_visible) {
-          viewer->file_scroll_offset++;
-        }
-      }
+      // Move cursor down while skipping empty lines
+      move_cursor_smart(viewer, 1);
       break;
 
     case KEY_PPAGE: // Page Up
@@ -3538,30 +3522,14 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
 
     case KEY_UP:
     case 'k':
-      // Move cursor up (vim-style)
-      if (viewer->file_cursor_line > 0) {
-        viewer->file_cursor_line--;
-        // Scroll up if cursor gets within 3 lines of top
-        if (viewer->file_cursor_line < viewer->file_scroll_offset + 3 &&
-            viewer->file_scroll_offset > 0) {
-          viewer->file_scroll_offset--;
-        }
-      }
+      // Move cursor up while skipping empty lines
+      move_cursor_smart(viewer, -1);
       break;
 
     case KEY_DOWN:
     case 'j':
-      // Move cursor down (vim-style)
-      if (viewer->file_cursor_line < viewer->file_line_count - 1) {
-        viewer->file_cursor_line++;
-        // Scroll down if cursor gets within 3 lines of bottom
-        if (viewer->file_cursor_line >=
-                viewer->file_scroll_offset + max_lines_visible - 3 &&
-            viewer->file_scroll_offset <
-                viewer->file_line_count - max_lines_visible) {
-          viewer->file_scroll_offset++;
-        }
-      }
+      // Move cursor down while skipping empty lines
+      move_cursor_smart(viewer, 1);
       break;
 
     case 21: // Ctrl+U
@@ -3632,30 +3600,14 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
 
     case KEY_UP:
     case 'k':
-      // Move cursor up (vim-style)
-      if (viewer->file_cursor_line > 0) {
-        viewer->file_cursor_line--;
-        // Scroll up if cursor gets within 3 lines of top
-        if (viewer->file_cursor_line < viewer->file_scroll_offset + 3 &&
-            viewer->file_scroll_offset > 0) {
-          viewer->file_scroll_offset--;
-        }
-      }
+      // Move cursor up while skipping empty lines
+      move_cursor_smart(viewer, -1);
       break;
 
     case KEY_DOWN:
     case 'j':
-      // Move cursor down (vim-style)
-      if (viewer->file_cursor_line < viewer->file_line_count - 1) {
-        viewer->file_cursor_line++;
-        // Scroll down if cursor gets within 3 lines of bottom
-        if (viewer->file_cursor_line >=
-                viewer->file_scroll_offset + max_lines_visible - 3 &&
-            viewer->file_scroll_offset <
-                viewer->file_line_count - max_lines_visible) {
-          viewer->file_scroll_offset++;
-        }
-      }
+      // Move cursor down while skipping empty lines
+      move_cursor_smart(viewer, 1);
       break;
 
     case 21: // Ctrl+U
@@ -3725,30 +3677,14 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
 
     case KEY_UP:
     case 'k':
-      // Move cursor up (vim-style)
-      if (viewer->file_cursor_line > 0) {
-        viewer->file_cursor_line--;
-        // Scroll up if cursor gets within 3 lines of top
-        if (viewer->file_cursor_line < viewer->file_scroll_offset + 3 &&
-            viewer->file_scroll_offset > 0) {
-          viewer->file_scroll_offset--;
-        }
-      }
+      // Move cursor up while skipping empty lines
+      move_cursor_smart(viewer, -1);
       break;
 
     case KEY_DOWN:
     case 'j':
-      // Move cursor down (vim-style)
-      if (viewer->file_cursor_line < viewer->file_line_count - 1) {
-        viewer->file_cursor_line++;
-        // Scroll down if cursor gets within 3 lines of bottom
-        if (viewer->file_cursor_line >=
-                viewer->file_scroll_offset + max_lines_visible - 3 &&
-            viewer->file_scroll_offset <
-                viewer->file_line_count - max_lines_visible) {
-          viewer->file_scroll_offset++;
-        }
-      }
+      // Move cursor down while skipping empty lines
+      move_cursor_smart(viewer, 1);
       break;
 
     case 21: // Ctrl+U
@@ -5470,6 +5406,75 @@ void check_background_fetch(NCursesDiffViewer *viewer) {
     viewer->fetch_in_progress = 0;
     viewer->fetch_pid = -1;
     viewer->sync_status = SYNC_STATUS_IDLE;
+  }
+}
+
+/**
+ * Move cursor up/down while skipping empty lines
+ * direction: -1 for up, 1 for down
+ */
+void move_cursor_smart(NCursesDiffViewer *viewer, int direction) {
+  if (!viewer || viewer->file_line_count == 0) {
+    return;
+  }
+
+  int original_cursor = viewer->file_cursor_line;
+  int new_cursor = viewer->file_cursor_line;
+  int attempts = 0;
+  const int max_attempts = viewer->file_line_count; // Prevent infinite loops
+
+  do {
+    new_cursor += direction;
+    attempts++;
+    
+    // Bounds checking
+    if (new_cursor < 0) {
+      new_cursor = 0;
+      break;
+    }
+    if (new_cursor >= viewer->file_line_count) {
+      new_cursor = viewer->file_line_count - 1;
+      break;
+    }
+    
+    // Check if current line is empty or just whitespace
+    NCursesFileLine *line = &viewer->file_lines[new_cursor];
+    char *trimmed = line->line;
+    
+    // Skip leading whitespace
+    while (*trimmed == ' ' || *trimmed == '\t') {
+      trimmed++;
+    }
+    
+    // If line has content after trimming, or we've tried too many times, stop here
+    if (*trimmed != '\0' || attempts >= max_attempts) {
+      break;
+    }
+    
+  } while (attempts < max_attempts);
+
+  // Update cursor position
+  viewer->file_cursor_line = new_cursor;
+
+  // Auto-scroll logic (same as before)
+  int height, width;
+  getmaxyx(viewer->file_content_win, height, width);
+  int max_lines_visible = height - 2;
+
+  if (direction == -1) { // Moving up
+    // Scroll up if cursor gets within 3 lines of top
+    if (viewer->file_cursor_line < viewer->file_scroll_offset + 3 &&
+        viewer->file_scroll_offset > 0) {
+      viewer->file_scroll_offset--;
+    }
+  } else { // Moving down
+    // Scroll down if cursor gets within 3 lines of bottom
+    if (viewer->file_cursor_line >=
+            viewer->file_scroll_offset + max_lines_visible - 3 &&
+        viewer->file_scroll_offset <
+            viewer->file_line_count - max_lines_visible) {
+      viewer->file_scroll_offset++;
+    }
   }
 }
 

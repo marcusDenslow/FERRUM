@@ -56,8 +56,8 @@ typedef enum {
   NCURSES_MODE_COMMIT_VIEW,
   NCURSES_MODE_STASH_LIST,
   NCURSES_MODE_STASH_VIEW,
-  NCURSES_MODE_BRANCH_VIEW,
-  NCURSES_MODE_BRANCH_LIST
+  NCURSES_MODE_BRANCH_LIST,
+  NCURSES_MODE_BRANCH_VIEW
 } NCursesViewMode;
 
 typedef enum {
@@ -126,6 +126,17 @@ typedef struct {
   int branch_animation_frame;
   int branch_text_char_count;
   int critical_operation_in_progress; // Prevent fetching during critical ops
+  
+  // Background fetch management
+  pid_t fetch_pid; // Process ID of background fetch
+  int fetch_in_progress; // Flag to track if fetch is running
+  
+  // Branch-specific commits for hover functionality
+  char branch_commits[MAX_COMMITS][2048]; // Larger buffer for formatted commits
+  int branch_commit_count;
+  char current_branch_for_commits[MAX_BRANCHNAME_LEN];
+  int branch_commits_scroll_offset;
+  int branch_commits_cursor_line;
 
 } NCursesDiffViewer;
 
@@ -288,5 +299,25 @@ int load_commit_for_viewing(NCursesDiffViewer *viewer, const char *commit_hash);
  * Load stash details for viewing
  */
 int load_stash_for_viewing(NCursesDiffViewer *viewer, int stash_index);
+
+/**
+ * Load commits for a specific branch for the hover preview
+ */
+int load_branch_commits(NCursesDiffViewer *viewer, const char *branch_name);
+
+/**
+ * Parse branch commits into navigable lines for branch view mode
+ */
+int parse_branch_commits_to_lines(NCursesDiffViewer *viewer);
+
+/**
+ * Start background fetch process
+ */
+void start_background_fetch(NCursesDiffViewer *viewer);
+
+/**
+ * Check if background fetch is complete and update UI accordingly
+ */
+void check_background_fetch(NCursesDiffViewer *viewer);
 
 #endif // NCURSES_DIFF_VIEWER_H

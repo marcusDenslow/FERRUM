@@ -544,3 +544,50 @@ int get_stash_diff(int stash_index, char *stash_diff, size_t diff_size) {
 
   return total_read > 0 ? 1 : 0;
 }
+
+int get_branch_commits(const char *branch_name, char commits[][2048], int max_commits) {
+  if (!branch_name || !commits || max_commits <= 0) {
+    return 0;
+  }
+
+  char cmd[1024];
+  snprintf(cmd, sizeof(cmd), 
+           "git log %s --format=\"commit %%H%%d%%nAuthor: %%an <%%ae>%%nDate: %%ar%%n%%n    %%s%%n%%n%%b%%n---END-COMMIT---\" -%d 2>/dev/null", 
+           branch_name, max_commits);
+
+  FILE *fp = popen(cmd, "r");
+  if (!fp) {
+    return 0;
+  }
+
+  int count = 0;
+  char buffer[8192];
+  char current_commit[4096] = "";
+  
+  while (fgets(buffer, sizeof(buffer), fp) != NULL && count < max_commits) {
+    // Check for commit delimiter
+    if (strstr(buffer, "---END-COMMIT---")) {
+      if (strlen(current_commit) > 0) {
+        strncpy(commits[count], current_commit, 2047);
+        commits[count][2047] = '\0';
+        count++;
+        current_commit[0] = '\0';
+      }
+    } else {
+      // Accumulate commit content
+      if (strlen(current_commit) + strlen(buffer) < sizeof(current_commit) - 1) {
+        strcat(current_commit, buffer);
+      }
+    }
+  }
+
+  // Handle last commit if it doesn't end with delimiter
+  if (strlen(current_commit) > 0 && count < max_commits) {
+    strncpy(commits[count], current_commit, 2047);
+    commits[count][2047] = '\0';
+    count++;
+  }
+
+  pclose(fp);
+  return count;
+}

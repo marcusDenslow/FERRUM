@@ -106,4 +106,14 @@ int get_commit_details(const char *commit_hash, char *commit_info, size_t info_s
  */
 int get_stash_diff(int stash_index, char *stash_diff, size_t diff_size);
 
+/**
+ * Get commit history for a specific branch
+ *
+ * @param branch_name The branch name to get commits for
+ * @param commits Array to store commit information
+ * @param max_commits Maximum number of commits to retrieve
+ * @return Number of commits retrieved
+ */
+int get_branch_commits(const char *branch_name, char commits[][2048], int max_commits);
+
 #endif // GIT_INTEGRATION_H

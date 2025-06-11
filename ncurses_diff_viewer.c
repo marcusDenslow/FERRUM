@@ -1082,9 +1082,6 @@ int get_commit_title_input(char *title, int max_len, char *message,
   delwin(title_win);
   delwin(message_win);
 
-  // Force complete screen refresh
-  clear();
-  refresh();
 
   return strlen(title) > 0 ? 1 : 0;
 }

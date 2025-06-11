@@ -7,6 +7,7 @@
 #include "git_integration.h"
 #include <locale.h>
 #include <ncurses.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,64 +15,80 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
-#include <signal.h>
 
 static volatile int terminal_resized = 0;
 
 void handle_sigwinch(int sig) {
-	(void)sig;
-	terminal_resized = 1;
+  (void)sig;
+  terminal_resized = 1;
 }
 
 /**
  * Handle terminal resize by recreating all windows
  */
 void handle_terminal_resize(NCursesDiffViewer *viewer) {
-    if (!viewer) return;
-    
-    // Clean up old windows
-    if (viewer->file_list_win) delwin(viewer->file_list_win);
-    if (viewer->branch_list_win) delwin(viewer->branch_list_win);
-    if (viewer->commit_list_win) delwin(viewer->commit_list_win);
-    if (viewer->stash_list_win) delwin(viewer->stash_list_win);
-    if (viewer->file_content_win) delwin(viewer->file_content_win);
-    if (viewer->status_bar_win) delwin(viewer->status_bar_win);
-    
-    // Reinitialize ncurses with new terminal size
-    endwin();
-    refresh();
-    clear();
-    
-    // Get new terminal dimensions
-    getmaxyx(stdscr, viewer->terminal_height, viewer->terminal_width);
-    viewer->file_panel_width = viewer->terminal_width * 0.4;
-    viewer->status_bar_height = viewer->terminal_height * 0.05;
-    if (viewer->status_bar_height < 1) viewer->status_bar_height = 1;
-    
-    int available_height = viewer->terminal_height - 1 - viewer->status_bar_height;
-    viewer->file_panel_height = available_height * 0.3;
-    viewer->commit_panel_height = available_height * 0.3;
-    viewer->branch_panel_height = available_height * 0.2;
-    viewer->stash_panel_height = available_height - viewer->file_panel_height - 
-                                 viewer->commit_panel_height - viewer->branch_panel_height - 3;
-    
-    int status_bar_y = 1 + available_height;
-    
-    // Recreate all windows with new dimensions
-    viewer->file_list_win = newwin(viewer->file_panel_height, viewer->file_panel_width, 1, 0);
-    viewer->branch_list_win = newwin(viewer->branch_panel_height, viewer->file_panel_width, 
-                                     1 + viewer->file_panel_height + 1, 0);
-    viewer->commit_list_win = newwin(viewer->commit_panel_height, viewer->file_panel_width,
-                                     1 + viewer->file_panel_height + 1 + viewer->branch_panel_height + 1, 0);
-    viewer->stash_list_win = newwin(viewer->stash_panel_height, viewer->file_panel_width,
-                                    1 + viewer->file_panel_height + 1 + viewer->branch_panel_height + 1 + 
-                                    viewer->commit_panel_height + 1, 0);
-    viewer->file_content_win = newwin(available_height, viewer->terminal_width - viewer->file_panel_width - 1,
-                                      1, viewer->file_panel_width + 1);
-    viewer->status_bar_win = newwin(viewer->status_bar_height, viewer->terminal_width, status_bar_y, 0);
-    
-    // Force complete redraw
-    terminal_resized = 0;
+  if (!viewer)
+    return;
+
+  // Clean up old windows
+  if (viewer->file_list_win)
+    delwin(viewer->file_list_win);
+  if (viewer->branch_list_win)
+    delwin(viewer->branch_list_win);
+  if (viewer->commit_list_win)
+    delwin(viewer->commit_list_win);
+  if (viewer->stash_list_win)
+    delwin(viewer->stash_list_win);
+  if (viewer->file_content_win)
+    delwin(viewer->file_content_win);
+  if (viewer->status_bar_win)
+    delwin(viewer->status_bar_win);
+
+  // Reinitialize ncurses with new terminal size
+  endwin();
+  refresh();
+  clear();
+
+  // Get new terminal dimensions
+  getmaxyx(stdscr, viewer->terminal_height, viewer->terminal_width);
+  viewer->file_panel_width = viewer->terminal_width * 0.4;
+  viewer->status_bar_height = viewer->terminal_height * 0.05;
+  if (viewer->status_bar_height < 1)
+    viewer->status_bar_height = 1;
+
+  int available_height =
+      viewer->terminal_height - 1 - viewer->status_bar_height;
+  viewer->file_panel_height = available_height * 0.3;
+  viewer->commit_panel_height = available_height * 0.3;
+  viewer->branch_panel_height = available_height * 0.2;
+  viewer->stash_panel_height = available_height - viewer->file_panel_height -
+                               viewer->commit_panel_height -
+                               viewer->branch_panel_height - 3;
+
+  int status_bar_y = 1 + available_height;
+
+  // Recreate all windows with new dimensions
+  viewer->file_list_win =
+      newwin(viewer->file_panel_height, viewer->file_panel_width, 1, 0);
+  viewer->branch_list_win =
+      newwin(viewer->branch_panel_height, viewer->file_panel_width,
+             1 + viewer->file_panel_height + 1, 0);
+  viewer->commit_list_win = newwin(
+      viewer->commit_panel_height, viewer->file_panel_width,
+      1 + viewer->file_panel_height + 1 + viewer->branch_panel_height + 1, 0);
+  viewer->stash_list_win =
+      newwin(viewer->stash_panel_height, viewer->file_panel_width,
+             1 + viewer->file_panel_height + 1 + viewer->branch_panel_height +
+                 1 + viewer->commit_panel_height + 1,
+             0);
+  viewer->file_content_win = newwin(
+      available_height, viewer->terminal_width - viewer->file_panel_width - 1,
+      1, viewer->file_panel_width + 1);
+  viewer->status_bar_win = newwin(viewer->status_bar_height,
+                                  viewer->terminal_width, status_bar_y, 0);
+
+  // Force complete redraw
+  terminal_resized = 0;
 }
 
 /**
@@ -100,14 +117,15 @@ int init_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
   viewer->branch_animation_frame = 0;
   viewer->branch_text_char_count = 0;
   viewer->critical_operation_in_progress = 0;
-  
+
   // Initialize branch commits
   viewer->branch_commit_count = 0;
   viewer->branch_commits_scroll_offset = 0;
   viewer->branch_commits_cursor_line = 0;
   viewer->fetch_pid = -1;
   viewer->fetch_in_progress = 0;
-  memset(viewer->current_branch_for_commits, 0, sizeof(viewer->current_branch_for_commits));
+  memset(viewer->current_branch_for_commits, 0,
+         sizeof(viewer->current_branch_for_commits));
 
   // Set locale for Unicode support
   setlocale(LC_ALL, "");
@@ -1039,9 +1057,28 @@ int get_commit_title_input(char *title, int max_len, char *message,
   // Restore settings
   curs_set(0); // Hide cursor
 
+  for (int y = title_start_y; y < title_start_y + title_height; y++) {
+    move(y, start_x);
+    for (int x = 0; x < input_width; x++) {
+      addch(' ');
+    }
+  }
+
+  // Clear message window area
+  for (int y = message_start_y; y < message_start_y + message_height; y++) {
+    move(y, start_x);
+    for (int x = 0; x < input_width; x++) {
+      addch(' ');
+    }
+  }
+
   // Clean up windows
   delwin(title_win);
   delwin(message_win);
+
+  // Force complete screen refresh
+  clear();
+  refresh();
 
   return strlen(title) > 0 ? 1 : 0;
 }
@@ -1657,11 +1694,14 @@ void render_commit_list_window(NCursesDiffViewer *viewer) {
       wattroff(viewer->commit_list_win, COLOR_PAIR(5));
     }
 
-    // Color commit hash based on push status: yellow for pushed, red for unpushed
+    // Color commit hash based on push status: yellow for pushed, red for
+    // unpushed
     if (viewer->commits[i].is_pushed) {
-      wattron(viewer->commit_list_win, COLOR_PAIR(4)); // Yellow for pushed commits
+      wattron(viewer->commit_list_win,
+              COLOR_PAIR(4)); // Yellow for pushed commits
     } else {
-      wattron(viewer->commit_list_win, COLOR_PAIR(2)); // Red for unpushed commits
+      wattron(viewer->commit_list_win,
+              COLOR_PAIR(2)); // Red for unpushed commits
     }
     mvwprintw(viewer->commit_list_win, y, 2, "%s", viewer->commits[i].hash);
     if (viewer->commits[i].is_pushed) {
@@ -1755,7 +1795,8 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
     }
   } else if (viewer->current_mode == NCURSES_MODE_BRANCH_LIST) {
     // Show branch commits
-    if (viewer->branch_count > 0 && viewer->selected_branch < viewer->branch_count) {
+    if (viewer->branch_count > 0 &&
+        viewer->selected_branch < viewer->branch_count) {
       mvwprintw(viewer->file_content_win, 0, 2, " 2. %s (Commits) ",
                 viewer->branches[viewer->selected_branch].name);
     } else {
@@ -1763,7 +1804,8 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
     }
   } else if (viewer->current_mode == NCURSES_MODE_BRANCH_VIEW) {
     // Show branch view with scrollable commits
-    if (viewer->branch_count > 0 && viewer->selected_branch < viewer->branch_count) {
+    if (viewer->branch_count > 0 &&
+        viewer->selected_branch < viewer->branch_count) {
       mvwprintw(viewer->file_content_win, 0, 2, " 2. %s (Scrollable) ",
                 viewer->branches[viewer->selected_branch].name);
     } else {
@@ -1784,7 +1826,8 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
   }
 
   // Show content if available
-  if (viewer->current_mode == NCURSES_MODE_BRANCH_LIST && viewer->branch_commit_count > 0) {
+  if (viewer->current_mode == NCURSES_MODE_BRANCH_LIST &&
+      viewer->branch_commit_count > 0) {
     // Show branch commits with full formatting
     int height, width;
     getmaxyx(viewer->file_content_win, height, width);
@@ -1792,35 +1835,38 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
     int content_width = viewer->terminal_width - viewer->file_panel_width - 3;
 
     int y = 1;
-    for (int commit_idx = viewer->branch_commits_scroll_offset; 
-         commit_idx < viewer->branch_commit_count && y < max_lines_visible; 
+    for (int commit_idx = viewer->branch_commits_scroll_offset;
+         commit_idx < viewer->branch_commit_count && y < max_lines_visible;
          commit_idx++) {
-      
+
       char *commit_text = viewer->branch_commits[commit_idx];
       char *line_start = commit_text;
       char *line_end;
-      
+
       // Parse and display each line of the commit
-      while ((line_end = strchr(line_start, '\n')) != NULL && y < max_lines_visible) {
+      while ((line_end = strchr(line_start, '\n')) != NULL &&
+             y < max_lines_visible) {
         *line_end = '\0'; // Temporarily null-terminate
-        
+
         // Check what type of line this is and apply appropriate coloring
         if (strncmp(line_start, "commit ", 7) == 0) {
           // Commit hash line - color the hash in yellow
           char *hash_start = line_start + 7;
           char *space_or_bracket = strstr(hash_start, " ");
-          if (!space_or_bracket) space_or_bracket = strstr(hash_start, "(");
-          
+          if (!space_or_bracket)
+            space_or_bracket = strstr(hash_start, "(");
+
           if (space_or_bracket) {
             *space_or_bracket = '\0';
             wattron(viewer->file_content_win, COLOR_PAIR(4)); // Yellow
             mvwprintw(viewer->file_content_win, y, 2, "commit %s", hash_start);
             wattroff(viewer->file_content_win, COLOR_PAIR(4));
-            
+
             // Show branch refs in green if they exist
             if (strstr(space_or_bracket + 1, "(")) {
               wattron(viewer->file_content_win, COLOR_PAIR(1)); // Green
-              mvwprintw(viewer->file_content_win, y, 2 + 7 + strlen(hash_start), " %s", space_or_bracket + 1);
+              mvwprintw(viewer->file_content_win, y, 2 + 7 + strlen(hash_start),
+                        " %s", space_or_bracket + 1);
               wattroff(viewer->file_content_win, COLOR_PAIR(1));
             }
             *space_or_bracket = ' '; // Restore
@@ -1851,24 +1897,25 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
             mvwprintw(viewer->file_content_win, y, 2, "%s", line_start);
           }
         }
-        
+
         *line_end = '\n'; // Restore newline
         line_start = line_end + 1;
         y++;
       }
-      
+
       // Handle last line if no newline at end
       if (strlen(line_start) > 0 && y < max_lines_visible) {
         mvwprintw(viewer->file_content_win, y, 2, "%s", line_start);
         y++;
       }
-      
+
       // Add extra spacing between commits
       if (y < max_lines_visible) {
         y++;
       }
     }
-  } else if (viewer->current_mode == NCURSES_MODE_BRANCH_VIEW && viewer->file_line_count > 0) {
+  } else if (viewer->current_mode == NCURSES_MODE_BRANCH_VIEW &&
+             viewer->file_line_count > 0) {
     // Show scrollable branch commits (reuse file line navigation)
     int height, width;
     getmaxyx(viewer->file_content_win, height, width);
@@ -1906,18 +1953,20 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
         if (strncmp(display_line, "commit ", 7) == 0) {
           char *hash_start = display_line + 7;
           char *space_or_bracket = strstr(hash_start, " ");
-          if (!space_or_bracket) space_or_bracket = strstr(hash_start, "(");
-          
+          if (!space_or_bracket)
+            space_or_bracket = strstr(hash_start, "(");
+
           if (space_or_bracket) {
             *space_or_bracket = '\0';
             wattron(viewer->file_content_win, COLOR_PAIR(4)); // Yellow
             mvwprintw(viewer->file_content_win, y, 2, "commit %s", hash_start);
             wattroff(viewer->file_content_win, COLOR_PAIR(4));
-            
+
             // Show branch refs in green if they exist
             if (strstr(space_or_bracket + 1, "(")) {
               wattron(viewer->file_content_win, COLOR_PAIR(1)); // Green
-              mvwprintw(viewer->file_content_win, y, 2 + 7 + strlen(hash_start), " %s", space_or_bracket + 1);
+              mvwprintw(viewer->file_content_win, y, 2 + 7 + strlen(hash_start),
+                        " %s", space_or_bracket + 1);
               wattroff(viewer->file_content_win, COLOR_PAIR(1));
             }
             *space_or_bracket = ' '; // Restore
@@ -1939,7 +1988,7 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
         } else {
           strcpy(display_line, line->line);
         }
-        
+
         wattron(viewer->file_content_win, COLOR_PAIR(3)); // Cyan
         mvwprintw(viewer->file_content_win, y, 2, "%s", display_line);
         wattroff(viewer->file_content_win, COLOR_PAIR(3));
@@ -2336,8 +2385,8 @@ void render_status_bar(NCursesDiffViewer *viewer) {
   } else if (viewer->current_mode == NCURSES_MODE_STASH_LIST) {
     strcpy(keybindings, "Apply: <space> | Pop: g | Drop: d | Nav: j/k");
   } else if (viewer->current_mode == NCURSES_MODE_BRANCH_LIST) {
-    strcpy(keybindings,
-           "View: Enter | Checkout: c | New: n | Rename: r | Delete: d | Pull: p | Nav: j/k");
+    strcpy(keybindings, "View: Enter | Checkout: c | New: n | Rename: r | "
+                        "Delete: d | Pull: p | Nav: j/k");
   } else if (viewer->current_mode == NCURSES_MODE_FILE_VIEW) {
     strcpy(keybindings, "Scroll: j/k | Page: Ctrl+U/D | Back: Esc");
   } else if (viewer->current_mode == NCURSES_MODE_COMMIT_VIEW) {
@@ -2508,9 +2557,10 @@ void update_sync_status(NCursesDiffViewer *viewer) {
   time_t current_time = time(NULL);
 
   // Check if it's time to sync (every 30 seconds)
-  if (current_time - viewer->last_sync_time >= 30 && !viewer->critical_operation_in_progress && !viewer->fetch_in_progress) {
+  if (current_time - viewer->last_sync_time >= 30 &&
+      !viewer->critical_operation_in_progress && !viewer->fetch_in_progress) {
     viewer->last_sync_time = current_time;
-    
+
     // Start background fetch instead of blocking
     start_background_fetch(viewer);
     return;
@@ -2518,7 +2568,6 @@ void update_sync_status(NCursesDiffViewer *viewer) {
 
   // Always check if background fetch is complete
   check_background_fetch(viewer);
-
 
   // Handle all animation states
   if (viewer->sync_status != SYNC_STATUS_IDLE) {
@@ -2804,7 +2853,8 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     viewer->current_mode = NCURSES_MODE_BRANCH_LIST;
     // Load commits for the currently selected branch when entering branch mode
     if (viewer->branch_count > 0) {
-      load_branch_commits(viewer, viewer->branches[viewer->selected_branch].name);
+      load_branch_commits(viewer,
+                          viewer->branches[viewer->selected_branch].name);
       viewer->branch_commits_scroll_offset = 0;
     }
     break;
@@ -2869,22 +2919,35 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
 
     case 's':
     case 'S':
-				viewer->critical_operation_in_progress = 1;
+      viewer->critical_operation_in_progress = 1;
       create_ncurses_git_stash(viewer);
-				viewer->critical_operation_in_progress = 0;
+      viewer->critical_operation_in_progress = 0;
       break;
 
-	case 'c':
+    case 'c':
     case 'C': // Commit marked files
     {
       char commit_title[MAX_COMMIT_TITLE_LEN];
       char commit_message[2048];
-      viewer->critical_operation_in_progress = 1; // Block fetching during commit
+      viewer->critical_operation_in_progress =
+          1; // Block fetching during commit
       if (get_commit_title_input(commit_title, MAX_COMMIT_TITLE_LEN,
                                  commit_message, sizeof(commit_message))) {
         commit_marked_files(viewer, commit_title, commit_message);
       }
       viewer->critical_operation_in_progress = 0; // Re-enable fetching
+
+      // Force complete screen refresh after commit dialog
+      clear();
+      refresh();
+
+      // Redraw all windows immediately
+      render_file_list_window(viewer);
+      render_file_content_window(viewer);
+      render_commit_list_window(viewer);
+      render_branch_list_window(viewer);
+      render_stash_list_window(viewer);
+      render_status_bar(viewer);
     } break;
 
     case '\t': // Tab - switch to commit list mode
@@ -3024,10 +3087,11 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
       }
       break;
 
-				case 'P': // Push commit
+    case 'P': // Push commit
       if (viewer->commit_count > 0 &&
           viewer->selected_commit < viewer->commit_count) {
-        viewer->critical_operation_in_progress = 1; // Block fetching during push
+        viewer->critical_operation_in_progress =
+            1; // Block fetching during push
         // Show immediate feedback
         viewer->sync_status = SYNC_STATUS_PUSHING_VISIBLE;
         viewer->animation_frame = 0;
@@ -3041,30 +3105,42 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
       }
       break;
 
-			case 'r':
-				if (viewer->commit_count > 0 && viewer->selected_commit == 0) {
-					viewer->critical_operation_in_progress = 1; 
-					reset_commit_soft(viewer, viewer->selected_commit);
-					viewer->critical_operation_in_progress = 0;
-				}
-			break;
+    case 'r':
+      if (viewer->commit_count > 0 && viewer->selected_commit == 0) {
+        viewer->critical_operation_in_progress = 1;
+        reset_commit_soft(viewer, viewer->selected_commit);
+        viewer->critical_operation_in_progress = 0;
+      }
+      break;
 
     case 'R': // Reset (hard) - undo commit and discard changes
       if (viewer->commit_count > 0 && viewer->selected_commit == 0) {
-					viewer->critical_operation_in_progress = 1;
+        viewer->critical_operation_in_progress = 1;
         reset_commit_hard(viewer, viewer->selected_commit);
-					viewer->critical_operation_in_progress = 0;
+        viewer->critical_operation_in_progress = 0;
       }
       break;
 
-    case 'a':
-    case 'A': // Amend most recent commit
-      if (viewer->commit_count > 0) {
-					viewer->critical_operation_in_progress = 1;
-        amend_commit(viewer);
-					viewer->critical_operation_in_progress = 0;
-      }
-      break;
+				case 'a':
+case 'A': // Amend most recent commit
+  if (viewer->commit_count > 0) {
+    viewer->critical_operation_in_progress = 1;
+    amend_commit(viewer);
+    viewer->critical_operation_in_progress = 0;
+    
+    // Force complete screen refresh after amend dialog
+    clear();
+    refresh();
+    
+    // Redraw all windows immediately
+    render_file_list_window(viewer);
+    render_file_content_window(viewer);
+    render_commit_list_window(viewer);
+    render_branch_list_window(viewer);
+    render_stash_list_window(viewer);
+    render_status_bar(viewer);
+  }
+  break;
     }
   } else if (viewer->current_mode == NCURSES_MODE_STASH_LIST) {
     // Stash list mode navigation
@@ -3110,7 +3186,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     case ' ': // Space - Apply stash (keeps stash in list)
       if (viewer->stash_count > 0 &&
           viewer->selected_stash < viewer->stash_count) {
-					viewer->critical_operation_in_progress = 1;
+        viewer->critical_operation_in_progress = 1;
         if (apply_git_stash(viewer->selected_stash)) {
           // Refresh everything after applying stash
           get_ncurses_changed_files(viewer);
@@ -3132,7 +3208,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
                 viewer, viewer->files[viewer->selected_file].filename);
           }
         }
-					viewer->critical_operation_in_progress = 0;
+        viewer->critical_operation_in_progress = 0;
       }
       break;
 
@@ -3140,7 +3216,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     case 'G': // Pop stash (applies and removes from list)
       if (viewer->stash_count > 0 &&
           viewer->selected_stash < viewer->stash_count) {
-					viewer->critical_operation_in_progress = 1;
+        viewer->critical_operation_in_progress = 1;
         if (pop_git_stash(viewer->selected_stash)) {
           // Refresh everything after popping stash
           get_ncurses_changed_files(viewer);
@@ -3169,7 +3245,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
                 viewer, viewer->files[viewer->selected_file].filename);
           }
         }
-					viewer->critical_operation_in_progress = 0;
+        viewer->critical_operation_in_progress = 0;
       }
       break;
 
@@ -3177,7 +3253,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     case 'D': // Drop stash (removes without applying)
       if (viewer->stash_count > 0 &&
           viewer->selected_stash < viewer->stash_count) {
-					viewer->critical_operation_in_progress = 1;
+        viewer->critical_operation_in_progress = 1;
         if (drop_git_stash(viewer->selected_stash)) {
           // Refresh stash list after dropping
           get_ncurses_git_stashes(viewer);
@@ -3188,7 +3264,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
             viewer->selected_stash = viewer->stash_count - 1;
           }
         }
-					viewer->critical_operation_in_progress = 0;
+        viewer->critical_operation_in_progress = 0;
       }
       break;
     }
@@ -3206,7 +3282,8 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
         viewer->selected_branch--;
         // Load commits for the newly selected branch and reset scroll
         if (viewer->branch_count > 0) {
-          load_branch_commits(viewer, viewer->branches[viewer->selected_branch].name);
+          load_branch_commits(viewer,
+                              viewer->branches[viewer->selected_branch].name);
           viewer->branch_commits_scroll_offset = 0;
         }
       }
@@ -3218,7 +3295,8 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
         viewer->selected_branch++;
         // Load commits for the newly selected branch and reset scroll
         if (viewer->branch_count > 0) {
-          load_branch_commits(viewer, viewer->branches[viewer->selected_branch].name);
+          load_branch_commits(viewer,
+                              viewer->branches[viewer->selected_branch].name);
           viewer->branch_commits_scroll_offset = 0;
         }
       }
@@ -3231,7 +3309,8 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
       if (viewer->branch_count > 0 &&
           viewer->selected_branch < viewer->branch_count) {
         // Load commits and parse them for navigation
-        load_branch_commits(viewer, viewer->branches[viewer->selected_branch].name);
+        load_branch_commits(viewer,
+                            viewer->branches[viewer->selected_branch].name);
         parse_branch_commits_to_lines(viewer);
         viewer->current_mode = NCURSES_MODE_BRANCH_VIEW;
       }
@@ -3240,7 +3319,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     case 'c': // c - Checkout selected branch
       if (viewer->branch_count > 0 &&
           viewer->selected_branch < viewer->branch_count) {
-					viewer->critical_operation_in_progress = 1;
+        viewer->critical_operation_in_progress = 1;
         char cmd[512];
         snprintf(cmd, sizeof(cmd), "git checkout \"%s\" >/dev/null 2>&1",
                  viewer->branches[viewer->selected_branch].name);
@@ -3268,7 +3347,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
                 viewer, viewer->files[viewer->selected_file].filename);
           }
         }
-					viewer->critical_operation_in_progress = 0;
+        viewer->critical_operation_in_progress = 0;
 
         // Force complete screen refresh after checkout
         clear();
@@ -3278,7 +3357,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
 
     case 'n': // New branch
     {
-					viewer->critical_operation_in_progress = 1;
+      viewer->critical_operation_in_progress = 1;
       char new_branch_name[256];
       if (get_branch_name_input(new_branch_name, sizeof(new_branch_name))) {
         if (create_git_branch(new_branch_name)) {
@@ -3332,13 +3411,13 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
       // Clear screen artifacts from dialog
       clear();
       refresh();
-					viewer->critical_operation_in_progress = 0;
+      viewer->critical_operation_in_progress = 0;
     } break;
 
     case 'd': // Delete branch
       if (viewer->branch_count > 0 &&
           viewer->selected_branch < viewer->branch_count) {
-					viewer->critical_operation_in_progress = 1;
+        viewer->critical_operation_in_progress = 1;
         const char *branch_to_delete =
             viewer->branches[viewer->selected_branch].name;
 
@@ -3370,14 +3449,14 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
         // Clear screen artifacts from dialog
         clear();
         refresh();
-					viewer->critical_operation_in_progress = 0;
+        viewer->critical_operation_in_progress = 0;
       }
       break;
 
     case 'r': // Rename branch
       if (viewer->branch_count > 0 &&
           viewer->selected_branch < viewer->branch_count) {
-					viewer->critical_operation_in_progress = 1;
+        viewer->critical_operation_in_progress = 1;
         const char *current_name =
             viewer->branches[viewer->selected_branch].name;
         char new_name[256];
@@ -3405,14 +3484,14 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
         // Clear screen artifacts from dialog
         clear();
         refresh();
-					viewer->critical_operation_in_progress = 0;
+        viewer->critical_operation_in_progress = 0;
       }
       break;
 
     case 'p':
       if (viewer->branch_count > 0 &&
           viewer->selected_branch < viewer->branch_count) {
-					viewer->critical_operation_in_progress = 1;
+        viewer->critical_operation_in_progress = 1;
         const char *branch_name =
             viewer->branches[viewer->selected_branch].name;
 
@@ -3507,7 +3586,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
         } else {
           show_error_popup("No commits to pull from remote");
         }
-					viewer->critical_operation_in_progress = 0;
+        viewer->critical_operation_in_progress = 0;
       }
       break;
     }
@@ -3672,7 +3751,8 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     // Branch view mode navigation (same as file view)
     switch (key) {
     case 27: // ESC
-      viewer->current_mode = NCURSES_MODE_BRANCH_LIST; // Return to branch list mode
+      viewer->current_mode =
+          NCURSES_MODE_BRANCH_LIST; // Return to branch list mode
       break;
 
     case KEY_UP:
@@ -3760,7 +3840,7 @@ int run_ncurses_diff_viewer(void) {
     printf("Failed to initialize ncurses diff viewer\n");
     return 1;
   }
-	signal(SIGWINCH, handle_sigwinch);
+  signal(SIGWINCH, handle_sigwinch);
 
   // Get changed files (can be 0, that's okay)
   get_ncurses_changed_files(&viewer);
@@ -3814,9 +3894,9 @@ int run_ncurses_diff_viewer(void) {
 
   while (running) {
 
-		if (terminal_resized) {
-			handle_terminal_resize(&viewer);
-		}
+    if (terminal_resized) {
+      handle_terminal_resize(&viewer);
+    }
 
     // Only update title if mode changed
     if (viewer.current_mode != last_mode) {
@@ -5228,13 +5308,14 @@ int load_branch_commits(NCursesDiffViewer *viewer, const char *branch_name) {
     return viewer->branch_commit_count; // Already loaded
   }
 
-  viewer->branch_commit_count = get_branch_commits(branch_name, 
-                                                   viewer->branch_commits, 
-                                                   MAX_COMMITS);
-  
-  strncpy(viewer->current_branch_for_commits, branch_name, 
+  viewer->branch_commit_count =
+      get_branch_commits(branch_name, viewer->branch_commits, MAX_COMMITS);
+
+  strncpy(viewer->current_branch_for_commits, branch_name,
           sizeof(viewer->current_branch_for_commits) - 1);
-  viewer->current_branch_for_commits[sizeof(viewer->current_branch_for_commits) - 1] = '\0';
+  viewer
+      ->current_branch_for_commits[sizeof(viewer->current_branch_for_commits) -
+                                   1] = '\0';
 
   return viewer->branch_commit_count;
 }
@@ -5252,41 +5333,43 @@ int parse_branch_commits_to_lines(NCursesDiffViewer *viewer) {
   viewer->file_cursor_line = 0;
 
   // Parse each commit into file_lines for navigation
-  for (int commit_idx = 0; commit_idx < viewer->branch_commit_count && 
-       viewer->file_line_count < MAX_FULL_FILE_LINES; commit_idx++) {
-    
+  for (int commit_idx = 0; commit_idx < viewer->branch_commit_count &&
+                           viewer->file_line_count < MAX_FULL_FILE_LINES;
+       commit_idx++) {
+
     char *commit_text = viewer->branch_commits[commit_idx];
     char *line_start = commit_text;
     char *line_end;
-    
+
     // Parse each line of the commit
-    while ((line_end = strchr(line_start, '\n')) != NULL && 
+    while ((line_end = strchr(line_start, '\n')) != NULL &&
            viewer->file_line_count < MAX_FULL_FILE_LINES) {
       *line_end = '\0'; // Temporarily null-terminate
-      
+
       NCursesFileLine *file_line = &viewer->file_lines[viewer->file_line_count];
       strncpy(file_line->line, line_start, sizeof(file_line->line) - 1);
       file_line->line[sizeof(file_line->line) - 1] = '\0';
-      
+
       // Set line type for appropriate coloring
       if (strncmp(line_start, "commit ", 7) == 0) {
         file_line->type = 'h'; // Commit header
-      } else if (strncmp(line_start, "Author:", 7) == 0 || 
+      } else if (strncmp(line_start, "Author:", 7) == 0 ||
                  strncmp(line_start, "Date:", 5) == 0) {
         file_line->type = 'i'; // Info line
       } else {
         file_line->type = ' '; // Regular line
       }
-      
+
       file_line->is_diff_line = 0;
       viewer->file_line_count++;
-      
+
       *line_end = '\n'; // Restore newline
       line_start = line_end + 1;
     }
-    
+
     // Handle last line if no newline at end
-    if (strlen(line_start) > 0 && viewer->file_line_count < MAX_FULL_FILE_LINES) {
+    if (strlen(line_start) > 0 &&
+        viewer->file_line_count < MAX_FULL_FILE_LINES) {
       NCursesFileLine *file_line = &viewer->file_lines[viewer->file_line_count];
       strncpy(file_line->line, line_start, sizeof(file_line->line) - 1);
       file_line->line[sizeof(file_line->line) - 1] = '\0';
@@ -5294,10 +5377,11 @@ int parse_branch_commits_to_lines(NCursesDiffViewer *viewer) {
       file_line->is_diff_line = 0;
       viewer->file_line_count++;
     }
-    
+
     // Add spacing between commits
     if (viewer->file_line_count < MAX_FULL_FILE_LINES) {
-      NCursesFileLine *empty_line = &viewer->file_lines[viewer->file_line_count];
+      NCursesFileLine *empty_line =
+          &viewer->file_lines[viewer->file_line_count];
       strcpy(empty_line->line, "");
       empty_line->type = ' ';
       empty_line->is_diff_line = 0;
@@ -5312,7 +5396,8 @@ int parse_branch_commits_to_lines(NCursesDiffViewer *viewer) {
  * Start background fetch process
  */
 void start_background_fetch(NCursesDiffViewer *viewer) {
-  if (!viewer || viewer->fetch_in_progress || viewer->critical_operation_in_progress) {
+  if (!viewer || viewer->fetch_in_progress ||
+      viewer->critical_operation_in_progress) {
     return;
   }
 
@@ -5340,32 +5425,33 @@ void check_background_fetch(NCursesDiffViewer *viewer) {
 
   int status;
   pid_t result = waitpid(viewer->fetch_pid, &status, WNOHANG);
-  
+
   if (result == viewer->fetch_pid) {
     // Fetch completed
     viewer->fetch_in_progress = 0;
     viewer->fetch_pid = -1;
-    
+
     // Preserve current positions during refresh
     int preserved_file_scroll = viewer->file_scroll_offset;
     int preserved_file_cursor = viewer->file_cursor_line;
     int preserved_selected_file = viewer->selected_file;
-    
+
     // Update only the necessary data without blocking UI
     get_ncurses_changed_files(viewer);
     get_commit_history(viewer);
     get_ncurses_git_branches(viewer);
-    
+
     // Restore file selection if still valid
     if (preserved_selected_file < viewer->file_count) {
       viewer->selected_file = preserved_selected_file;
-      
+
       // Reload current file if in file mode and restore position
       if ((viewer->current_mode == NCURSES_MODE_FILE_LIST ||
            viewer->current_mode == NCURSES_MODE_FILE_VIEW) &&
           viewer->file_count > 0) {
-        load_full_file_with_diff(viewer, viewer->files[viewer->selected_file].filename);
-        
+        load_full_file_with_diff(viewer,
+                                 viewer->files[viewer->selected_file].filename);
+
         // Restore scroll position if still valid
         if (preserved_file_cursor < viewer->file_line_count) {
           viewer->file_cursor_line = preserved_file_cursor;
@@ -5375,11 +5461,11 @@ void check_background_fetch(NCursesDiffViewer *viewer) {
         }
       }
     }
-    
+
     // If we're in branch mode and have commits loaded, refresh them
-    if (viewer->current_mode == NCURSES_MODE_BRANCH_LIST || 
+    if (viewer->current_mode == NCURSES_MODE_BRANCH_LIST ||
         viewer->current_mode == NCURSES_MODE_BRANCH_VIEW) {
-      if (viewer->branch_count > 0 && 
+      if (viewer->branch_count > 0 &&
           strlen(viewer->current_branch_for_commits) > 0) {
         load_branch_commits(viewer, viewer->current_branch_for_commits);
         if (viewer->current_mode == NCURSES_MODE_BRANCH_VIEW) {
@@ -5426,7 +5512,7 @@ void move_cursor_smart(NCursesDiffViewer *viewer, int direction) {
   do {
     new_cursor += direction;
     attempts++;
-    
+
     // Bounds checking
     if (new_cursor < 0) {
       new_cursor = 0;
@@ -5436,21 +5522,22 @@ void move_cursor_smart(NCursesDiffViewer *viewer, int direction) {
       new_cursor = viewer->file_line_count - 1;
       break;
     }
-    
+
     // Check if current line is empty or just whitespace
     NCursesFileLine *line = &viewer->file_lines[new_cursor];
     char *trimmed = line->line;
-    
+
     // Skip leading whitespace
     while (*trimmed == ' ' || *trimmed == '\t') {
       trimmed++;
     }
-    
-    // If line has content after trimming, or we've tried too many times, stop here
+
+    // If line has content after trimming, or we've tried too many times, stop
+    // here
     if (*trimmed != '\0' || attempts >= max_attempts) {
       break;
     }
-    
+
   } while (attempts < max_attempts);
 
   // Update cursor position
@@ -5488,7 +5575,7 @@ void cleanup_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
       kill(viewer->fetch_pid, SIGTERM);
       waitpid(viewer->fetch_pid, NULL, 0);
     }
-    
+
     if (viewer->file_list_win) {
       delwin(viewer->file_list_win);
     }

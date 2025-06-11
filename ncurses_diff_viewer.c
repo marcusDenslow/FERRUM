@@ -138,26 +138,25 @@ int init_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
   nodelay(stdscr, TRUE); // Make getch() non-blocking
   curs_set(0);           // Hide cursor to prevent flickering
 
+  // Enable colors
+  if (has_colors()) {
+    start_color();
+    init_pair(1, COLOR_GREEN, COLOR_BLACK);  // Additions
+    init_pair(2, COLOR_RED, COLOR_BLACK);    // Deletions
+    init_pair(3, COLOR_CYAN, COLOR_BLACK);   // Headers
+    init_pair(4, COLOR_YELLOW, COLOR_BLACK); // Selected
+    init_pair(
+        5, COLOR_BLACK,
+        COLOR_WHITE); // Highlighted selection - low opacity line highlight
+    init_pair(6, COLOR_MAGENTA,
+              COLOR_BLACK); // Orange-ish color for commit hash
 
-	// Enable colors
-if (has_colors()) {
-  start_color();
-  init_pair(1, COLOR_GREEN, COLOR_BLACK);  // Additions
-  init_pair(2, COLOR_RED, COLOR_BLACK);    // Deletions
-  init_pair(3, COLOR_CYAN, COLOR_BLACK);   // Headers
-  init_pair(4, COLOR_YELLOW, COLOR_BLACK); // Selected
-  init_pair(
-      5, COLOR_BLACK,
-      COLOR_WHITE); // Highlighted selection - low opacity line highlight
-  init_pair(6, COLOR_MAGENTA,
-            COLOR_BLACK); // Orange-ish color for commit hash
-  
-  // Gruvbox theme colors for commit info
-  init_pair(7, COLOR_CYAN, COLOR_BLACK);    // HEAD (blue-green)
-  init_pair(8, COLOR_GREEN, COLOR_BLACK);   // main branch (nice green)
-  init_pair(9, COLOR_RED, COLOR_BLACK);     // origin/* (red)
-  init_pair(10, COLOR_YELLOW, COLOR_BLACK); // commit hash and arrows
-}
+    // Gruvbox theme colors for commit info
+    init_pair(7, COLOR_CYAN, COLOR_BLACK);    // HEAD (blue-green)
+    init_pair(8, COLOR_GREEN, COLOR_BLACK);   // main branch (nice green)
+    init_pair(9, COLOR_RED, COLOR_BLACK);     // origin/* (red)
+    init_pair(10, COLOR_YELLOW, COLOR_BLACK); // commit hash and arrows
+  }
 
   getmaxyx(stdscr, viewer->terminal_height, viewer->terminal_width);
   viewer->file_panel_width =
@@ -2055,132 +2054,134 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
         wattron(viewer->file_content_win, A_REVERSE);
       }
 
-			// Handle commit header coloring
-if (line->type == 'h' && viewer->current_mode == NCURSES_MODE_FILE_VIEW) {
-  // Commit header line with special coloring for hash and branches
-  char display_line[1024];
-  if ((int)strlen(line->line) > content_width - 2) {
-    strncpy(display_line, line->line, content_width - 5);
-    display_line[content_width - 5] = '\0';
-    strcat(display_line, "...");
-  } else {
-    strcpy(display_line, line->line);
-  }
-
-  // Print character by character with gruvbox colors
-  int x = 1;
-  for (int j = 0; display_line[j] != '\0' && x < content_width; j++) {
-    char c = display_line[j];
-
-    // Look for specific patterns to color
-    if (strstr(&display_line[j], "commit ") == &display_line[j]) {
-      // Color "commit" in cyan
-      wattron(viewer->file_content_win, COLOR_PAIR(3));
-      mvwprintw(viewer->file_content_win, y, x, "commit ");
-      wattroff(viewer->file_content_win, COLOR_PAIR(3));
-      x += 7;
-      j += 6; // Skip "commit"
-
-      // Now check if the next characters are a commit hash
-      if (j + 1 < (int)strlen(display_line) &&
-          display_line[j + 1] != '\0') {
-        int hash_start = j + 1;
-        int hash_len = 0;
-        // Count consecutive hex characters
-        while (hash_start + hash_len < (int)strlen(display_line) &&
-               hash_len < 40 &&
-               ((display_line[hash_start + hash_len] >= '0' &&
-                 display_line[hash_start + hash_len] <= '9') ||
-                (display_line[hash_start + hash_len] >= 'a' &&
-                 display_line[hash_start + hash_len] <= 'f') ||
-                (display_line[hash_start + hash_len] >= 'A' &&
-                 display_line[hash_start + hash_len] <= 'F'))) {
-          hash_len++;
+      // Handle commit header coloring
+      if (line->type == 'h' && viewer->current_mode == NCURSES_MODE_FILE_VIEW) {
+        // Commit header line with special coloring for hash and branches
+        char display_line[1024];
+        if ((int)strlen(line->line) > content_width - 2) {
+          strncpy(display_line, line->line, content_width - 5);
+          display_line[content_width - 5] = '\0';
+          strcat(display_line, "...");
+        } else {
+          strcpy(display_line, line->line);
         }
 
-        // Color commit hash in gruvbox yellow
-        if (hash_len >= 7) {
-          wattron(viewer->file_content_win, COLOR_PAIR(10));
-          for (int h = 0; h < hash_len; h++) {
-            mvwaddch(viewer->file_content_win, y, x,
-                     display_line[hash_start + h]);
+        // Print character by character with gruvbox colors
+        int x = 1;
+        for (int j = 0; display_line[j] != '\0' && x < content_width; j++) {
+          char c = display_line[j];
+
+          // Look for specific patterns to color
+          if (strstr(&display_line[j], "commit ") == &display_line[j]) {
+            // Color "commit" in cyan
+            wattron(viewer->file_content_win, COLOR_PAIR(3));
+            mvwprintw(viewer->file_content_win, y, x, "commit ");
+            wattroff(viewer->file_content_win, COLOR_PAIR(3));
+            x += 7;
+            j += 6; // Skip "commit"
+
+            // Now check if the next characters are a commit hash
+            if (j + 1 < (int)strlen(display_line) &&
+                display_line[j + 1] != '\0') {
+              int hash_start = j + 1;
+              int hash_len = 0;
+              // Count consecutive hex characters
+              while (hash_start + hash_len < (int)strlen(display_line) &&
+                     hash_len < 40 &&
+                     ((display_line[hash_start + hash_len] >= '0' &&
+                       display_line[hash_start + hash_len] <= '9') ||
+                      (display_line[hash_start + hash_len] >= 'a' &&
+                       display_line[hash_start + hash_len] <= 'f') ||
+                      (display_line[hash_start + hash_len] >= 'A' &&
+                       display_line[hash_start + hash_len] <= 'F'))) {
+                hash_len++;
+              }
+
+              // Color commit hash in gruvbox yellow
+              if (hash_len >= 7) {
+                wattron(viewer->file_content_win, COLOR_PAIR(10));
+                for (int h = 0; h < hash_len; h++) {
+                  mvwaddch(viewer->file_content_win, y, x,
+                           display_line[hash_start + h]);
+                  x++;
+                }
+                wattroff(viewer->file_content_win, COLOR_PAIR(10));
+                j += hash_len;
+              }
+            }
+          } else if (strstr(&display_line[j], "origin/main") ==
+                     &display_line[j]) {
+            // Color "origin/main" in gruvbox red
+            wattron(viewer->file_content_win, COLOR_PAIR(9));
+            mvwprintw(viewer->file_content_win, y, x, "origin/main");
+            wattroff(viewer->file_content_win, COLOR_PAIR(9));
+            x += 11;
+            j += 10;
+          } else if (strstr(&display_line[j], "origin/HEAD") ==
+                     &display_line[j]) {
+            // Color "origin/HEAD" in gruvbox red
+            wattron(viewer->file_content_win, COLOR_PAIR(9));
+            mvwprintw(viewer->file_content_win, y, x, "origin/HEAD");
+            wattroff(viewer->file_content_win, COLOR_PAIR(9));
+            x += 11;
+            j += 10;
+          } else if (strstr(&display_line[j], "HEAD") == &display_line[j]) {
+            // Check that it's not part of origin/HEAD
+            int is_standalone_head = 1;
+            if (j >= 7 && strncmp(&display_line[j - 7], "origin/", 7) == 0) {
+              is_standalone_head = 0;
+            }
+
+            if (is_standalone_head) {
+              // Color standalone "HEAD" in gruvbox blue-green
+              wattron(viewer->file_content_win, COLOR_PAIR(7));
+              mvwprintw(viewer->file_content_win, y, x, "HEAD");
+              wattroff(viewer->file_content_win, COLOR_PAIR(7));
+              x += 4;
+              j += 3;
+            } else {
+              mvwaddch(viewer->file_content_win, y, x, c);
+              x++;
+            }
+          } else if (strstr(&display_line[j], "main") == &display_line[j]) {
+            // Check that it's not part of origin/main
+            int is_standalone_main = 1;
+            if (j >= 7 && strncmp(&display_line[j - 7], "origin/", 7) == 0) {
+              is_standalone_main = 0;
+            }
+
+            if (is_standalone_main) {
+              // Color standalone "main" in gruvbox green
+              wattron(viewer->file_content_win, COLOR_PAIR(8));
+              mvwprintw(viewer->file_content_win, y, x, "main");
+              wattroff(viewer->file_content_win, COLOR_PAIR(8));
+              x += 4;
+              j += 3;
+            } else {
+              mvwaddch(viewer->file_content_win, y, x, c);
+              x++;
+            }
+          } else if (strstr(&display_line[j], "->") == &display_line[j]) {
+            // Color "->" arrows in same color as commit hash (gruvbox yellow)
+            wattron(viewer->file_content_win, COLOR_PAIR(10));
+            mvwprintw(viewer->file_content_win, y, x, "->");
+            wattroff(viewer->file_content_win, COLOR_PAIR(10));
+            x += 2;
+            j += 1; // Will be incremented by loop
+          } else if (c == '(' || c == ')' || c == ',') {
+            // Color branch separators in cyan
+            wattron(viewer->file_content_win, COLOR_PAIR(3));
+            mvwaddch(viewer->file_content_win, y, x, c);
+            wattroff(viewer->file_content_win, COLOR_PAIR(3));
+            x++;
+          } else {
+            mvwaddch(viewer->file_content_win, y, x, c);
             x++;
           }
-          wattroff(viewer->file_content_win, COLOR_PAIR(10));
-          j += hash_len;
         }
       }
-    } else if (strstr(&display_line[j], "origin/main") == &display_line[j]) {
-      // Color "origin/main" in gruvbox red
-      wattron(viewer->file_content_win, COLOR_PAIR(9));
-      mvwprintw(viewer->file_content_win, y, x, "origin/main");
-      wattroff(viewer->file_content_win, COLOR_PAIR(9));
-      x += 11;
-      j += 10;
-    } else if (strstr(&display_line[j], "origin/HEAD") == &display_line[j]) {
-      // Color "origin/HEAD" in gruvbox red
-      wattron(viewer->file_content_win, COLOR_PAIR(9));
-      mvwprintw(viewer->file_content_win, y, x, "origin/HEAD");
-      wattroff(viewer->file_content_win, COLOR_PAIR(9));
-      x += 11;
-      j += 10;
-    } else if (strstr(&display_line[j], "HEAD") == &display_line[j]) {
-      // Check that it's not part of origin/HEAD
-      int is_standalone_head = 1;
-      if (j >= 7 && strncmp(&display_line[j - 7], "origin/", 7) == 0) {
-        is_standalone_head = 0;
-      }
-      
-      if (is_standalone_head) {
-        // Color standalone "HEAD" in gruvbox blue-green
-        wattron(viewer->file_content_win, COLOR_PAIR(7));
-        mvwprintw(viewer->file_content_win, y, x, "HEAD");
-        wattroff(viewer->file_content_win, COLOR_PAIR(7));
-        x += 4;
-        j += 3;
-      } else {
-        mvwaddch(viewer->file_content_win, y, x, c);
-        x++;
-      }
-    } else if (strstr(&display_line[j], "main") == &display_line[j]) {
-      // Check that it's not part of origin/main
-      int is_standalone_main = 1;
-      if (j >= 7 && strncmp(&display_line[j - 7], "origin/", 7) == 0) {
-        is_standalone_main = 0;
-      }
 
-      if (is_standalone_main) {
-        // Color standalone "main" in gruvbox green
-        wattron(viewer->file_content_win, COLOR_PAIR(8));
-        mvwprintw(viewer->file_content_win, y, x, "main");
-        wattroff(viewer->file_content_win, COLOR_PAIR(8));
-        x += 4;
-        j += 3;
-      } else {
-        mvwaddch(viewer->file_content_win, y, x, c);
-        x++;
-      }
-    } else if (strstr(&display_line[j], "->") == &display_line[j]) {
-      // Color "->" arrows in same color as commit hash (gruvbox yellow)
-      wattron(viewer->file_content_win, COLOR_PAIR(10));
-      mvwprintw(viewer->file_content_win, y, x, "->");
-      wattroff(viewer->file_content_win, COLOR_PAIR(10));
-      x += 2;
-      j += 1; // Will be incremented by loop
-    } else if (c == '(' || c == ')' || c == ',') {
-      // Color branch separators in cyan
-      wattron(viewer->file_content_win, COLOR_PAIR(3));
-      mvwaddch(viewer->file_content_win, y, x, c);
-      wattroff(viewer->file_content_win, COLOR_PAIR(3));
-      x++;
-    } else {
-      mvwaddch(viewer->file_content_win, y, x, c);
-      x++;
-    }
-  }
-}
-
-       else if (line->type == 'h') {
+      else if (line->type == 'h') {
         // In commit/stash view, show header lines as plain white text
         char display_line[1024];
         if ((int)strlen(line->line) > content_width - 2) {
@@ -3010,151 +3011,156 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
       }
       break;
 
-
-				case 21: // Ctrl+U
-{
-  // Move cursor up half page with smart positioning
-  int target_cursor = viewer->file_cursor_line - max_lines_visible / 2;
-  if (target_cursor < 0) {
-    target_cursor = 0;
-  }
-  
-  // Find the actual cursor position (skip empty lines like move_cursor_smart does)
-  int final_cursor = target_cursor;
-  int attempts = 0;
-  const int max_attempts = viewer->file_line_count;
-  
-  // Look for non-empty line near target position
-  while (attempts < max_attempts && final_cursor < viewer->file_line_count) {
-    NCursesFileLine *line = &viewer->file_lines[final_cursor];
-    char *trimmed = line->line;
-    
-    // Skip leading whitespace
-    while (*trimmed == ' ' || *trimmed == '\t') {
-      trimmed++;
-    }
-    
-    // If line has content, stop here
-    if (*trimmed != '\0') {
-      break;
-    }
-    
-    // Move down to find content, but don't go too far from target
-    final_cursor++;
-    attempts++;
-    
-    // If we've moved too far down, go back to target and try going up
-    if (final_cursor > target_cursor + 5) {
-      final_cursor = target_cursor;
-      // Try going up from target
-      while (final_cursor > 0 && attempts < max_attempts) {
-        line = &viewer->file_lines[final_cursor];
-        trimmed = line->line;
-        while (*trimmed == ' ' || *trimmed == '\t') {
-          trimmed++;
-        }
-        if (*trimmed != '\0') {
-          break;
-        }
-        final_cursor--;
-        attempts++;
+    case 21: // Ctrl+U
+    {
+      // Move cursor up half page with smart positioning
+      int target_cursor = viewer->file_cursor_line - max_lines_visible / 2;
+      if (target_cursor < 0) {
+        target_cursor = 0;
       }
-      break;
-    }
-  }
-  
-  // Ensure final cursor is in bounds
-  if (final_cursor < 0) final_cursor = 0;
-  if (final_cursor >= viewer->file_line_count) final_cursor = viewer->file_line_count - 1;
-  
-  viewer->file_cursor_line = final_cursor;
-  
-  // Adjust scroll based on FINAL cursor position
-  if (viewer->file_cursor_line < viewer->file_scroll_offset + 3) {
-    viewer->file_scroll_offset = viewer->file_cursor_line - 3;
-    if (viewer->file_scroll_offset < 0) {
-      viewer->file_scroll_offset = 0;
-    }
-  }
-  break;
-}
 
+      // Find the actual cursor position (skip empty lines like
+      // move_cursor_smart does)
+      int final_cursor = target_cursor;
+      int attempts = 0;
+      const int max_attempts = viewer->file_line_count;
 
-			case 4: // Ctrl+D
-{
-  // Move cursor down half page with smart positioning
-  int target_cursor = viewer->file_cursor_line + max_lines_visible / 2;
-  if (target_cursor >= viewer->file_line_count) {
-    target_cursor = viewer->file_line_count - 1;
-  }
-  
-  // Find the actual cursor position (skip empty lines like move_cursor_smart does)
-  int final_cursor = target_cursor;
-  int attempts = 0;
-  const int max_attempts = viewer->file_line_count;
-  
-  // Look for non-empty line near target position
-  while (attempts < max_attempts && final_cursor >= 0) {
-    NCursesFileLine *line = &viewer->file_lines[final_cursor];
-    char *trimmed = line->line;
-    
-    // Skip leading whitespace
-    while (*trimmed == ' ' || *trimmed == '\t') {
-      trimmed++;
-    }
-    
-    // If line has content, stop here
-    if (*trimmed != '\0') {
-      break;
-    }
-    
-    // Move up to find content, but don't go too far from target
-    final_cursor--;
-    attempts++;
-    
-    // If we've moved too far up, go back to target and try going down
-    if (final_cursor < target_cursor - 5) {
-      final_cursor = target_cursor;
-      // Try going down from target
-      while (final_cursor < viewer->file_line_count - 1 && attempts < max_attempts) {
-        line = &viewer->file_lines[final_cursor];
-        trimmed = line->line;
+      // Look for non-empty line near target position
+      while (attempts < max_attempts &&
+             final_cursor < viewer->file_line_count) {
+        NCursesFileLine *line = &viewer->file_lines[final_cursor];
+        char *trimmed = line->line;
+
+        // Skip leading whitespace
         while (*trimmed == ' ' || *trimmed == '\t') {
           trimmed++;
         }
+
+        // If line has content, stop here
         if (*trimmed != '\0') {
           break;
         }
+
+        // Move down to find content, but don't go too far from target
         final_cursor++;
         attempts++;
+
+        // If we've moved too far down, go back to target and try going up
+        if (final_cursor > target_cursor + 5) {
+          final_cursor = target_cursor;
+          // Try going up from target
+          while (final_cursor > 0 && attempts < max_attempts) {
+            line = &viewer->file_lines[final_cursor];
+            trimmed = line->line;
+            while (*trimmed == ' ' || *trimmed == '\t') {
+              trimmed++;
+            }
+            if (*trimmed != '\0') {
+              break;
+            }
+            final_cursor--;
+            attempts++;
+          }
+          break;
+        }
+      }
+
+      // Ensure final cursor is in bounds
+      if (final_cursor < 0)
+        final_cursor = 0;
+      if (final_cursor >= viewer->file_line_count)
+        final_cursor = viewer->file_line_count - 1;
+
+      viewer->file_cursor_line = final_cursor;
+
+      // Adjust scroll based on FINAL cursor position
+      if (viewer->file_cursor_line < viewer->file_scroll_offset + 5) {
+        viewer->file_scroll_offset = viewer->file_cursor_line - 5;
+        if (viewer->file_scroll_offset < 0) {
+          viewer->file_scroll_offset = 0;
+        }
       }
       break;
     }
-  }
-  
-  // Ensure final cursor is in bounds
-  if (final_cursor < 0) final_cursor = 0;
-  if (final_cursor >= viewer->file_line_count) final_cursor = viewer->file_line_count - 1;
-  
-  viewer->file_cursor_line = final_cursor;
-  
-  // Adjust scroll based on FINAL cursor position
-  if (viewer->file_cursor_line >=
-      viewer->file_scroll_offset + max_lines_visible - 3) {
-    viewer->file_scroll_offset =
-        viewer->file_cursor_line - max_lines_visible + 4;
-    if (viewer->file_scroll_offset >
-        viewer->file_line_count - max_lines_visible) {
-      viewer->file_scroll_offset =
-          viewer->file_line_count - max_lines_visible;
-    }
-    if (viewer->file_scroll_offset < 0) {
-      viewer->file_scroll_offset = 0;
-    }
-  }
-  break;
-}
 
+    case 4: // Ctrl+D
+    {
+      // Move cursor down half page with smart positioning
+      int target_cursor = viewer->file_cursor_line + max_lines_visible / 2;
+      if (target_cursor >= viewer->file_line_count) {
+        target_cursor = viewer->file_line_count - 1;
+      }
+
+      // Find the actual cursor position (skip empty lines like
+      // move_cursor_smart does)
+      int final_cursor = target_cursor;
+      int attempts = 0;
+      const int max_attempts = viewer->file_line_count;
+
+      // Look for non-empty line near target position
+      while (attempts < max_attempts && final_cursor >= 0) {
+        NCursesFileLine *line = &viewer->file_lines[final_cursor];
+        char *trimmed = line->line;
+
+        // Skip leading whitespace
+        while (*trimmed == ' ' || *trimmed == '\t') {
+          trimmed++;
+        }
+
+        // If line has content, stop here
+        if (*trimmed != '\0') {
+          break;
+        }
+
+        // Move up to find content, but don't go too far from target
+        final_cursor--;
+        attempts++;
+
+        // If we've moved too far up, go back to target and try going down
+        if (final_cursor < target_cursor - 5) {
+          final_cursor = target_cursor;
+          // Try going down from target
+          while (final_cursor < viewer->file_line_count - 1 &&
+                 attempts < max_attempts) {
+            line = &viewer->file_lines[final_cursor];
+            trimmed = line->line;
+            while (*trimmed == ' ' || *trimmed == '\t') {
+              trimmed++;
+            }
+            if (*trimmed != '\0') {
+              break;
+            }
+            final_cursor++;
+            attempts++;
+          }
+          break;
+        }
+      }
+
+      // Ensure final cursor is in bounds
+      if (final_cursor < 0)
+        final_cursor = 0;
+      if (final_cursor >= viewer->file_line_count)
+        final_cursor = viewer->file_line_count - 1;
+
+      viewer->file_cursor_line = final_cursor;
+
+      // Adjust scroll based on FINAL cursor position
+      if (viewer->file_cursor_line >=
+          viewer->file_scroll_offset + max_lines_visible - 5) {
+        viewer->file_scroll_offset =
+            viewer->file_cursor_line - max_lines_visible + 5;
+        if (viewer->file_scroll_offset >
+            viewer->file_line_count - max_lines_visible) {
+          viewer->file_scroll_offset =
+              viewer->file_line_count - max_lines_visible;
+        }
+        if (viewer->file_scroll_offset < 0) {
+          viewer->file_scroll_offset = 0;
+        }
+      }
+      break;
+    }
 
     case KEY_NPAGE: // Page Down
     case ' ':
@@ -3247,26 +3253,26 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
       }
       break;
 
-				case 'a':
-case 'A': // Amend most recent commit
-  if (viewer->commit_count > 0) {
-    viewer->critical_operation_in_progress = 1;
-    amend_commit(viewer);
-    viewer->critical_operation_in_progress = 0;
-    
-    // Force complete screen refresh after amend dialog
-    clear();
-    refresh();
-    
-    // Redraw all windows immediately
-    render_file_list_window(viewer);
-    render_file_content_window(viewer);
-    render_commit_list_window(viewer);
-    render_branch_list_window(viewer);
-    render_stash_list_window(viewer);
-    render_status_bar(viewer);
-  }
-  break;
+    case 'a':
+    case 'A': // Amend most recent commit
+      if (viewer->commit_count > 0) {
+        viewer->critical_operation_in_progress = 1;
+        amend_commit(viewer);
+        viewer->critical_operation_in_progress = 0;
+
+        // Force complete screen refresh after amend dialog
+        clear();
+        refresh();
+
+        // Redraw all windows immediately
+        render_file_list_window(viewer);
+        render_file_content_window(viewer);
+        render_commit_list_window(viewer);
+        render_branch_list_window(viewer);
+        render_stash_list_window(viewer);
+        render_status_bar(viewer);
+      }
+      break;
     }
   } else if (viewer->current_mode == NCURSES_MODE_STASH_LIST) {
     // Stash list mode navigation
@@ -5666,40 +5672,42 @@ void move_cursor_smart(NCursesDiffViewer *viewer, int direction) {
 
   } while (attempts < max_attempts);
 
-	int cursor_movement = new_cursor - original_cursor;
+  int cursor_movement = new_cursor - original_cursor;
 
-	viewer->file_cursor_line = new_cursor;
+  viewer->file_cursor_line = new_cursor;
 
-	int height, width;
-	getmaxyx(viewer->file_content_win, height, width);
-	int max_lines_visible = height - 2;
+  int height, width;
+  getmaxyx(viewer->file_content_win, height, width);
+  int max_lines_visible = height - 2;
 
-	if (direction == - 1) {
-		int cursor_display_pos = viewer->file_cursor_line - viewer->file_scroll_offset;
+  if (direction == -1) {
+    int cursor_display_pos =
+        viewer->file_cursor_line - viewer->file_scroll_offset;
 
-		if (cursor_display_pos < 3) {
-			int scroll_adjustment = 3 - cursor_display_pos;
-			viewer->file_scroll_offset -= scroll_adjustment;
+    if (cursor_display_pos < 3) {
+      int scroll_adjustment = 3 - cursor_display_pos;
+      viewer->file_scroll_offset -= scroll_adjustment;
 
-			if (viewer->file_scroll_offset < 0) {
-				viewer->file_scroll_offset = 0;
-			}
-		}
-	} else {
-		int cursor_display_pos = viewer->file_cursor_line - viewer->file_scroll_offset;
+      if (viewer->file_scroll_offset < 0) {
+        viewer->file_scroll_offset = 0;
+      }
+    }
+  } else {
+    int cursor_display_pos =
+        viewer->file_cursor_line - viewer->file_scroll_offset;
 
-		if (cursor_display_pos >= max_lines_visible - 3) {
-			int scroll_adjustment = cursor_display_pos - (max_lines_visible - 4);
-			viewer->file_scroll_offset += scroll_adjustment;
+    if (cursor_display_pos >= max_lines_visible - 3) {
+      int scroll_adjustment = cursor_display_pos - (max_lines_visible - 4);
+      viewer->file_scroll_offset += scroll_adjustment;
 
-			int max_scroll = viewer->file_line_count - max_lines_visible;
-			if (max_scroll < 0) max_scroll = 0;
-			if (viewer->file_scroll_offset > max_scroll) {
-				viewer->file_scroll_offset = max_scroll;
-			}
-		}
-	}
-
+      int max_scroll = viewer->file_line_count - max_lines_visible;
+      if (max_scroll < 0)
+        max_scroll = 0;
+      if (viewer->file_scroll_offset > max_scroll) {
+        viewer->file_scroll_offset = max_scroll;
+      }
+    }
+  }
 }
 
 /**

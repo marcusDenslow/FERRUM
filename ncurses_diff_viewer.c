@@ -2964,17 +2964,13 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
       }
       viewer->critical_operation_in_progress = 0; // Re-enable fetching
 
-      // Force complete screen refresh after commit dialog
-      clear();
-      refresh();
+					render_file_list_window(viewer);
+render_file_content_window(viewer);
+render_commit_list_window(viewer);
+render_branch_list_window(viewer);
+render_stash_list_window(viewer);
+render_status_bar(viewer);
 
-      // Redraw all windows immediately
-      render_file_list_window(viewer);
-      render_file_content_window(viewer);
-      render_commit_list_window(viewer);
-      render_branch_list_window(viewer);
-      render_stash_list_window(viewer);
-      render_status_bar(viewer);
     } break;
 
     case '\t': // Tab - switch to commit list mode

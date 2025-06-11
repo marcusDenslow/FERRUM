@@ -3010,42 +3010,151 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
       }
       break;
 
-    case 21: // Ctrl+U
-      // Move cursor up half page
-      viewer->file_cursor_line -= max_lines_visible / 2;
-      if (viewer->file_cursor_line < 0) {
-        viewer->file_cursor_line = 0;
-      }
-      // Adjust scroll to keep cursor visible with padding
-      if (viewer->file_cursor_line < viewer->file_scroll_offset + 3) {
-        viewer->file_scroll_offset = viewer->file_cursor_line - 3;
-        if (viewer->file_scroll_offset < 0) {
-          viewer->file_scroll_offset = 0;
-        }
-      }
-      break;
 
-    case 4: // Ctrl+D
-      // Move cursor down half page
-      viewer->file_cursor_line += max_lines_visible / 2;
-      if (viewer->file_cursor_line >= viewer->file_line_count) {
-        viewer->file_cursor_line = viewer->file_line_count - 1;
-      }
-      // Adjust scroll to keep cursor visible with padding
-      if (viewer->file_cursor_line >=
-          viewer->file_scroll_offset + max_lines_visible - 3) {
-        viewer->file_scroll_offset =
-            viewer->file_cursor_line - max_lines_visible + 4;
-        if (viewer->file_scroll_offset >
-            viewer->file_line_count - max_lines_visible) {
-          viewer->file_scroll_offset =
-              viewer->file_line_count - max_lines_visible;
+				case 21: // Ctrl+U
+{
+  // Move cursor up half page with smart positioning
+  int target_cursor = viewer->file_cursor_line - max_lines_visible / 2;
+  if (target_cursor < 0) {
+    target_cursor = 0;
+  }
+  
+  // Find the actual cursor position (skip empty lines like move_cursor_smart does)
+  int final_cursor = target_cursor;
+  int attempts = 0;
+  const int max_attempts = viewer->file_line_count;
+  
+  // Look for non-empty line near target position
+  while (attempts < max_attempts && final_cursor < viewer->file_line_count) {
+    NCursesFileLine *line = &viewer->file_lines[final_cursor];
+    char *trimmed = line->line;
+    
+    // Skip leading whitespace
+    while (*trimmed == ' ' || *trimmed == '\t') {
+      trimmed++;
+    }
+    
+    // If line has content, stop here
+    if (*trimmed != '\0') {
+      break;
+    }
+    
+    // Move down to find content, but don't go too far from target
+    final_cursor++;
+    attempts++;
+    
+    // If we've moved too far down, go back to target and try going up
+    if (final_cursor > target_cursor + 5) {
+      final_cursor = target_cursor;
+      // Try going up from target
+      while (final_cursor > 0 && attempts < max_attempts) {
+        line = &viewer->file_lines[final_cursor];
+        trimmed = line->line;
+        while (*trimmed == ' ' || *trimmed == '\t') {
+          trimmed++;
         }
-        if (viewer->file_scroll_offset < 0) {
-          viewer->file_scroll_offset = 0;
+        if (*trimmed != '\0') {
+          break;
         }
+        final_cursor--;
+        attempts++;
       }
       break;
+    }
+  }
+  
+  // Ensure final cursor is in bounds
+  if (final_cursor < 0) final_cursor = 0;
+  if (final_cursor >= viewer->file_line_count) final_cursor = viewer->file_line_count - 1;
+  
+  viewer->file_cursor_line = final_cursor;
+  
+  // Adjust scroll based on FINAL cursor position
+  if (viewer->file_cursor_line < viewer->file_scroll_offset + 3) {
+    viewer->file_scroll_offset = viewer->file_cursor_line - 3;
+    if (viewer->file_scroll_offset < 0) {
+      viewer->file_scroll_offset = 0;
+    }
+  }
+  break;
+}
+
+
+			case 4: // Ctrl+D
+{
+  // Move cursor down half page with smart positioning
+  int target_cursor = viewer->file_cursor_line + max_lines_visible / 2;
+  if (target_cursor >= viewer->file_line_count) {
+    target_cursor = viewer->file_line_count - 1;
+  }
+  
+  // Find the actual cursor position (skip empty lines like move_cursor_smart does)
+  int final_cursor = target_cursor;
+  int attempts = 0;
+  const int max_attempts = viewer->file_line_count;
+  
+  // Look for non-empty line near target position
+  while (attempts < max_attempts && final_cursor >= 0) {
+    NCursesFileLine *line = &viewer->file_lines[final_cursor];
+    char *trimmed = line->line;
+    
+    // Skip leading whitespace
+    while (*trimmed == ' ' || *trimmed == '\t') {
+      trimmed++;
+    }
+    
+    // If line has content, stop here
+    if (*trimmed != '\0') {
+      break;
+    }
+    
+    // Move up to find content, but don't go too far from target
+    final_cursor--;
+    attempts++;
+    
+    // If we've moved too far up, go back to target and try going down
+    if (final_cursor < target_cursor - 5) {
+      final_cursor = target_cursor;
+      // Try going down from target
+      while (final_cursor < viewer->file_line_count - 1 && attempts < max_attempts) {
+        line = &viewer->file_lines[final_cursor];
+        trimmed = line->line;
+        while (*trimmed == ' ' || *trimmed == '\t') {
+          trimmed++;
+        }
+        if (*trimmed != '\0') {
+          break;
+        }
+        final_cursor++;
+        attempts++;
+      }
+      break;
+    }
+  }
+  
+  // Ensure final cursor is in bounds
+  if (final_cursor < 0) final_cursor = 0;
+  if (final_cursor >= viewer->file_line_count) final_cursor = viewer->file_line_count - 1;
+  
+  viewer->file_cursor_line = final_cursor;
+  
+  // Adjust scroll based on FINAL cursor position
+  if (viewer->file_cursor_line >=
+      viewer->file_scroll_offset + max_lines_visible - 3) {
+    viewer->file_scroll_offset =
+        viewer->file_cursor_line - max_lines_visible + 4;
+    if (viewer->file_scroll_offset >
+        viewer->file_line_count - max_lines_visible) {
+      viewer->file_scroll_offset =
+          viewer->file_line_count - max_lines_visible;
+    }
+    if (viewer->file_scroll_offset < 0) {
+      viewer->file_scroll_offset = 0;
+    }
+  }
+  break;
+}
+
 
     case KEY_NPAGE: // Page Down
     case ' ':
@@ -5557,29 +5666,40 @@ void move_cursor_smart(NCursesDiffViewer *viewer, int direction) {
 
   } while (attempts < max_attempts);
 
-  // Update cursor position
-  viewer->file_cursor_line = new_cursor;
+	int cursor_movement = new_cursor - original_cursor;
 
-  // Auto-scroll logic (same as before)
-  int height, width;
-  getmaxyx(viewer->file_content_win, height, width);
-  int max_lines_visible = height - 2;
+	viewer->file_cursor_line = new_cursor;
 
-  if (direction == -1) { // Moving up
-    // Scroll up if cursor gets within 3 lines of top
-    if (viewer->file_cursor_line < viewer->file_scroll_offset + 3 &&
-        viewer->file_scroll_offset > 0) {
-      viewer->file_scroll_offset--;
-    }
-  } else { // Moving down
-    // Scroll down if cursor gets within 3 lines of bottom
-    if (viewer->file_cursor_line >=
-            viewer->file_scroll_offset + max_lines_visible - 3 &&
-        viewer->file_scroll_offset <
-            viewer->file_line_count - max_lines_visible) {
-      viewer->file_scroll_offset++;
-    }
-  }
+	int height, width;
+	getmaxyx(viewer->file_content_win, height, width);
+	int max_lines_visible = height - 2;
+
+	if (direction == - 1) {
+		int cursor_display_pos = viewer->file_cursor_line - viewer->file_scroll_offset;
+
+		if (cursor_display_pos < 3) {
+			int scroll_adjustment = 3 - cursor_display_pos;
+			viewer->file_scroll_offset -= scroll_adjustment;
+
+			if (viewer->file_scroll_offset < 0) {
+				viewer->file_scroll_offset = 0;
+			}
+		}
+	} else {
+		int cursor_display_pos = viewer->file_cursor_line - viewer->file_scroll_offset;
+
+		if (cursor_display_pos >= max_lines_visible - 3) {
+			int scroll_adjustment = cursor_display_pos - (max_lines_visible - 4);
+			viewer->file_scroll_offset += scroll_adjustment;
+
+			int max_scroll = viewer->file_line_count - max_lines_visible;
+			if (max_scroll < 0) max_scroll = 0;
+			if (viewer->file_scroll_offset > max_scroll) {
+				viewer->file_scroll_offset = max_scroll;
+			}
+		}
+	}
+
 }
 
 /**

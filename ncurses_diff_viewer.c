@@ -614,6 +614,19 @@ void mark_all_files(NCursesDiffViewer *viewer) {
   }
 }
 
+int has_staged_files(NCursesDiffViewer *viewer) {
+  if (!viewer) {
+    return 0;
+  }
+
+	for (int i = 0; i < viewer->file_count; i++) {
+		if (viewer->files[i].marked_for_commit) {
+			return 1;
+		}
+	}
+	return 0;
+}
+
 /**
  * Show confirmation dialog for diverged branch
  * Returns 1 for force push, 0 for cancel

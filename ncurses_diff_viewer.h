@@ -126,11 +126,11 @@ typedef struct {
   int branch_animation_frame;
   int branch_text_char_count;
   int critical_operation_in_progress; // Prevent fetching during critical ops
-  
+
   // Background fetch management
-  pid_t fetch_pid; // Process ID of background fetch
+  pid_t fetch_pid;       // Process ID of background fetch
   int fetch_in_progress; // Flag to track if fetch is running
-  
+
   // Branch-specific commits for hover functionality
   char branch_commits[MAX_COMMITS][2048]; // Larger buffer for formatted commits
   int branch_commit_count;
@@ -324,5 +324,7 @@ void check_background_fetch(NCursesDiffViewer *viewer);
  * Move cursor up/down while skipping empty lines
  */
 void move_cursor_smart(NCursesDiffViewer *viewer, int direction);
+
+int has_staged_files(NCursesDiffViewer *viewer);
 
 #endif // NCURSES_DIFF_VIEWER_H

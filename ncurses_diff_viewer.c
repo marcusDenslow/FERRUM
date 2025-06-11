@@ -1402,9 +1402,14 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
 
   // Force immediate branch window refresh to show "Pushing" before the blocking
   // git operation
-  werase(viewer->branch_list_win);
-  render_branch_list_window(viewer);
-  wrefresh(viewer->branch_list_win);
+	
+	werase(viewer->branch_list_win);
+render_file_list_window(viewer);
+render_file_content_window(viewer);
+render_commit_list_window(viewer);
+render_branch_list_window(viewer);
+render_stash_list_window(viewer);
+render_status_bar(viewer);
 
   // Create a simple animated push with spinner updates
   pid_t push_pid;
@@ -1430,19 +1435,22 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
     int status;
     int spinner_counter = 0;
 
-    while (waitpid(push_pid, &status, WNOHANG) == 0) {
-      // Update spinner animation
-      viewer->branch_animation_frame = spinner_counter;
-      spinner_counter = (spinner_counter + 1) % 40; // Cycle every 40 iterations
+		while (waitpid(push_pid, &status, WNOHANG) == 0) {
+  // Update spinner animation
+  viewer->branch_animation_frame = spinner_counter;
+  spinner_counter = (spinner_counter + 1) % 40;
 
-      // Refresh the branch window to show spinning animation
-      werase(viewer->branch_list_win);
-      render_branch_list_window(viewer);
-      wrefresh(viewer->branch_list_win);
+  // Refresh ALL windows, not just branch window
+  render_file_list_window(viewer);
+  render_file_content_window(viewer);
+  render_commit_list_window(viewer);
+  render_branch_list_window(viewer);
+  render_stash_list_window(viewer);
+  render_status_bar(viewer);
 
-      // Small delay for animation timing
-      usleep(100000); // 100ms delay
-    }
+  // Small delay for animation timing
+  usleep(100000); // 100ms delay
+}
 
     // Get the exit status of the push command
     if (WIFEXITED(status)) {

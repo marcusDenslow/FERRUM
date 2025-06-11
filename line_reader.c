@@ -1430,7 +1430,7 @@ char ***lsh_split_piped_line(char *line) {
     }
 
     cmd_str = strtok_r(NULL, "|", &save_ptr);
-  }
+  } // this is a change
 
   commands[cmd_position] = NULL;
   return commands;

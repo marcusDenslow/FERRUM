@@ -138,26 +138,24 @@ int init_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
   nodelay(stdscr, TRUE); // Make getch() non-blocking
   curs_set(0);           // Hide cursor to prevent flickering
 
+  // Enable colors
+  if (has_colors()) {
+    start_color();
+    use_default_colors();           // Enable transparent background
+    init_pair(1, COLOR_GREEN, -1);  // Additions
+    init_pair(2, COLOR_RED, -1);    // Deletions
+    init_pair(3, COLOR_CYAN, -1);   // Headers
+    init_pair(4, COLOR_YELLOW, -1); // Selected
+    init_pair(5, COLOR_BLACK,
+              COLOR_WHITE); // Highlighted selection - keep white background
+    init_pair(6, COLOR_MAGENTA, -1); // Orange-ish color for commit hash
 
-	// Enable colors
-if (has_colors()) {
-  start_color();
-  use_default_colors(); // Enable transparent background
-  init_pair(1, COLOR_GREEN, -1);  // Additions
-  init_pair(2, COLOR_RED, -1);    // Deletions
-  init_pair(3, COLOR_CYAN, -1);   // Headers
-  init_pair(4, COLOR_YELLOW, -1); // Selected
-  init_pair(
-      5, COLOR_BLACK,
-      COLOR_WHITE); // Highlighted selection - keep white background
-  init_pair(6, COLOR_MAGENTA, -1); // Orange-ish color for commit hash
-
-  // Gruvbox theme colors for commit info
-  init_pair(7, COLOR_CYAN, -1);    // HEAD (blue-green)
-  init_pair(8, COLOR_GREEN, -1);   // main branch (nice green)
-  init_pair(9, COLOR_RED, -1);     // origin/* (red)
-  init_pair(10, COLOR_YELLOW, -1); // commit hash and arrows
-}
+    // Gruvbox theme colors for commit info
+    init_pair(7, COLOR_CYAN, -1);    // HEAD (blue-green)
+    init_pair(8, COLOR_GREEN, -1);   // main branch (nice green)
+    init_pair(9, COLOR_RED, -1);     // origin/* (red)
+    init_pair(10, COLOR_YELLOW, -1); // commit hash and arrows
+  }
 
   getmaxyx(stdscr, viewer->terminal_height, viewer->terminal_width);
   viewer->file_panel_width =
@@ -1320,6 +1318,166 @@ int amend_commit(NCursesDiffViewer *viewer) {
   return 0;
 }
 
+int get_github_credentials(char *username, int username_len, char *token,
+                           int token_len) {
+  if (!username || !token)
+    return 0;
+
+  int dialog_width = 60;
+  int dialog_height = 10;
+  int start_x = COLS / 2 - dialog_width / 2;
+  int start_y = LINES / 2 - dialog_height / 2;
+
+  WINDOW *cred_win = newwin(dialog_height, dialog_width, start_y, start_x);
+  if (!cred_win)
+    return 0;
+
+  char temp_username[256] = "";
+  char temp_token[256] = "";
+  int current_field = 0;
+  int username_pos = 0;
+  int token_pos = 0;
+
+  curs_set(1);
+
+  while (1) {
+    werase(cred_win);
+    box(cred_win, 0, 0);
+
+    mvwprintw(cred_win, 1, 2, "Github Authentication Required");
+
+    if (current_field == 0) {
+      wattron(cred_win, COLOR_PAIR(4));
+      mvwprintw(cred_win, 3, 2, "Username: %s", temp_username);
+      wattroff(cred_win, COLOR_PAIR(4));
+    } else {
+      mvwprintw(cred_win, 3, 2, "Username: %s", temp_username);
+    }
+
+    if (current_field == 1) {
+      wattron(cred_win, COLOR_PAIR(4));
+      mvwprintw(cred_win, 4, 2, "Token:    ");
+
+      for (int i = 0; i < token_pos; i++) {
+        waddch(cred_win, '*');
+      }
+      wattroff(cred_win, COLOR_PAIR(4));
+    } else {
+      mvwprintw(cred_win, 4, 2, "Token:    ");
+      for (int i = 0; i < token_pos; i++) {
+        waddch(cred_win, '*');
+      }
+    }
+
+    mvwprintw(cred_win, 6, 2, "Get token at: github.com/settings/tokens");
+    mvwprintw(cred_win, 7, 2,
+              "Tab: switch fields | Enter: confirm | Esc: cancel");
+
+    if (current_field == 0) {
+      wmove(cred_win, 3, 12 + username_pos);
+    } else {
+      wmove(cred_win, 4, 12 + token_pos);
+    }
+
+    wrefresh(cred_win);
+
+    int ch = getch();
+
+    switch (ch) {
+    case 27:
+      delwin(cred_win);
+      curs_set(0);
+      return 0;
+
+    case '\t':
+      current_field = (current_field + 1) % 2;
+      break;
+
+    case '\n':
+    case '\r':
+      if (strlen(temp_username) > 0 && strlen(temp_token) > 0) {
+        strncpy(username, temp_username, username_len - 1);
+        username[username_len - 1] = '\0';
+        strncpy(token, temp_token, token_len - 1);
+        token[token_len - 1] = '\0';
+        delwin(cred_win);
+        curs_set(0);
+        return 1;
+      }
+      break;
+
+    case KEY_BACKSPACE:
+    case 127:
+    case 8:
+      if (current_field == 0 && username_pos > 0) {
+        username_pos--;
+        temp_username[username_pos] = '\0';
+      } else if (current_field == 1 && token_pos > 0) {
+        token_pos--;
+        temp_token[token_pos] = '\0';
+      }
+      break;
+
+    default:
+      if (ch >= 32 && ch <= 126) {
+        if (current_field == 0 && username_pos < 256) {
+          temp_username[username_pos] = ch;
+          username_pos++;
+          temp_username[username_pos] = '\0';
+        } else if (current_field == 1 && token_pos < 256) {
+          temp_token[token_pos] = ch;
+          token_pos++;
+          temp_token[token_pos] = '\0';
+        }
+      }
+      break;
+    }
+  }
+}
+
+int execute_git_with_auth(const char *base_cmd, const char *username,
+                          const char *token) {
+  if (!base_cmd || !username || !token)
+    return 1;
+
+  char remote_url[1024] = "";
+  FILE *fp = popen("git config --get remote.origin.url 2>/dev/null", "r");
+  if (!fp)
+    return 1;
+
+  if (fgets(remote_url, sizeof(remote_url), fp) == NULL) {
+    pclose(fp);
+    return 1;
+  }
+  pclose(fp);
+
+  char *newline = strchr(remote_url, '\n');
+  if (newline)
+    *newline = '\0';
+
+  char auth_url[2048];
+  if (strstr(remote_url, "https://github.com/")) {
+    char *repo_part = remote_url + strlen("https://github.com/");
+    snprintf(auth_url, sizeof(auth_url), "https://%s:%s@github.com/%s",
+             username, token, repo_part);
+  } else if (strstr(remote_url, "git@github.com:")) {
+    char *repo_part = strchr(remote_url, ':') + 1;
+    if (strstr(repo_part, ".git")) {
+      *(strstr(repo_part, ".git")) = '\0';
+    }
+    snprintf(auth_url, sizeof(auth_url), "https://%s%s@github.com%s", username,
+             token, repo_part);
+  } else {
+    return 1;
+  }
+
+  char auth_cmd[4096];
+  snprintf(auth_cmd, sizeof(auth_cmd), "%s %s >/dev/null >&1", base_cmd,
+           auth_url);
+
+  return system(auth_cmd);
+}
+
 /**
  * Push specific commit
  */
@@ -1412,19 +1570,76 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
   pid_t push_pid;
   int result = 0;
 
-  // Fork the git push process
+  // Try push first without authentication
+  char push_cmd[256];
   if (is_diverged) {
-    push_pid = fork();
-    if (push_pid == 0) {
-      // Child process: do the actual push
-      exit(system("git push --force-with-lease origin >/dev/null 2>&1"));
+    strcpy(push_cmd, "git push --force-with-lease origin");
+  } else {
+    strcpy(push_cmd, "git push origin");
+  }
+
+  push_pid = fork();
+  if (push_pid == 0) {
+    // Child process: try normal push first
+    exit(system(is_diverged
+                    ? "git push --force-with-lease origin >/dev/null 2>&1"
+                    : "git push origin >/dev/null 2>&1"));
+  }
+
+  // Parent process: wait and check if authentication is needed
+  if (push_pid > 0) {
+    int status;
+    int spinner_counter = 0;
+
+    while (waitpid(push_pid, &status, WNOHANG) == 0) {
+      // Update spinner animation
+      viewer->branch_animation_frame = spinner_counter;
+      spinner_counter = (spinner_counter + 1) % 40;
+
+      render_file_list_window(viewer);
+      render_file_content_window(viewer);
+      render_commit_list_window(viewer);
+      render_branch_list_window(viewer);
+      render_stash_list_window(viewer);
+      render_status_bar(viewer);
+
+      usleep(100000); // 100ms delay
+    }
+
+    // Check if push failed (likely due to authentication)
+    if (WIFEXITED(status)) {
+      result = WEXITSTATUS(status);
+    } else {
+      result = 1;
+    }
+
+    // If push failed, try with authentication
+    if (result != 0) {
+      char username[256] = "";
+      char token[256] = "";
+
+      // Clear screen and get credentials
+      clear();
+      refresh();
+
+      if (get_github_credentials(username, sizeof(username), token,
+                                 sizeof(token))) {
+        // Try authenticated push
+        result = execute_git_with_auth(push_cmd, username, token);
+
+        // Clear credentials from memory for security
+        memset(username, 0, sizeof(username));
+        memset(token, 0, sizeof(token));
+      } else {
+        result = 1; // User cancelled
+      }
+
+      // Force complete screen refresh after credential dialog
+      clear();
+      refresh();
     }
   } else {
-    push_pid = fork();
-    if (push_pid == 0) {
-      // Child process: do the actual push
-      exit(system("git push origin >/dev/null 2>&1"));
-    }
+    result = 1; // Fork failed
   }
 
   // Parent process: animate the spinner while push is happening
@@ -1486,8 +1701,8 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
     return 1;
   } else {
     // Push failed, show error
-    show_error_popup(
-        "Push failed. Check your network connection and authentication.");
+    show_error_popup("Push failed. Check your network, credentials, or get a "
+                     "Personal Access Token from github.com/settings/tokens");
     viewer->sync_status = SYNC_STATUS_IDLE;
     viewer->pushing_branch_index = -1;
     viewer->branch_push_status = SYNC_STATUS_IDLE;
@@ -1861,171 +2076,191 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
         *line_end = '\0'; // Temporarily null-terminate
 
         // Check what type of line this is and apply appropriate coloring
-		
-			if (strncmp(line_start, "commit ", 7) == 0) {
 
-			// First truncate the entire line if needed
-  char display_line[1024];
-  if ((int)strlen(line_start) > content_width - 2) {
-    strncpy(display_line, line_start, content_width - 5);
-    display_line[content_width - 5] = '\0';
-    strcat(display_line, "...");
-  } else {
-    strcpy(display_line, line_start);
-  }
+        if (strncmp(line_start, "commit ", 7) == 0) {
 
-					// Print character by character with advanced coloring
-int x = 2;
-for (int j = 0; display_line[j] != '\0' && x < content_width; j++) {
-  char c = display_line[j];
-  
-  // Look for specific patterns to color
-  if (strstr(&display_line[j], "commit ") == &display_line[j]) {
-    // Color "commit" in cyan
-    wattron(viewer->file_content_win, COLOR_PAIR(3));
-    mvwprintw(viewer->file_content_win, y, x, "commit ");
-    wattroff(viewer->file_content_win, COLOR_PAIR(3));
-    x += 7;
-    j += 6; // Skip "commit"
-    
-    // Now check if the next characters are a commit hash
-    if (j + 1 < (int)strlen(display_line) && display_line[j + 1] != '\0') {
-      int hash_start = j + 1;
-      int hash_len = 0;
-      // Count consecutive hex characters
-      while (hash_start + hash_len < (int)strlen(display_line) && hash_len < 40 &&
-             ((display_line[hash_start + hash_len] >= '0' && display_line[hash_start + hash_len] <= '9') ||
-              (display_line[hash_start + hash_len] >= 'a' && display_line[hash_start + hash_len] <= 'f') ||
-              (display_line[hash_start + hash_len] >= 'A' && display_line[hash_start + hash_len] <= 'F'))) {
-        hash_len++;
-      }
-      
-      // Color commit hash in yellow
-      if (hash_len >= 7) {
-        wattron(viewer->file_content_win, COLOR_PAIR(4));
-        for (int h = 0; h < hash_len; h++) {
-          mvwaddch(viewer->file_content_win, y, x, display_line[hash_start + h]);
-          x++;
+          // First truncate the entire line if needed
+          char display_line[1024];
+          if ((int)strlen(line_start) > content_width - 2) {
+            strncpy(display_line, line_start, content_width - 5);
+            display_line[content_width - 5] = '\0';
+            strcat(display_line, "...");
+          } else {
+            strcpy(display_line, line_start);
+          }
+
+          // Print character by character with advanced coloring
+          int x = 2;
+          for (int j = 0; display_line[j] != '\0' && x < content_width; j++) {
+            char c = display_line[j];
+
+            // Look for specific patterns to color
+            if (strstr(&display_line[j], "commit ") == &display_line[j]) {
+              // Color "commit" in cyan
+              wattron(viewer->file_content_win, COLOR_PAIR(3));
+              mvwprintw(viewer->file_content_win, y, x, "commit ");
+              wattroff(viewer->file_content_win, COLOR_PAIR(3));
+              x += 7;
+              j += 6; // Skip "commit"
+
+              // Now check if the next characters are a commit hash
+              if (j + 1 < (int)strlen(display_line) &&
+                  display_line[j + 1] != '\0') {
+                int hash_start = j + 1;
+                int hash_len = 0;
+                // Count consecutive hex characters
+                while (hash_start + hash_len < (int)strlen(display_line) &&
+                       hash_len < 40 &&
+                       ((display_line[hash_start + hash_len] >= '0' &&
+                         display_line[hash_start + hash_len] <= '9') ||
+                        (display_line[hash_start + hash_len] >= 'a' &&
+                         display_line[hash_start + hash_len] <= 'f') ||
+                        (display_line[hash_start + hash_len] >= 'A' &&
+                         display_line[hash_start + hash_len] <= 'F'))) {
+                  hash_len++;
+                }
+
+                // Color commit hash in yellow
+                if (hash_len >= 7) {
+                  wattron(viewer->file_content_win, COLOR_PAIR(4));
+                  for (int h = 0; h < hash_len; h++) {
+                    mvwaddch(viewer->file_content_win, y, x,
+                             display_line[hash_start + h]);
+                    x++;
+                  }
+                  wattroff(viewer->file_content_win, COLOR_PAIR(4));
+                  j += hash_len;
+                }
+              }
+            } else if (strncmp(&display_line[j], "origin/main",
+                               strlen(&display_line[j]) < 11
+                                   ? strlen(&display_line[j])
+                                   : 11) == 0) {
+              // Color "origin/main" (or partial) in red
+              int len =
+                  strlen(&display_line[j]) < 11 ? strlen(&display_line[j]) : 11;
+              wattron(viewer->file_content_win, COLOR_PAIR(2));
+              for (int k = 0; k < len; k++) {
+                mvwaddch(viewer->file_content_win, y, x, display_line[j + k]);
+                x++;
+              }
+              wattroff(viewer->file_content_win, COLOR_PAIR(2));
+              j += len - 1;
+            } else if (strncmp(&display_line[j], "origin/HEAD",
+                               strlen(&display_line[j]) < 11
+                                   ? strlen(&display_line[j])
+                                   : 11) == 0) {
+              // Color "origin/HEAD" (or partial) in red
+              int len =
+                  strlen(&display_line[j]) < 11 ? strlen(&display_line[j]) : 11;
+              wattron(viewer->file_content_win, COLOR_PAIR(2));
+              for (int k = 0; k < len; k++) {
+                mvwaddch(viewer->file_content_win, y, x, display_line[j + k]);
+                x++;
+              }
+              wattroff(viewer->file_content_win, COLOR_PAIR(2));
+              j += len - 1;
+            } else if (strncmp(&display_line[j], "HEAD",
+                               strlen(&display_line[j]) < 4
+                                   ? strlen(&display_line[j])
+                                   : 4) == 0) {
+              // Check that it's not part of origin/HEAD
+              int is_standalone_head = 1;
+              if (j >= 7 && strncmp(&display_line[j - 7], "origin/", 7) == 0) {
+                is_standalone_head = 0;
+              }
+
+              if (is_standalone_head) {
+                // Color standalone "HEAD" (or partial) in cyan
+                int len =
+                    strlen(&display_line[j]) < 4 ? strlen(&display_line[j]) : 4;
+                wattron(viewer->file_content_win, COLOR_PAIR(3));
+                for (int k = 0; k < len; k++) {
+                  mvwaddch(viewer->file_content_win, y, x, display_line[j + k]);
+                  x++;
+                }
+                wattroff(viewer->file_content_win, COLOR_PAIR(3));
+                j += len - 1;
+              } else {
+                mvwaddch(viewer->file_content_win, y, x, c);
+                x++;
+              }
+            } else if (strncmp(&display_line[j], "main",
+                               strlen(&display_line[j]) < 4
+                                   ? strlen(&display_line[j])
+                                   : 4) == 0) {
+              // Check that it's not part of origin/main
+              int is_standalone_main = 1;
+              if (j >= 7 && strncmp(&display_line[j - 7], "origin/", 7) == 0) {
+                is_standalone_main = 0;
+              }
+
+              if (is_standalone_main) {
+                // Color standalone "main" (or partial) in green
+                int len =
+                    strlen(&display_line[j]) < 4 ? strlen(&display_line[j]) : 4;
+                wattron(viewer->file_content_win, COLOR_PAIR(1));
+                for (int k = 0; k < len; k++) {
+                  mvwaddch(viewer->file_content_win, y, x, display_line[j + k]);
+                  x++;
+                }
+                wattroff(viewer->file_content_win, COLOR_PAIR(1));
+                j += len - 1;
+              } else {
+                mvwaddch(viewer->file_content_win, y, x, c);
+                x++;
+              }
+            } else if (strstr(&display_line[j], "->") == &display_line[j]) {
+              // Color "->" arrows in yellow
+              wattron(viewer->file_content_win, COLOR_PAIR(4));
+              mvwprintw(viewer->file_content_win, y, x, "->");
+              wattroff(viewer->file_content_win, COLOR_PAIR(4));
+              x += 2;
+              j += 1; // Will be incremented by loop
+            } else if (c == '(' || c == ')' || c == ',') {
+              // Color branch separators in cyan
+              wattron(viewer->file_content_win, COLOR_PAIR(3));
+              mvwaddch(viewer->file_content_win, y, x, c);
+              wattroff(viewer->file_content_win, COLOR_PAIR(3));
+              x++;
+            } else {
+              mvwaddch(viewer->file_content_win, y, x, c);
+              x++;
+            }
+          }
+
         }
-        wattroff(viewer->file_content_win, COLOR_PAIR(4));
-        j += hash_len;
-      }
-    }
-  } else if (strncmp(&display_line[j], "origin/main", strlen(&display_line[j]) < 11 ? strlen(&display_line[j]) : 11) == 0) {
-    // Color "origin/main" (or partial) in red
-    int len = strlen(&display_line[j]) < 11 ? strlen(&display_line[j]) : 11;
-    wattron(viewer->file_content_win, COLOR_PAIR(2));
-    for (int k = 0; k < len; k++) {
-      mvwaddch(viewer->file_content_win, y, x, display_line[j + k]);
-      x++;
-    }
-    wattroff(viewer->file_content_win, COLOR_PAIR(2));
-    j += len - 1;
-  } else if (strncmp(&display_line[j], "origin/HEAD", strlen(&display_line[j]) < 11 ? strlen(&display_line[j]) : 11) == 0) {
-    // Color "origin/HEAD" (or partial) in red
-    int len = strlen(&display_line[j]) < 11 ? strlen(&display_line[j]) : 11;
-    wattron(viewer->file_content_win, COLOR_PAIR(2));
-    for (int k = 0; k < len; k++) {
-      mvwaddch(viewer->file_content_win, y, x, display_line[j + k]);
-      x++;
-    }
-    wattroff(viewer->file_content_win, COLOR_PAIR(2));
-    j += len - 1;
-  } else if (strncmp(&display_line[j], "HEAD", strlen(&display_line[j]) < 4 ? strlen(&display_line[j]) : 4) == 0) {
-    // Check that it's not part of origin/HEAD
-    int is_standalone_head = 1;
-    if (j >= 7 && strncmp(&display_line[j - 7], "origin/", 7) == 0) {
-      is_standalone_head = 0;
-    }
-    
-    if (is_standalone_head) {
-      // Color standalone "HEAD" (or partial) in cyan
-      int len = strlen(&display_line[j]) < 4 ? strlen(&display_line[j]) : 4;
-      wattron(viewer->file_content_win, COLOR_PAIR(3));
-      for (int k = 0; k < len; k++) {
-        mvwaddch(viewer->file_content_win, y, x, display_line[j + k]);
-        x++;
-      }
-      wattroff(viewer->file_content_win, COLOR_PAIR(3));
-      j += len - 1;
-    } else {
-      mvwaddch(viewer->file_content_win, y, x, c);
-      x++;
-    }
-  } else if (strncmp(&display_line[j], "main", strlen(&display_line[j]) < 4 ? strlen(&display_line[j]) : 4) == 0) {
-    // Check that it's not part of origin/main
-    int is_standalone_main = 1;
-    if (j >= 7 && strncmp(&display_line[j - 7], "origin/", 7) == 0) {
-      is_standalone_main = 0;
-    }
-    
-    if (is_standalone_main) {
-      // Color standalone "main" (or partial) in green
-      int len = strlen(&display_line[j]) < 4 ? strlen(&display_line[j]) : 4;
-      wattron(viewer->file_content_win, COLOR_PAIR(1));
-      for (int k = 0; k < len; k++) {
-        mvwaddch(viewer->file_content_win, y, x, display_line[j + k]);
-        x++;
-      }
-      wattroff(viewer->file_content_win, COLOR_PAIR(1));
-      j += len - 1;
-    } else {
-      mvwaddch(viewer->file_content_win, y, x, c);
-      x++;
-    }
-  } else if (strstr(&display_line[j], "->") == &display_line[j]) {
-    // Color "->" arrows in yellow
-    wattron(viewer->file_content_win, COLOR_PAIR(4));
-    mvwprintw(viewer->file_content_win, y, x, "->");
-    wattroff(viewer->file_content_win, COLOR_PAIR(4));
-    x += 2;
-    j += 1; // Will be incremented by loop
-  } else if (c == '(' || c == ')' || c == ',') {
-    // Color branch separators in cyan
-    wattron(viewer->file_content_win, COLOR_PAIR(3));
-    mvwaddch(viewer->file_content_win, y, x, c);
-    wattroff(viewer->file_content_win, COLOR_PAIR(3));
-    x++;
-  } else {
-    mvwaddch(viewer->file_content_win, y, x, c);
-    x++;
-  }
-}
-  
-}
 
+        else if (strncmp(line_start, "Author:", 7) == 0) {
 
-         else if (strncmp(line_start, "Author:", 7) == 0) {
+          // Author line in cyan
+          wattron(viewer->file_content_win, COLOR_PAIR(3)); // Cyan
+          if ((int)strlen(line_start) > content_width - 2) {
+            char truncated[1024];
+            strncpy(truncated, line_start, content_width - 5);
+            truncated[content_width - 5] = '\0';
+            strcat(truncated, "...");
+            mvwprintw(viewer->file_content_win, y, 2, "%s", truncated);
+          } else {
+            mvwprintw(viewer->file_content_win, y, 2, "%s", line_start);
+          }
+          wattroff(viewer->file_content_win, COLOR_PAIR(3));
+        } else if (strncmp(line_start, "Date:", 5) == 0) {
+          // Date line in cyan
+          wattron(viewer->file_content_win, COLOR_PAIR(3)); // Cyan
+          if ((int)strlen(line_start) > content_width - 2) {
+            char truncated[1024];
+            strncpy(truncated, line_start, content_width - 5);
+            truncated[content_width - 5] = '\0';
+            strcat(truncated, "...");
+            mvwprintw(viewer->file_content_win, y, 2, "%s", truncated);
+          } else {
+            mvwprintw(viewer->file_content_win, y, 2, "%s", line_start);
+          }
+          wattroff(viewer->file_content_win, COLOR_PAIR(3));
+        }
 
-
-// Author line in cyan
-  wattron(viewer->file_content_win, COLOR_PAIR(3)); // Cyan
-  if ((int)strlen(line_start) > content_width - 2) {
-    char truncated[1024];
-    strncpy(truncated, line_start, content_width - 5);
-    truncated[content_width - 5] = '\0';
-    strcat(truncated, "...");
-    mvwprintw(viewer->file_content_win, y, 2, "%s", truncated);
-  } else {
-    mvwprintw(viewer->file_content_win, y, 2, "%s", line_start);
-  }
-  wattroff(viewer->file_content_win, COLOR_PAIR(3));
-} else if (strncmp(line_start, "Date:", 5) == 0) {
-  // Date line in cyan
-  wattron(viewer->file_content_win, COLOR_PAIR(3)); // Cyan
-  if ((int)strlen(line_start) > content_width - 2) {
-    char truncated[1024];
-    strncpy(truncated, line_start, content_width - 5);
-    truncated[content_width - 5] = '\0';
-    strcat(truncated, "...");
-    mvwprintw(viewer->file_content_win, y, 2, "%s", truncated);
-  } else {
-    mvwprintw(viewer->file_content_win, y, 2, "%s", line_start);
-  }
-  wattroff(viewer->file_content_win, COLOR_PAIR(3));
-}
-
-         else {
+        else {
           // Regular text (commit message, etc.)
           if ((int)strlen(line_start) > content_width - 2) {
             char truncated[1024];
@@ -2089,59 +2324,63 @@ for (int j = 0; display_line[j] != '\0' && x < content_width; j++) {
           strcpy(display_line, line->line);
         }
 
-				// Parse and color commit line
-if (strncmp(display_line, "commit ", 7) == 0) {
-  char *hash_start = display_line + 7;
-  char *space_or_bracket = strstr(hash_start, " ");
-  if (!space_or_bracket)
-    space_or_bracket = strstr(hash_start, "(");
+        // Parse and color commit line
+        if (strncmp(display_line, "commit ", 7) == 0) {
+          char *hash_start = display_line + 7;
+          char *space_or_bracket = strstr(hash_start, " ");
+          if (!space_or_bracket)
+            space_or_bracket = strstr(hash_start, "(");
 
-  if (space_or_bracket) {
-    *space_or_bracket = '\0';
-    
-    // Calculate lengths for truncation
-    int commit_part_len = 7 + strlen(hash_start); // "commit " + hash
-    int refs_part_len = strlen(space_or_bracket + 1);
-    int total_len = commit_part_len + 1 + refs_part_len; // +1 for space
-    
-    if (total_len > content_width - 2) {
-      // Need to truncate
-      int available_for_refs = content_width - 2 - commit_part_len - 1 - 3; // -3 for "..."
-      
-      wattron(viewer->file_content_win, COLOR_PAIR(4)); // Yellow
-      mvwprintw(viewer->file_content_win, y, 2, "commit %s", hash_start);
-      wattroff(viewer->file_content_win, COLOR_PAIR(4));
-      
-      if (available_for_refs > 0) {
-        // Show truncated refs
-        wattron(viewer->file_content_win, COLOR_PAIR(1)); // Green
-        mvwprintw(viewer->file_content_win, y, 2 + commit_part_len, " %.*s...", 
-                 available_for_refs, space_or_bracket + 1);
-        wattroff(viewer->file_content_win, COLOR_PAIR(1));
-      }
-    } else {
-      // No truncation needed
-      wattron(viewer->file_content_win, COLOR_PAIR(4)); // Yellow
-      mvwprintw(viewer->file_content_win, y, 2, "commit %s", hash_start);
-      wattroff(viewer->file_content_win, COLOR_PAIR(4));
+          if (space_or_bracket) {
+            *space_or_bracket = '\0';
 
-      // Show branch refs in green if they exist
-      if (strstr(space_or_bracket + 1, "(")) {
-        wattron(viewer->file_content_win, COLOR_PAIR(1)); // Green
-        mvwprintw(viewer->file_content_win, y, 2 + 7 + strlen(hash_start),
-                  " %s", space_or_bracket + 1);
-        wattroff(viewer->file_content_win, COLOR_PAIR(1));
-      }
-    }
-    *space_or_bracket = ' '; // Restore
-  } else {
-    wattron(viewer->file_content_win, COLOR_PAIR(4)); // Yellow
-    mvwprintw(viewer->file_content_win, y, 2, "%s", display_line);
-    wattroff(viewer->file_content_win, COLOR_PAIR(4));
-  }
-}
+            // Calculate lengths for truncation
+            int commit_part_len = 7 + strlen(hash_start); // "commit " + hash
+            int refs_part_len = strlen(space_or_bracket + 1);
+            int total_len = commit_part_len + 1 + refs_part_len; // +1 for space
 
-         else {
+            if (total_len > content_width - 2) {
+              // Need to truncate
+              int available_for_refs =
+                  content_width - 2 - commit_part_len - 1 - 3; // -3 for "..."
+
+              wattron(viewer->file_content_win, COLOR_PAIR(4)); // Yellow
+              mvwprintw(viewer->file_content_win, y, 2, "commit %s",
+                        hash_start);
+              wattroff(viewer->file_content_win, COLOR_PAIR(4));
+
+              if (available_for_refs > 0) {
+                // Show truncated refs
+                wattron(viewer->file_content_win, COLOR_PAIR(1)); // Green
+                mvwprintw(viewer->file_content_win, y, 2 + commit_part_len,
+                          " %.*s...", available_for_refs, space_or_bracket + 1);
+                wattroff(viewer->file_content_win, COLOR_PAIR(1));
+              }
+            } else {
+              // No truncation needed
+              wattron(viewer->file_content_win, COLOR_PAIR(4)); // Yellow
+              mvwprintw(viewer->file_content_win, y, 2, "commit %s",
+                        hash_start);
+              wattroff(viewer->file_content_win, COLOR_PAIR(4));
+
+              // Show branch refs in green if they exist
+              if (strstr(space_or_bracket + 1, "(")) {
+                wattron(viewer->file_content_win, COLOR_PAIR(1)); // Green
+                mvwprintw(viewer->file_content_win, y,
+                          2 + 7 + strlen(hash_start), " %s",
+                          space_or_bracket + 1);
+                wattroff(viewer->file_content_win, COLOR_PAIR(1));
+              }
+            }
+            *space_or_bracket = ' '; // Restore
+          } else {
+            wattron(viewer->file_content_win, COLOR_PAIR(4)); // Yellow
+            mvwprintw(viewer->file_content_win, y, 2, "%s", display_line);
+            wattroff(viewer->file_content_win, COLOR_PAIR(4));
+          }
+        }
+
+        else {
           mvwprintw(viewer->file_content_win, y, 2, "%s", display_line);
         }
       } else if (line->type == 'i') {
@@ -2341,127 +2580,135 @@ if (strncmp(display_line, "commit ", 7) == 0) {
         }
       }
 
-			else if (line->type == 'h') {
-  // In commit/stash view, show header lines with coloring
-  char display_line[1024];
-  if ((int)strlen(line->line) > content_width - 2) {
-    strncpy(display_line, line->line, content_width - 5);
-    display_line[content_width - 5] = '\0';
-    strcat(display_line, "...");
-  } else {
-    strcpy(display_line, line->line);
-  }
-  
-  // Apply same coloring as branch view for commit lines
-  if (strncmp(display_line, "commit ", 7) == 0) {
-    // Print character by character with advanced coloring
-    int x = 1;
-    for (int j = 0; display_line[j] != '\0' && x < content_width; j++) {
-      char c = display_line[j];
-      
-      // Look for specific patterns to color
-      if (strstr(&display_line[j], "commit ") == &display_line[j]) {
-        // Color "commit" in cyan
-        wattron(viewer->file_content_win, COLOR_PAIR(3));
-        mvwprintw(viewer->file_content_win, y, x, "commit ");
-        wattroff(viewer->file_content_win, COLOR_PAIR(3));
-        x += 7;
-        j += 6; // Skip "commit"
-        
-        // Now check if the next characters are a commit hash
-        if (j + 1 < (int)strlen(display_line) && display_line[j + 1] != '\0') {
-          int hash_start = j + 1;
-          int hash_len = 0;
-          // Count consecutive hex characters
-          while (hash_start + hash_len < (int)strlen(display_line) && hash_len < 40 &&
-                 ((display_line[hash_start + hash_len] >= '0' && display_line[hash_start + hash_len] <= '9') ||
-                  (display_line[hash_start + hash_len] >= 'a' && display_line[hash_start + hash_len] <= 'f') ||
-                  (display_line[hash_start + hash_len] >= 'A' && display_line[hash_start + hash_len] <= 'F'))) {
-            hash_len++;
-          }
-          
-          // Color commit hash in yellow
-          if (hash_len >= 7) {
-            wattron(viewer->file_content_win, COLOR_PAIR(4));
-            for (int h = 0; h < hash_len; h++) {
-              mvwaddch(viewer->file_content_win, y, x, display_line[hash_start + h]);
+      else if (line->type == 'h') {
+        // In commit/stash view, show header lines with coloring
+        char display_line[1024];
+        if ((int)strlen(line->line) > content_width - 2) {
+          strncpy(display_line, line->line, content_width - 5);
+          display_line[content_width - 5] = '\0';
+          strcat(display_line, "...");
+        } else {
+          strcpy(display_line, line->line);
+        }
+
+        // Apply same coloring as branch view for commit lines
+        if (strncmp(display_line, "commit ", 7) == 0) {
+          // Print character by character with advanced coloring
+          int x = 1;
+          for (int j = 0; display_line[j] != '\0' && x < content_width; j++) {
+            char c = display_line[j];
+
+            // Look for specific patterns to color
+            if (strstr(&display_line[j], "commit ") == &display_line[j]) {
+              // Color "commit" in cyan
+              wattron(viewer->file_content_win, COLOR_PAIR(3));
+              mvwprintw(viewer->file_content_win, y, x, "commit ");
+              wattroff(viewer->file_content_win, COLOR_PAIR(3));
+              x += 7;
+              j += 6; // Skip "commit"
+
+              // Now check if the next characters are a commit hash
+              if (j + 1 < (int)strlen(display_line) &&
+                  display_line[j + 1] != '\0') {
+                int hash_start = j + 1;
+                int hash_len = 0;
+                // Count consecutive hex characters
+                while (hash_start + hash_len < (int)strlen(display_line) &&
+                       hash_len < 40 &&
+                       ((display_line[hash_start + hash_len] >= '0' &&
+                         display_line[hash_start + hash_len] <= '9') ||
+                        (display_line[hash_start + hash_len] >= 'a' &&
+                         display_line[hash_start + hash_len] <= 'f') ||
+                        (display_line[hash_start + hash_len] >= 'A' &&
+                         display_line[hash_start + hash_len] <= 'F'))) {
+                  hash_len++;
+                }
+
+                // Color commit hash in yellow
+                if (hash_len >= 7) {
+                  wattron(viewer->file_content_win, COLOR_PAIR(4));
+                  for (int h = 0; h < hash_len; h++) {
+                    mvwaddch(viewer->file_content_win, y, x,
+                             display_line[hash_start + h]);
+                    x++;
+                  }
+                  wattroff(viewer->file_content_win, COLOR_PAIR(4));
+                  j += hash_len;
+                }
+              }
+            } else if (strstr(&display_line[j], "origin/main") ==
+                       &display_line[j]) {
+              // Color "origin/main" in red
+              wattron(viewer->file_content_win, COLOR_PAIR(2));
+              mvwprintw(viewer->file_content_win, y, x, "origin/main");
+              wattroff(viewer->file_content_win, COLOR_PAIR(2));
+              x += 11;
+              j += 10;
+            } else if (strstr(&display_line[j], "origin/HEAD") ==
+                       &display_line[j]) {
+              // Color "origin/HEAD" in red
+              wattron(viewer->file_content_win, COLOR_PAIR(2));
+              mvwprintw(viewer->file_content_win, y, x, "origin/HEAD");
+              wattroff(viewer->file_content_win, COLOR_PAIR(2));
+              x += 11;
+              j += 10;
+            } else if (strstr(&display_line[j], "HEAD") == &display_line[j]) {
+              // Check that it's not part of origin/HEAD
+              int is_standalone_head = 1;
+              if (j >= 7 && strncmp(&display_line[j - 7], "origin/", 7) == 0) {
+                is_standalone_head = 0;
+              }
+
+              if (is_standalone_head) {
+                // Color standalone "HEAD" in cyan
+                wattron(viewer->file_content_win, COLOR_PAIR(3));
+                mvwprintw(viewer->file_content_win, y, x, "HEAD");
+                wattroff(viewer->file_content_win, COLOR_PAIR(3));
+                x += 4;
+                j += 3;
+              } else {
+                mvwaddch(viewer->file_content_win, y, x, c);
+                x++;
+              }
+            } else if (strstr(&display_line[j], "main") == &display_line[j]) {
+              // Check that it's not part of origin/main
+              int is_standalone_main = 1;
+              if (j >= 7 && strncmp(&display_line[j - 7], "origin/", 7) == 0) {
+                is_standalone_main = 0;
+              }
+
+              if (is_standalone_main) {
+                // Color standalone "main" in green
+                wattron(viewer->file_content_win, COLOR_PAIR(1));
+                mvwprintw(viewer->file_content_win, y, x, "main");
+                wattroff(viewer->file_content_win, COLOR_PAIR(1));
+                x += 4;
+                j += 3;
+              } else {
+                mvwaddch(viewer->file_content_win, y, x, c);
+                x++;
+              }
+            } else if (strstr(&display_line[j], "->") == &display_line[j]) {
+              // Color "->" arrows in yellow
+              wattron(viewer->file_content_win, COLOR_PAIR(4));
+              mvwprintw(viewer->file_content_win, y, x, "->");
+              wattroff(viewer->file_content_win, COLOR_PAIR(4));
+              x += 2;
+              j += 1; // Will be incremented by loop
+            } else if (c == '(' || c == ')' || c == ',') {
+              // Color branch separators in cyan
+              wattron(viewer->file_content_win, COLOR_PAIR(3));
+              mvwaddch(viewer->file_content_win, y, x, c);
+              wattroff(viewer->file_content_win, COLOR_PAIR(3));
+              x++;
+            } else {
+              mvwaddch(viewer->file_content_win, y, x, c);
               x++;
             }
-            wattroff(viewer->file_content_win, COLOR_PAIR(4));
-            j += hash_len;
           }
-        }
-      } else if (strstr(&display_line[j], "origin/main") == &display_line[j]) {
-        // Color "origin/main" in red
-        wattron(viewer->file_content_win, COLOR_PAIR(2));
-        mvwprintw(viewer->file_content_win, y, x, "origin/main");
-        wattroff(viewer->file_content_win, COLOR_PAIR(2));
-        x += 11;
-        j += 10;
-      } else if (strstr(&display_line[j], "origin/HEAD") == &display_line[j]) {
-        // Color "origin/HEAD" in red
-        wattron(viewer->file_content_win, COLOR_PAIR(2));
-        mvwprintw(viewer->file_content_win, y, x, "origin/HEAD");
-        wattroff(viewer->file_content_win, COLOR_PAIR(2));
-        x += 11;
-        j += 10;
-      } else if (strstr(&display_line[j], "HEAD") == &display_line[j]) {
-        // Check that it's not part of origin/HEAD
-        int is_standalone_head = 1;
-        if (j >= 7 && strncmp(&display_line[j - 7], "origin/", 7) == 0) {
-          is_standalone_head = 0;
-        }
-        
-        if (is_standalone_head) {
-          // Color standalone "HEAD" in cyan
-          wattron(viewer->file_content_win, COLOR_PAIR(3));
-          mvwprintw(viewer->file_content_win, y, x, "HEAD");
-          wattroff(viewer->file_content_win, COLOR_PAIR(3));
-          x += 4;
-          j += 3;
         } else {
-          mvwaddch(viewer->file_content_win, y, x, c);
-          x++;
+          mvwprintw(viewer->file_content_win, y, 1, "%s", display_line);
         }
-      } else if (strstr(&display_line[j], "main") == &display_line[j]) {
-        // Check that it's not part of origin/main
-        int is_standalone_main = 1;
-        if (j >= 7 && strncmp(&display_line[j - 7], "origin/", 7) == 0) {
-          is_standalone_main = 0;
-        }
-        
-        if (is_standalone_main) {
-          // Color standalone "main" in green
-          wattron(viewer->file_content_win, COLOR_PAIR(1));
-          mvwprintw(viewer->file_content_win, y, x, "main");
-          wattroff(viewer->file_content_win, COLOR_PAIR(1));
-          x += 4;
-          j += 3;
-        } else {
-          mvwaddch(viewer->file_content_win, y, x, c);
-          x++;
-        }
-      } else if (strstr(&display_line[j], "->") == &display_line[j]) {
-        // Color "->" arrows in yellow
-        wattron(viewer->file_content_win, COLOR_PAIR(4));
-        mvwprintw(viewer->file_content_win, y, x, "->");
-        wattroff(viewer->file_content_win, COLOR_PAIR(4));
-        x += 2;
-        j += 1; // Will be incremented by loop
-      } else if (c == '(' || c == ')' || c == ',') {
-        // Color branch separators in cyan
-        wattron(viewer->file_content_win, COLOR_PAIR(3));
-        mvwaddch(viewer->file_content_win, y, x, c);
-        wattroff(viewer->file_content_win, COLOR_PAIR(3));
-        x++;
-      } else {
-        mvwaddch(viewer->file_content_win, y, x, c);
-        x++;
-      }
-    }
-  } else {
-    mvwprintw(viewer->file_content_win, y, 1, "%s", display_line);
-  }
 
         // For cursor line on blank lines, fill with spaces to show highlighting
         if (is_cursor_line && strlen(display_line) == 0) {
@@ -2497,30 +2744,30 @@ if (strncmp(display_line, "commit ", 7) == 0) {
           mvwprintw(viewer->file_content_win, y, 1, "%s", display_line);
         }
       } else if (line->type == 'i') {
-				// In commit/stash view, show Author and Date with coloring
-  char display_line[1024];
-  if ((int)strlen(line->line) > content_width - 2) {
-    strncpy(display_line, line->line, content_width - 5);
-    display_line[content_width - 5] = '\0';
-    strcat(display_line, "...");
-  } else {
-    strcpy(display_line, line->line);
-  }
-  
-  // Color the label part
-  if (strncmp(display_line, "Author: ", 8) == 0) {
-    wattron(viewer->file_content_win, COLOR_PAIR(3));
-    mvwprintw(viewer->file_content_win, y, 1, "Author: ");
-    wattroff(viewer->file_content_win, COLOR_PAIR(3));
-    mvwprintw(viewer->file_content_win, y, 9, "%s", &display_line[8]);
-  } else if (strncmp(display_line, "Date: ", 6) == 0) {
-    wattron(viewer->file_content_win, COLOR_PAIR(3));
-    mvwprintw(viewer->file_content_win, y, 1, "Date: ");
-    wattroff(viewer->file_content_win, COLOR_PAIR(3));
-    mvwprintw(viewer->file_content_win, y, 7, "%s", &display_line[6]);
-  } else {
-    mvwprintw(viewer->file_content_win, y, 1, "%s", display_line);
-  }
+        // In commit/stash view, show Author and Date with coloring
+        char display_line[1024];
+        if ((int)strlen(line->line) > content_width - 2) {
+          strncpy(display_line, line->line, content_width - 5);
+          display_line[content_width - 5] = '\0';
+          strcat(display_line, "...");
+        } else {
+          strcpy(display_line, line->line);
+        }
+
+        // Color the label part
+        if (strncmp(display_line, "Author: ", 8) == 0) {
+          wattron(viewer->file_content_win, COLOR_PAIR(3));
+          mvwprintw(viewer->file_content_win, y, 1, "Author: ");
+          wattroff(viewer->file_content_win, COLOR_PAIR(3));
+          mvwprintw(viewer->file_content_win, y, 9, "%s", &display_line[8]);
+        } else if (strncmp(display_line, "Date: ", 6) == 0) {
+          wattron(viewer->file_content_win, COLOR_PAIR(3));
+          mvwprintw(viewer->file_content_win, y, 1, "Date: ");
+          wattroff(viewer->file_content_win, COLOR_PAIR(3));
+          mvwprintw(viewer->file_content_win, y, 7, "%s", &display_line[6]);
+        } else {
+          mvwprintw(viewer->file_content_win, y, 1, "%s", display_line);
+        }
 
         // For cursor line on blank lines, fill with spaces to show highlighting
         if (is_cursor_line && strlen(display_line) == 0) {
@@ -5341,68 +5588,75 @@ void render_stash_list_window(NCursesDiffViewer *viewer) {
         strcpy(truncated_stash, viewer->stashes[i].stash_info);
       }
 
-			// Show stash info with yellow time part and white message part
-if (is_selected_stash) {
-  wattroff(viewer->stash_list_win, COLOR_PAIR(5));
-}
-
-			// Find the colon after "On [branch]:"
-char *colon_pos = strstr(truncated_stash, ": ");
-if (colon_pos) {
-  // Split at the colon
-  int time_part_len = colon_pos - truncated_stash + 1; // Include the ":"
-  
-  // Find where " On " starts to insert space before it for single digits
-  char *on_pos = strstr(truncated_stash, " On ");
-  
-  if (on_pos) {
-    // Check if time is single digit (e.g., "6h" or "4m")
-    int is_single_digit = 0;
-    int time_len = on_pos - truncated_stash;
-    if (time_len == 2) { // Single digit + letter (e.g., "6h", "4m")
-      char first_char = truncated_stash[0];
-      char second_char = truncated_stash[1];
-      if (first_char >= '1' && first_char <= '9' && 
-          (second_char == 'h' || second_char == 'm' || second_char == 'd' || second_char == 'w')) {
-        is_single_digit = 1;
+      // Show stash info with yellow time part and white message part
+      if (is_selected_stash) {
+        wattroff(viewer->stash_list_win, COLOR_PAIR(5));
       }
-    }
-    
-    // Print time part in yellow
-    wattron(viewer->stash_list_win, COLOR_PAIR(4));
-    mvwprintw(viewer->stash_list_win, y, 2, "%.*s", time_len, truncated_stash);
-    
-    // Add extra space for single digit times
-    if (is_single_digit) {
-      mvwprintw(viewer->stash_list_win, y, 2 + time_len, " ");
-      time_len++;
-    }
-    
-    // Print " On [branch]:" part in yellow
-    mvwprintw(viewer->stash_list_win, y, 2 + time_len, "%.*s", (int)(colon_pos - on_pos + 1), on_pos);
-    wattroff(viewer->stash_list_win, COLOR_PAIR(4));
-    
-    // Print message part in normal color (white)
-    mvwprintw(viewer->stash_list_win, y, 2 + time_part_len + (is_single_digit ? 1 : 0), "%s", colon_pos + 1);
-  } else {
-    // Fallback: print entire yellow part if no " On " found
-    wattron(viewer->stash_list_win, COLOR_PAIR(4));
-    mvwprintw(viewer->stash_list_win, y, 2, "%.*s", time_part_len, truncated_stash);
-    wattroff(viewer->stash_list_win, COLOR_PAIR(4));
-    
-    // Print message part in normal color (white)
-    mvwprintw(viewer->stash_list_win, y, 2 + time_part_len, "%s", colon_pos + 1);
-  }
-} else {
-  // Fallback: print entire string in yellow if no colon found
-  wattron(viewer->stash_list_win, COLOR_PAIR(4));
-  mvwprintw(viewer->stash_list_win, y, 2, "%s", truncated_stash);
-  wattroff(viewer->stash_list_win, COLOR_PAIR(4));
-}
 
-if (is_selected_stash) {
-  wattron(viewer->stash_list_win, COLOR_PAIR(5));
-}
+      // Find the colon after "On [branch]:"
+      char *colon_pos = strstr(truncated_stash, ": ");
+      if (colon_pos) {
+        // Split at the colon
+        int time_part_len = colon_pos - truncated_stash + 1; // Include the ":"
+
+        // Find where " On " starts to insert space before it for single digits
+        char *on_pos = strstr(truncated_stash, " On ");
+
+        if (on_pos) {
+          // Check if time is single digit (e.g., "6h" or "4m")
+          int is_single_digit = 0;
+          int time_len = on_pos - truncated_stash;
+          if (time_len == 2) { // Single digit + letter (e.g., "6h", "4m")
+            char first_char = truncated_stash[0];
+            char second_char = truncated_stash[1];
+            if (first_char >= '1' && first_char <= '9' &&
+                (second_char == 'h' || second_char == 'm' ||
+                 second_char == 'd' || second_char == 'w')) {
+              is_single_digit = 1;
+            }
+          }
+
+          // Print time part in yellow
+          wattron(viewer->stash_list_win, COLOR_PAIR(4));
+          mvwprintw(viewer->stash_list_win, y, 2, "%.*s", time_len,
+                    truncated_stash);
+
+          // Add extra space for single digit times
+          if (is_single_digit) {
+            mvwprintw(viewer->stash_list_win, y, 2 + time_len, " ");
+            time_len++;
+          }
+
+          // Print " On [branch]:" part in yellow
+          mvwprintw(viewer->stash_list_win, y, 2 + time_len, "%.*s",
+                    (int)(colon_pos - on_pos + 1), on_pos);
+          wattroff(viewer->stash_list_win, COLOR_PAIR(4));
+
+          // Print message part in normal color (white)
+          mvwprintw(viewer->stash_list_win, y,
+                    2 + time_part_len + (is_single_digit ? 1 : 0), "%s",
+                    colon_pos + 1);
+        } else {
+          // Fallback: print entire yellow part if no " On " found
+          wattron(viewer->stash_list_win, COLOR_PAIR(4));
+          mvwprintw(viewer->stash_list_win, y, 2, "%.*s", time_part_len,
+                    truncated_stash);
+          wattroff(viewer->stash_list_win, COLOR_PAIR(4));
+
+          // Print message part in normal color (white)
+          mvwprintw(viewer->stash_list_win, y, 2 + time_part_len, "%s",
+                    colon_pos + 1);
+        }
+      } else {
+        // Fallback: print entire string in yellow if no colon found
+        wattron(viewer->stash_list_win, COLOR_PAIR(4));
+        mvwprintw(viewer->stash_list_win, y, 2, "%s", truncated_stash);
+        wattroff(viewer->stash_list_win, COLOR_PAIR(4));
+      }
+
+      if (is_selected_stash) {
+        wattron(viewer->stash_list_win, COLOR_PAIR(5));
+      }
     }
   }
 

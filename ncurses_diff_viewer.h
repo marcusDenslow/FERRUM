@@ -325,4 +325,10 @@ void check_background_fetch(NCursesDiffViewer *viewer);
  */
 void move_cursor_smart(NCursesDiffViewer *viewer, int direction);
 
+int get_github_credentials(char *username, int username_len, char *token,
+                           int token_len);
+
+int execute_git_with_auth(const char *base_cmd, const char *username,
+                          const char *token);
+
 #endif // NCURSES_DIFF_VIEWER_H

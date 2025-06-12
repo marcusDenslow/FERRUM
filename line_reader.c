@@ -1412,7 +1412,7 @@ char ***lsh_split_piped_line(char *line) {
   }
 
   // First split by pipe character
-  cmd_str = strtok_r(line, "|", &save_ptr); //this is a comment
+  cmd_str = strtok_r(line, "|", &save_ptr); 
 
   while (cmd_str != NULL) {
     // Allocate space for this command

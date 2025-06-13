@@ -1749,6 +1749,8 @@ int result = system(amend_cmd);
 unlink(temp_msg_file);
 
 
+		//this is a change i want
+
     if (result == 0) {
       // Small delay to ensure git has processed the amend
       usleep(100000); // 100ms delay

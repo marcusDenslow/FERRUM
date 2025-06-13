@@ -27,6 +27,7 @@ typedef struct {
   char filename[MAX_FILENAME_LEN];
   char status;           // 'M' = modified, 'A' = added, 'D' = deleted
   int marked_for_commit; // 1 if marked for commit, 0 otherwise
+  int has_staged_changes;
 } NCursesChangedFile;
 
 typedef struct {
@@ -40,6 +41,11 @@ typedef struct {
   char line[1024];
   char type; // '+' = addition, '-' = deletion, ' ' = context, '@' = hunk header
   int is_diff_line; // 1 if this is a diff line, 0 if original file line
+  int hunk_id;
+  int is_staged;
+  int line_number_old;
+  int line_number_new;
+  int is_context;
 } NCursesFileLine;
 
 typedef struct {
@@ -137,6 +143,16 @@ typedef struct {
   char current_branch_for_commits[MAX_BRANCHNAME_LEN];
   int branch_commits_scroll_offset;
   int branch_commits_cursor_line;
+
+  int split_view_mode;         // 0 = normal view, 1 = split staged/unstaged
+  int staged_scroll_offset;    // Scroll position for staged pane
+  int active_pane;             // 0 = unstaged, 1 = staged
+  char current_file_path[512]; // Path of currently viewed file
+  int total_hunks;             // Total number of hunks in current file
+  NCursesFileLine
+      staged_lines[MAX_FULL_FILE_LINES]; // Separate storage for staged content
+  int staged_line_count;                 // Number of lines in staged view
+  int staged_cursor_line;
 
 } NCursesDiffViewer;
 
@@ -330,5 +346,24 @@ int get_github_credentials(char *username, int username_len, char *token,
 
 int execute_git_with_auth(const char *base_cmd, const char *username,
                           const char *token);
+
+int stage_hunk_by_line(NCursesDiffViewer *viewer, int line_index);
+
+int laod_file_with_staging_info(NCursesDiffViewer *viewer,
+                                const char *filename);
+
+void rebuild_staged_view(NCursesDiffViewer *viewer);
+
+int apply_staged_changes(NCursesDiffViewer *viewer);
+
+int reset_staged_changes(NCursesDiffViewer *viewer);
+
+int unstage_line_from_git(NCursesDiffViewer *viewer, int staged_line_index);
+
+int commit_staged_changes_only(NCursesDiffViewer *viewer,
+                               const char *commit_title,
+                               const char *commit_message);
+
+void rebuild_staged_view_from_git(NCursesDiffViewer *viewer);
 
 #endif // NCURSES_DIFF_VIEWER_H

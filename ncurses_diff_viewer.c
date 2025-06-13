@@ -1551,7 +1551,7 @@ int commit_marked_files(NCursesDiffViewer *viewer, const char *commit_title,
   }
 
   // Commit with the provided title and message
-  char commit_cmd[2048];
+  char commit_cmd[16384];
   if (commit_message && strlen(commit_message) > 0) {
     snprintf(commit_cmd, sizeof(commit_cmd),
              "git commit -m \"%s\" -m \"%s\" 2>/dev/null >/dev/null",

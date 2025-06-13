@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 // this is a test
+// this is another test
 
 /**
  * Command handler for the "weather" command

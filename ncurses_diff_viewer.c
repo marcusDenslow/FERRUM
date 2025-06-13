@@ -1550,17 +1550,25 @@ int commit_marked_files(NCursesDiffViewer *viewer, const char *commit_title,
     }
   }
 
-  // Commit with the provided title and message
-  char commit_cmd[16384];
-  if (commit_message && strlen(commit_message) > 0) {
-    snprintf(commit_cmd, sizeof(commit_cmd),
-             "git commit -m \"%s\" -m \"%s\" 2>/dev/null >/dev/null",
-             commit_title, commit_message);
-  } else {
-    snprintf(commit_cmd, sizeof(commit_cmd),
-             "git commit -m \"%s\" 2>/dev/null >/dev/null", commit_title);
-  }
-  int result = system(commit_cmd);
+	// Write commit message to temp file
+char temp_msg_file[256];
+snprintf(temp_msg_file, sizeof(temp_msg_file), "/tmp/commit_msg_%d", getpid());
+
+FILE *msg_file = fopen(temp_msg_file, "w");
+if (!msg_file) return 0;
+
+if (commit_message && strlen(commit_message) > 0) {
+  fprintf(msg_file, "%s\n\n%s", commit_title, commit_message);
+} else {
+  fprintf(msg_file, "%s", commit_title);
+}
+fclose(msg_file);
+
+char commit_cmd[512];
+snprintf(commit_cmd, sizeof(commit_cmd), "git commit -F \"%s\" 2>/dev/null >/dev/null", temp_msg_file);
+int result = system(commit_cmd);
+unlink(temp_msg_file);
+
 
   if (result == 0) {
     // Small delay to ensure git has processed the commit
@@ -1720,19 +1728,26 @@ int amend_commit(NCursesDiffViewer *viewer) {
       }
     }
 
-    // Amend the commit with new message
-    char amend_cmd[2048];
-    if (strlen(new_message) > 0) {
-      snprintf(amend_cmd, sizeof(amend_cmd),
-               "git commit --amend -m \"%s\" -m \"%s\" 2>/dev/null >/dev/null",
-               new_title, new_message);
-    } else {
-      snprintf(amend_cmd, sizeof(amend_cmd),
-               "git commit --amend -m \"%s\" 2>/dev/null >/dev/null",
-               new_title);
-    }
 
-    int result = system(amend_cmd);
+		// Write amended commit message to temp file
+char temp_msg_file[256];
+snprintf(temp_msg_file, sizeof(temp_msg_file), "/tmp/amend_msg_%d", getpid());
+
+FILE *msg_file = fopen(temp_msg_file, "w");
+if (!msg_file) return 0;
+
+if (strlen(new_message) > 0) {
+  fprintf(msg_file, "%s\n\n%s", new_title, new_message);
+} else {
+  fprintf(msg_file, "%s", new_title);
+}
+fclose(msg_file);
+
+char amend_cmd[512];
+snprintf(amend_cmd, sizeof(amend_cmd), "git commit --amend -F \"%s\" 2>/dev/null >/dev/null", temp_msg_file);
+int result = system(amend_cmd);
+unlink(temp_msg_file);
+
 
     if (result == 0) {
       // Small delay to ensure git has processed the amend
@@ -3082,16 +3097,24 @@ int commit_staged_changes_only(NCursesDiffViewer *viewer,
   if (!viewer || !commit_title || strlen(commit_title) == 0)
     return 0;
 
-  char commit_cmd[2048];
-  if (commit_message && strlen(commit_message) > 0) {
-    snprintf(commit_cmd, sizeof(commit_cmd),
-             "git commit -m \"%s\" -m \"%s\" 2>/dev/null >/dev/null",
-             commit_title, commit_message);
-  } else {
-    snprintf(commit_cmd, sizeof(commit_cmd),
-             "git commit -m \"%s\" 2>/dev/null >/dev/null", commit_title);
-  }
-  int result = system(commit_cmd);
+
+	char temp_msg_file[256];
+snprintf(temp_msg_file, sizeof(temp_msg_file), "/tmp/commit_msg_%d", getpid());
+
+FILE *msg_file = fopen(temp_msg_file, "w");
+if (!msg_file) return 0;
+
+if (commit_message && strlen(commit_message) > 0) {
+  fprintf(msg_file, "%s\n\n%s", commit_title, commit_message);
+} else {
+  fprintf(msg_file, "%s", commit_title);
+}
+fclose(msg_file);
+
+char commit_cmd[512];
+snprintf(commit_cmd, sizeof(commit_cmd), "git commit -F \"%s\" 2>/dev/null >/dev/null", temp_msg_file);
+int result = system(commit_cmd);
+unlink(temp_msg_file);
 
   if (result == 0) {
     usleep(100000);

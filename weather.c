@@ -1,6 +1,5 @@
 /**
  * weather.c
- * this is a test
  * Implementation of weather information fetching and display for Linux
  * Uses wttr.in service to display weather with its rich UI
  */

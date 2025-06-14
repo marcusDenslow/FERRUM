@@ -5,6 +5,7 @@
 
 #include "ncurses_diff_viewer.h"
 #include "git_integration.h"
+#include <ctype.h>
 #include <locale.h>
 #include <ncurses.h>
 #include <signal.h>
@@ -43,6 +44,9 @@ void handle_terminal_resize(NCursesDiffViewer *viewer) {
     delwin(viewer->file_content_win);
   if (viewer->status_bar_win)
     delwin(viewer->status_bar_win);
+
+  // Clean up fuzzy search windows during resize
+  cleanup_fuzzy_search(viewer);
 
   // Reinitialize ncurses with new terminal size
   endwin();
@@ -99,6 +103,10 @@ int init_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
     return 0;
 
   memset(viewer, 0, sizeof(NCursesDiffViewer));
+  
+  // Initialize fuzzy search
+  init_fuzzy_search(viewer);
+  
   viewer->selected_file = 0;
   viewer->file_scroll_offset = 0;
   viewer->file_cursor_line = 0;
@@ -3209,6 +3217,11 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
   if (!viewer)
     return 0;
 
+  // Handle fuzzy search input first if active
+  if (viewer->fuzzy_search_active) {
+    return handle_fuzzy_search_input(viewer, key);
+  }
+
   int max_lines_visible = viewer->terminal_height - 4;
 
   // Global quit commands
@@ -3340,6 +3353,10 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
 
     case '\t': // Tab - switch to commit list mode
       viewer->current_mode = NCURSES_MODE_COMMIT_LIST;
+      break;
+
+    case '/': // Forward slash - enter fuzzy search mode
+      enter_fuzzy_search_mode(viewer);
       break;
 
     case '\n':
@@ -4465,6 +4482,7 @@ int run_ncurses_diff_viewer(void) {
   render_branch_list_window(&viewer);
   render_stash_list_window(&viewer);
   render_status_bar(&viewer);
+  render_fuzzy_search(&viewer);
 
   // Main display loop
   int running = 1;
@@ -4510,12 +4528,18 @@ int run_ncurses_diff_viewer(void) {
     // Update preview based on current selection
     update_preview_for_current_selection(&viewer);
 
-    render_file_list_window(&viewer);
-    render_file_content_window(&viewer);
-    render_commit_list_window(&viewer);
-    render_branch_list_window(&viewer);
-    render_stash_list_window(&viewer);
-    render_status_bar(&viewer);
+    // Skip main window rendering if fuzzy search is active to prevent flickering
+    if (!viewer.fuzzy_search_active) {
+      render_file_list_window(&viewer);
+      render_file_content_window(&viewer);
+      render_commit_list_window(&viewer);
+      render_branch_list_window(&viewer);
+      render_stash_list_window(&viewer);
+      render_status_bar(&viewer);
+    }
+    
+    // Always render fuzzy search (it handles its own visibility)
+    render_fuzzy_search(&viewer);
 
     // Keep cursor hidden
     curs_set(0);
@@ -6611,6 +6635,296 @@ void cleanup_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
     if (viewer->status_bar_win) {
       delwin(viewer->status_bar_win);
     }
+    
+    // Clean up fuzzy search windows
+    cleanup_fuzzy_search(viewer);
   }
   endwin();
+}
+
+/**
+ * Initialize fuzzy search state
+ */
+void init_fuzzy_search(NCursesDiffViewer *viewer) {
+  if (!viewer) return;
+  
+  viewer->fuzzy_search_active = 0;
+  viewer->fuzzy_search_query[0] = '\0';
+  viewer->fuzzy_search_query_len = 0;
+  viewer->fuzzy_filtered_count = 0;
+  viewer->fuzzy_selected_index = 0;
+  viewer->fuzzy_scroll_offset = 0;
+  viewer->fuzzy_input_win = NULL;
+  viewer->fuzzy_list_win = NULL;
+}
+
+/**
+ * Cleanup fuzzy search windows
+ */
+void cleanup_fuzzy_search(NCursesDiffViewer *viewer) {
+  if (!viewer) return;
+  
+  if (viewer->fuzzy_input_win) {
+    delwin(viewer->fuzzy_input_win);
+    viewer->fuzzy_input_win = NULL;
+  }
+  if (viewer->fuzzy_list_win) {
+    delwin(viewer->fuzzy_list_win);
+    viewer->fuzzy_list_win = NULL;
+  }
+}
+
+/**
+ * Simple fuzzy matching - returns 1 if pattern matches filename
+ */
+int fuzzy_match(const char *pattern, const char *filename) {
+  if (!pattern || !filename) return 0;
+  if (strlen(pattern) == 0) return 1; // Empty pattern matches everything
+  
+  const char *p = pattern;
+  const char *f = filename;
+  
+  // Simple substring matching with case insensitive search
+  while (*p && *f) {
+    if (tolower(*p) == tolower(*f)) {
+      p++;
+    }
+    f++;
+  }
+  
+  return *p == '\0'; // Pattern fully matched
+}
+
+/**
+ * Update fuzzy search filter based on current query
+ */
+void update_fuzzy_filter(NCursesDiffViewer *viewer) {
+  if (!viewer) return;
+  
+  viewer->fuzzy_filtered_count = 0;
+  viewer->fuzzy_selected_index = 0;
+  viewer->fuzzy_scroll_offset = 0;
+  
+  // Filter files based on fuzzy search query
+  for (int i = 0; i < viewer->file_count && viewer->fuzzy_filtered_count < MAX_FILES; i++) {
+    if (fuzzy_match(viewer->fuzzy_search_query, viewer->files[i].filename)) {
+      viewer->fuzzy_filtered_files[viewer->fuzzy_filtered_count++] = i;
+    }
+  }
+}
+
+/**
+ * Enter fuzzy search mode
+ */
+void enter_fuzzy_search_mode(NCursesDiffViewer *viewer) {
+  if (!viewer || viewer->current_mode != NCURSES_MODE_FILE_LIST) return;
+  
+  viewer->fuzzy_search_active = 1;
+  viewer->fuzzy_search_query[0] = '\0';
+  viewer->fuzzy_search_query_len = 0;
+  
+  // Create fuzzy search windows
+  int input_height = 3;
+  int list_height = viewer->terminal_height - input_height - 4;
+  int width = viewer->terminal_width - 4;
+  int start_y = (viewer->terminal_height - input_height - list_height) / 2;
+  int start_x = 2;
+  
+  viewer->fuzzy_input_win = newwin(input_height, width, start_y, start_x);
+  viewer->fuzzy_list_win = newwin(list_height, width, start_y + input_height, start_x);
+  
+  if (viewer->fuzzy_input_win) {
+    box(viewer->fuzzy_input_win, 0, 0);
+    mvwprintw(viewer->fuzzy_input_win, 0, 2, " Fuzzy File Search ");
+  }
+  
+  if (viewer->fuzzy_list_win) {
+    box(viewer->fuzzy_list_win, 0, 0);
+  }
+  
+  // Initialize with all files
+  update_fuzzy_filter(viewer);
+}
+
+/**
+ * Exit fuzzy search mode
+ */
+void exit_fuzzy_search_mode(NCursesDiffViewer *viewer) {
+  if (!viewer) return;
+  
+  viewer->fuzzy_search_active = 0;
+  cleanup_fuzzy_search(viewer);
+  
+  // Refresh the main screen
+  clear();
+  refresh();
+}
+
+/**
+ * Render fuzzy search UI
+ */
+void render_fuzzy_search(NCursesDiffViewer *viewer) {
+  if (!viewer || !viewer->fuzzy_search_active) return;
+  if (!viewer->fuzzy_input_win || !viewer->fuzzy_list_win) return;
+  
+  // Clear and redraw input window
+  wclear(viewer->fuzzy_input_win);
+  box(viewer->fuzzy_input_win, 0, 0);
+  mvwprintw(viewer->fuzzy_input_win, 0, 2, " Fuzzy File Search ");
+  
+  // Show current query
+  mvwprintw(viewer->fuzzy_input_win, 1, 2, "> %s", viewer->fuzzy_search_query);
+  
+  // Show cursor
+  int cursor_x = 4 + viewer->fuzzy_search_query_len;
+  if (cursor_x < getmaxx(viewer->fuzzy_input_win) - 1) {
+    mvwaddch(viewer->fuzzy_input_win, 1, cursor_x, '_');
+  }
+  
+  wrefresh(viewer->fuzzy_input_win);
+  
+  // Clear and redraw list window
+  wclear(viewer->fuzzy_list_win);
+  box(viewer->fuzzy_list_win, 0, 0);
+  
+  int list_height = getmaxy(viewer->fuzzy_list_win) - 2;
+  int list_width = getmaxx(viewer->fuzzy_list_win) - 4;
+  
+  // Show filtered results
+  for (int i = 0; i < viewer->fuzzy_filtered_count && i < list_height; i++) {
+    int display_index = i + viewer->fuzzy_scroll_offset;
+    if (display_index >= viewer->fuzzy_filtered_count) break;
+    
+    int file_index = viewer->fuzzy_filtered_files[display_index];
+    char *filename = viewer->files[file_index].filename;
+    char status = viewer->files[file_index].status;
+    
+    // Highlight selected item
+    if (display_index == viewer->fuzzy_selected_index) {
+      wattron(viewer->fuzzy_list_win, A_REVERSE);
+    }
+    
+    // Show status character and filename
+    mvwprintw(viewer->fuzzy_list_win, i + 1, 2, "%c %-*.*s", 
+              status, list_width - 3, list_width - 3, filename);
+    
+    if (display_index == viewer->fuzzy_selected_index) {
+      wattroff(viewer->fuzzy_list_win, A_REVERSE);
+    }
+  }
+  
+  // Show result count
+  if (viewer->fuzzy_filtered_count > 0) {
+    mvwprintw(viewer->fuzzy_list_win, 0, getmaxx(viewer->fuzzy_list_win) - 15, 
+              " %d/%d ", viewer->fuzzy_selected_index + 1, viewer->fuzzy_filtered_count);
+  } else {
+    mvwprintw(viewer->fuzzy_list_win, 0, getmaxx(viewer->fuzzy_list_win) - 10, " 0/0 ");
+  }
+  
+  wrefresh(viewer->fuzzy_list_win);
+}
+
+/**
+ * Handle fuzzy search input
+ */
+int handle_fuzzy_search_input(NCursesDiffViewer *viewer, int key) {
+  if (!viewer || !viewer->fuzzy_search_active) return 0;
+  
+  switch (key) {
+    case 27: // ESC
+      exit_fuzzy_search_mode(viewer);
+      return 1;
+      
+    case KEY_ENTER:
+    case '\n':
+    case '\r':
+      if (viewer->fuzzy_filtered_count > 0) {
+        select_fuzzy_file(viewer);
+        exit_fuzzy_search_mode(viewer);
+      }
+      return 1;
+      
+    case KEY_UP:
+      if (viewer->fuzzy_selected_index > 0) {
+        viewer->fuzzy_selected_index--;
+        // Adjust scroll if needed
+        if (viewer->fuzzy_selected_index < viewer->fuzzy_scroll_offset) {
+          viewer->fuzzy_scroll_offset = viewer->fuzzy_selected_index;
+        }
+      }
+      return 1;
+      
+    case KEY_DOWN:
+      if (viewer->fuzzy_selected_index < viewer->fuzzy_filtered_count - 1) {
+        viewer->fuzzy_selected_index++;
+        // Adjust scroll if needed
+        int list_height = getmaxy(viewer->fuzzy_list_win) - 2;
+        if (viewer->fuzzy_selected_index >= viewer->fuzzy_scroll_offset + list_height) {
+          viewer->fuzzy_scroll_offset = viewer->fuzzy_selected_index - list_height + 1;
+        }
+      }
+      return 1;
+      
+    case KEY_BACKSPACE:
+    case 127:
+    case '\b':
+      if (viewer->fuzzy_search_query_len > 0) {
+        viewer->fuzzy_search_query_len--;
+        viewer->fuzzy_search_query[viewer->fuzzy_search_query_len] = '\0';
+        update_fuzzy_filter(viewer);
+      }
+      return 1;
+      
+    default:
+      // Add printable characters to search query
+      if (key >= 32 && key <= 126 && viewer->fuzzy_search_query_len < 255) {
+        viewer->fuzzy_search_query[viewer->fuzzy_search_query_len++] = key;
+        viewer->fuzzy_search_query[viewer->fuzzy_search_query_len] = '\0';
+        update_fuzzy_filter(viewer);
+      }
+      return 1;
+  }
+}
+
+/**
+ * Select file from fuzzy search results
+ */
+void select_fuzzy_file(NCursesDiffViewer *viewer) {
+  if (!viewer || viewer->fuzzy_filtered_count == 0) return;
+  
+  // Get the actual file index from filtered results
+  int file_index = viewer->fuzzy_filtered_files[viewer->fuzzy_selected_index];
+  
+  // Update the main file list selection to point to this file
+  viewer->selected_file = file_index;
+  
+  // Scroll the main file list to show the selected file
+  int file_panel_height = getmaxy(viewer->file_list_win) - 2;
+  if (viewer->selected_file < viewer->file_count) {
+    // Ensure the selected file is visible in the main panel
+    if (viewer->selected_file < file_panel_height / 2) {
+      // If near the top, scroll to top
+      // No action needed as the file list starts from 0
+    } else if (viewer->selected_file >= viewer->file_count - file_panel_height / 2) {
+      // If near the bottom, show as much as possible
+      // No action needed as we'll handle this in rendering
+    }
+  }
+  
+  // Load the selected file with split staging view (same as pressing Enter)
+  if (viewer->selected_file >= 0 && viewer->selected_file < viewer->file_count) {
+    const char *filename = viewer->files[viewer->selected_file].filename;
+    
+    // Load file with staging information
+    load_file_with_staging_info(viewer, filename);
+    
+    // Switch to split view mode
+    viewer->split_view_mode = 1;
+    viewer->current_mode = NCURSES_MODE_FILE_VIEW;
+    viewer->active_pane = 0; // Start with unstaged pane active
+    
+    // Store current file path
+    strncpy(viewer->current_file_path, filename, sizeof(viewer->current_file_path) - 1);
+    viewer->current_file_path[sizeof(viewer->current_file_path) - 1] = '\0';
+  }
 }

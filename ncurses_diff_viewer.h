@@ -154,6 +154,17 @@ typedef struct {
   int staged_line_count;                 // Number of lines in staged view
   int staged_cursor_line;
 
+  // Fuzzy search state
+  int fuzzy_search_active;                    // 1 if fuzzy search is active
+  char fuzzy_search_query[256];               // Current search query
+  int fuzzy_search_query_len;                 // Length of current query
+  int fuzzy_filtered_files[MAX_FILES];        // Indices of filtered files
+  int fuzzy_filtered_count;                   // Number of filtered files
+  int fuzzy_selected_index;                   // Currently selected in fuzzy list
+  int fuzzy_scroll_offset;                    // Scroll position in fuzzy list
+  WINDOW *fuzzy_input_win;                    // Input window for search
+  WINDOW *fuzzy_list_win;                     // Results list window
+
 } NCursesDiffViewer;
 
 /**
@@ -385,7 +396,7 @@ int execute_git_with_auth(const char *base_cmd, const char *username,
 
 int stage_hunk_by_line(NCursesDiffViewer *viewer, int line_index);
 
-int laod_file_with_staging_info(NCursesDiffViewer *viewer,
+int load_file_with_staging_info(NCursesDiffViewer *viewer,
                                 const char *filename);
 
 void rebuild_staged_view(NCursesDiffViewer *viewer);
@@ -401,5 +412,45 @@ int commit_staged_changes_only(NCursesDiffViewer *viewer,
                                const char *commit_message);
 
 void rebuild_staged_view_from_git(NCursesDiffViewer *viewer);
+
+/**
+ * Initialize fuzzy search state
+ */
+void init_fuzzy_search(NCursesDiffViewer *viewer);
+
+/**
+ * Cleanup fuzzy search windows
+ */
+void cleanup_fuzzy_search(NCursesDiffViewer *viewer);
+
+/**
+ * Enter fuzzy search mode
+ */
+void enter_fuzzy_search_mode(NCursesDiffViewer *viewer);
+
+/**
+ * Exit fuzzy search mode
+ */
+void exit_fuzzy_search_mode(NCursesDiffViewer *viewer);
+
+/**
+ * Update fuzzy search filter based on current query
+ */
+void update_fuzzy_filter(NCursesDiffViewer *viewer);
+
+/**
+ * Render fuzzy search UI
+ */
+void render_fuzzy_search(NCursesDiffViewer *viewer);
+
+/**
+ * Handle fuzzy search input
+ */
+int handle_fuzzy_search_input(NCursesDiffViewer *viewer, int key);
+
+/**
+ * Select file from fuzzy search results
+ */
+void select_fuzzy_file(NCursesDiffViewer *viewer);
 
 #endif // NCURSES_DIFF_VIEWER_H

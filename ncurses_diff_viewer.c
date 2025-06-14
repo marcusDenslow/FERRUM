@@ -469,6 +469,8 @@ int load_file_with_staging_info(NCursesDiffViewer *viewer,
  * Stage/unstage a single line by line index
  */
 
+// this is a change
+// this is another change
 int stage_hunk_by_line(NCursesDiffViewer *viewer, int line_index) {
   if (!viewer)
     return 0;
@@ -661,7 +663,6 @@ void rebuild_staged_view(NCursesDiffViewer *viewer) {
   }
 }
 
-
 /**
  * Rebuild staged view from what's actually staged in git
  */
@@ -673,7 +674,8 @@ void rebuild_staged_view_from_git(NCursesDiffViewer *viewer) {
 
   // Get staged changes from git (HEAD vs staging area)
   char cmd[1024];
-  snprintf(cmd, sizeof(cmd), "git diff --cached -U5 \"%s\" 2>/dev/null", viewer->current_file_path);
+  snprintf(cmd, sizeof(cmd), "git diff --cached -U5 \"%s\" 2>/dev/null",
+           viewer->current_file_path);
 
   FILE *diff_fp = popen(cmd, "r");
   if (!diff_fp)
@@ -719,13 +721,15 @@ void rebuild_staged_view_from_git(NCursesDiffViewer *viewer) {
     if (newline_pos)
       *newline_pos = '\0';
 
-    // Skip file headers for the first few lines, but include them for patch format
+    // Skip file headers for the first few lines, but include them for patch
+    // format
     if (strncmp(diff_line, "diff --git", 10) == 0 ||
         strncmp(diff_line, "index ", 6) == 0 ||
         strncmp(diff_line, "--- ", 4) == 0 ||
         strncmp(diff_line, "+++ ", 4) == 0) {
-      
-      NCursesFileLine *staged_line = &viewer->staged_lines[viewer->staged_line_count];
+
+      NCursesFileLine *staged_line =
+          &viewer->staged_lines[viewer->staged_line_count];
       strncpy(staged_line->line, diff_line, sizeof(staged_line->line) - 1);
       staged_line->line[sizeof(staged_line->line) - 1] = '\0';
       staged_line->type = '@';
@@ -736,7 +740,8 @@ void rebuild_staged_view_from_git(NCursesDiffViewer *viewer) {
       continue;
     }
 
-    NCursesFileLine *staged_line = &viewer->staged_lines[viewer->staged_line_count];
+    NCursesFileLine *staged_line =
+        &viewer->staged_lines[viewer->staged_line_count];
     strncpy(staged_line->line, diff_line, sizeof(staged_line->line) - 1);
     staged_line->line[sizeof(staged_line->line) - 1] = '\0';
     staged_line->is_staged = 1;
@@ -803,7 +808,8 @@ int apply_staged_changes(NCursesDiffViewer *viewer) {
   free(patch_content);
 
   char cmd[512];
-  snprintf(cmd, sizeof(cmd), "git apply --cached \"%s\" >/dev/null 2>&1", patch_filename);
+  snprintf(cmd, sizeof(cmd), "git apply --cached \"%s\" >/dev/null 2>&1",
+           patch_filename);
   int result = system(cmd);
 
   unlink(patch_filename);
@@ -812,7 +818,8 @@ int apply_staged_changes(NCursesDiffViewer *viewer) {
     // Don't clear staging state - reload from git instead
     get_ncurses_changed_files(viewer);
     if (viewer->file_count > 0 && viewer->selected_file < viewer->file_count) {
-      load_file_with_staging_info(viewer, viewer->files[viewer->selected_file].filename);
+      load_file_with_staging_info(
+          viewer, viewer->files[viewer->selected_file].filename);
     }
   }
   return (result == 0);
@@ -822,39 +829,41 @@ int apply_staged_changes(NCursesDiffViewer *viewer) {
  * Unstage a specific line from the staged pane
  */
 
-
 int unstage_line_from_git(NCursesDiffViewer *viewer, int staged_line_index) {
-  if (!viewer || staged_line_index < 0 || staged_line_index >= viewer->staged_line_count)
+  if (!viewer || staged_line_index < 0 ||
+      staged_line_index >= viewer->staged_line_count)
     return 0;
 
   NCursesFileLine *line = &viewer->staged_lines[staged_line_index];
-  
+
   // Skip headers and context lines
   if (line->type == '@' || line->type == ' ')
     return 0;
-  
+
   // Only unstage actual diff lines (+ or -)
   if (line->type != '+' && line->type != '-')
     return 0;
 
-  // For now, let's just reset the entire file and let user re-stage what they want
-  // This is simpler and more reliable than trying to create reverse patches
+  // For now, let's just reset the entire file and let user re-stage what they
+  // want This is simpler and more reliable than trying to create reverse
+  // patches
   char reset_cmd[512];
-  snprintf(reset_cmd, sizeof(reset_cmd), "git reset HEAD \"%s\" >/dev/null 2>&1", viewer->current_file_path);
+  snprintf(reset_cmd, sizeof(reset_cmd),
+           "git reset HEAD \"%s\" >/dev/null 2>&1", viewer->current_file_path);
   int result = system(reset_cmd);
-  
+
   if (result == 0) {
     // Reload after unstaging
     get_ncurses_changed_files(viewer);
     if (viewer->file_count > 0 && viewer->selected_file < viewer->file_count) {
-      load_file_with_staging_info(viewer, viewer->files[viewer->selected_file].filename);
+      load_file_with_staging_info(
+          viewer, viewer->files[viewer->selected_file].filename);
     }
     return 1;
   }
-  
+
   return 0;
 }
-
 
 /**
  * Reset staged changes
@@ -1550,25 +1559,27 @@ int commit_marked_files(NCursesDiffViewer *viewer, const char *commit_title,
     }
   }
 
-	// Write commit message to temp file
-char temp_msg_file[256];
-snprintf(temp_msg_file, sizeof(temp_msg_file), "/tmp/commit_msg_%d", getpid());
+  // Write commit message to temp file
+  char temp_msg_file[256];
+  snprintf(temp_msg_file, sizeof(temp_msg_file), "/tmp/commit_msg_%d",
+           getpid());
 
-FILE *msg_file = fopen(temp_msg_file, "w");
-if (!msg_file) return 0;
+  FILE *msg_file = fopen(temp_msg_file, "w");
+  if (!msg_file)
+    return 0;
 
-if (commit_message && strlen(commit_message) > 0) {
-  fprintf(msg_file, "%s\n\n%s", commit_title, commit_message);
-} else {
-  fprintf(msg_file, "%s", commit_title);
-}
-fclose(msg_file);
+  if (commit_message && strlen(commit_message) > 0) {
+    fprintf(msg_file, "%s\n\n%s", commit_title, commit_message);
+  } else {
+    fprintf(msg_file, "%s", commit_title);
+  }
+  fclose(msg_file);
 
-char commit_cmd[512];
-snprintf(commit_cmd, sizeof(commit_cmd), "git commit -F \"%s\" 2>/dev/null >/dev/null", temp_msg_file);
-int result = system(commit_cmd);
-unlink(temp_msg_file);
-
+  char commit_cmd[512];
+  snprintf(commit_cmd, sizeof(commit_cmd),
+           "git commit -F \"%s\" 2>/dev/null >/dev/null", temp_msg_file);
+  int result = system(commit_cmd);
+  unlink(temp_msg_file);
 
   if (result == 0) {
     // Small delay to ensure git has processed the commit
@@ -1728,30 +1739,31 @@ int amend_commit(NCursesDiffViewer *viewer) {
       }
     }
 
+    // Write amended commit message to temp file
+    char temp_msg_file[256];
+    snprintf(temp_msg_file, sizeof(temp_msg_file), "/tmp/amend_msg_%d",
+             getpid());
 
-		// Write amended commit message to temp file
-char temp_msg_file[256];
-snprintf(temp_msg_file, sizeof(temp_msg_file), "/tmp/amend_msg_%d", getpid());
+    FILE *msg_file = fopen(temp_msg_file, "w");
+    if (!msg_file)
+      return 0;
 
-FILE *msg_file = fopen(temp_msg_file, "w");
-if (!msg_file) return 0;
+    if (strlen(new_message) > 0) {
+      fprintf(msg_file, "%s\n\n%s", new_title, new_message);
+    } else {
+      fprintf(msg_file, "%s", new_title);
+    }
+    fclose(msg_file);
 
-if (strlen(new_message) > 0) {
-  fprintf(msg_file, "%s\n\n%s", new_title, new_message);
-} else {
-  fprintf(msg_file, "%s", new_title);
-}
-fclose(msg_file);
+    char amend_cmd[512];
+    snprintf(amend_cmd, sizeof(amend_cmd),
+             "git commit --amend -F \"%s\" 2>/dev/null >/dev/null",
+             temp_msg_file);
+    int result = system(amend_cmd);
+    unlink(temp_msg_file);
 
-char amend_cmd[512];
-snprintf(amend_cmd, sizeof(amend_cmd), "git commit --amend -F \"%s\" 2>/dev/null >/dev/null", temp_msg_file);
-int result = system(amend_cmd);
-unlink(temp_msg_file);
-
-
-		//this is a change i want
-		//this is a change i dont want
-
+    // this is a change i want
+    // this is a change i dont want
 
     if (result == 0) {
       // Small delay to ensure git has processed the amend
@@ -2480,12 +2492,88 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
   draw_rounded_box(viewer->file_content_win);
 
   if (!viewer->split_view_mode) {
-    // Keep existing logic for other modes (commit view, stash view, etc.)
-    if (viewer->current_mode == NCURSES_MODE_COMMIT_LIST ||
-        viewer->current_mode == NCURSES_MODE_COMMIT_VIEW) {
-      // Show commit info... (keep existing logic)
+    // Show preview content in list modes and view modes
+    if (viewer->current_mode == NCURSES_MODE_FILE_LIST ||
+        viewer->current_mode == NCURSES_MODE_COMMIT_LIST ||
+        viewer->current_mode == NCURSES_MODE_COMMIT_VIEW ||
+        viewer->current_mode == NCURSES_MODE_BRANCH_LIST ||
+        viewer->current_mode == NCURSES_MODE_BRANCH_VIEW ||
+        viewer->current_mode == NCURSES_MODE_STASH_LIST ||
+        viewer->current_mode == NCURSES_MODE_STASH_VIEW) {
+      
+      // Add title based on current mode
+      const char* title = "";
+      switch (viewer->current_mode) {
+        case NCURSES_MODE_FILE_LIST:
+          title = " File Diff Preview ";
+          break;
+        case NCURSES_MODE_COMMIT_LIST:
+          title = " Commit Details ";
+          break;
+        case NCURSES_MODE_COMMIT_VIEW:
+          title = " Commit Diff ";
+          break;
+        case NCURSES_MODE_BRANCH_LIST:
+          title = " Branch Commits ";
+          break;
+        case NCURSES_MODE_BRANCH_VIEW:
+          title = " Branch Details ";
+          break;
+        case NCURSES_MODE_STASH_LIST:
+          title = " Stash Details ";
+          break;
+        case NCURSES_MODE_STASH_VIEW:
+          title = " Stash Diff ";
+          break;
+        default:
+          title = " Preview ";
+          break;
+      }
+      mvwprintw(viewer->file_content_win, 0, 2, "%s", title);
+      
+      // Render preview content using the loaded file_lines
+      if (viewer->file_line_count > 0) {
+        int max_lines_visible = height - 2;
+        int display_count = 0;
+        
+        for (int i = viewer->file_scroll_offset;
+             i < viewer->file_line_count && display_count < max_lines_visible;
+             i++) {
+          
+          NCursesFileLine *line = &viewer->file_lines[i];
+          int is_cursor_line = (i == viewer->file_cursor_line);
+          
+          // Calculate how many display lines this logical line will need
+          int line_height = calculate_wrapped_line_height(line->line, width - 4);
+          
+          // Skip if this line would exceed remaining space
+          if (display_count + line_height > max_lines_visible) {
+            break;
+          }
+          
+          int y = display_count + 1;
+          int color_pair = 0;
+          
+          // Determine color based on line type
+          if (line->type == '@') {
+            color_pair = 3; // Cyan for hunk headers
+          } else if (line->type == '+') {
+            color_pair = 1; // Green for additions
+          } else if (line->type == '-') {
+            color_pair = 2; // Red for deletions
+          }
+          
+          // Render the line with wrapping
+          int rows_used = render_wrapped_line(viewer->file_content_win, line->line, 
+                                             y, 1, width, line_height, color_pair, is_cursor_line);
+          display_count += rows_used;
+        }
+      } else {
+        // No content to show
+        mvwprintw(viewer->file_content_win, height/2, (width - 15)/2, "No preview available");
+      }
     }
-    // ... other existing mode logic ...
+    
     wrefresh(viewer->file_content_win);
     return;
   }
@@ -2509,7 +2597,7 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
     wattroff(viewer->file_content_win, COLOR_PAIR(4));
   }
 
-  // Show unstaged lines
+  // Show unstaged lines with wrapping
   int unstaged_display_count = 0;
   for (int i = viewer->file_scroll_offset;
        i < viewer->file_line_count &&
@@ -2517,66 +2605,55 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
        i++) {
 
     NCursesFileLine *line = &viewer->file_lines[i];
+    int is_cursor_line = (i == viewer->file_cursor_line && viewer->active_pane == 0);
+    
+    // Calculate how many display lines this logical line will need
+    int line_height = calculate_wrapped_line_height(line->line, width - 4);
+    
+    // Skip if this line would exceed remaining space
+    if (unstaged_display_count + line_height > unstaged_height - 1) {
+      break;
+    }
 
     int y = unstaged_display_count + 1;
-    int is_cursor_line =
-        (i == viewer->file_cursor_line && viewer->active_pane == 0);
-
-    if (is_cursor_line) {
-      wattron(viewer->file_content_win, A_REVERSE);
-    }
-
-    // Display line with appropriate coloring for unstaged view
-    char display_line[1024];
-    if ((int)strlen(line->line) > width - 4) {
-      strncpy(display_line, line->line, width - 7);
-      display_line[width - 7] = '\0';
-      strcat(display_line, "...");
-    } else {
-      strcpy(display_line, line->line);
-    }
-
+    int color_pair = 0;
+    
+    // Determine color based on line type
     if (line->type == '@') {
-      wattron(viewer->file_content_win, COLOR_PAIR(3)); // Cyan for hunk headers
-      mvwprintw(viewer->file_content_win, y, 1, "%s", display_line);
-      wattroff(viewer->file_content_win, COLOR_PAIR(3));
-
+      color_pair = 3; // Cyan for hunk headers
     } else if (line->is_staged) {
-      // Staged lines appear dimmed in unstaged pane
-      wattron(viewer->file_content_win, COLOR_PAIR(3));
+      color_pair = 3; // Dimmed for staged content
+    } else if (line->type == '+') {
+      color_pair = 1; // Green for additions
+    } else if (line->type == '-') {
+      color_pair = 2; // Red for deletions
+    }
 
-      if (line->is_staged && (line->type == '+' || line->type == '-')) {
-        wattron(viewer->file_content_win, COLOR_PAIR(1));
-        mvwaddch(viewer->file_content_win, y, 1, '*'); // Staged indicator
-        wattroff(viewer->file_content_win, COLOR_PAIR(1));
-        mvwprintw(viewer->file_content_win, y, 2, "%s",
-                  display_line + 1); // Skip first char since we showed *
-      } else {
-        mvwprintw(viewer->file_content_win, y, 1, "%s", display_line);
+    // Handle staged indicator for diff lines
+    if (line->is_staged && (line->type == '+' || line->type == '-')) {
+      // First render the staged indicator
+      if (is_cursor_line) {
+        wattron(viewer->file_content_win, A_REVERSE);
       }
-      wattroff(viewer->file_content_win, COLOR_PAIR(3));
+      wattron(viewer->file_content_win, COLOR_PAIR(1));
+      mvwaddch(viewer->file_content_win, y, 1, '*');
+      wattroff(viewer->file_content_win, COLOR_PAIR(1));
+      if (is_cursor_line) {
+        wattroff(viewer->file_content_win, A_REVERSE);
+      }
+      
+      // Then render the line content starting from column 2, skipping first char
+      char line_without_prefix[1024];
+      strcpy(line_without_prefix, line->line + 1);
+      int rows_used = render_wrapped_line(viewer->file_content_win, line_without_prefix, 
+                                         y, 2, width, line_height, color_pair, is_cursor_line);
+      unstaged_display_count += rows_used;
     } else {
-      // Unstaged diff lines with normal colors
-      if (line->type == '+') {
-        wattron(viewer->file_content_win, COLOR_PAIR(1)); // Green
-      } else if (line->type == '-') {
-        wattron(viewer->file_content_win, COLOR_PAIR(2)); // Red
-      }
-
-      mvwprintw(viewer->file_content_win, y, 1, "%s", display_line);
-
-      if (line->type == '+') {
-        wattroff(viewer->file_content_win, COLOR_PAIR(1));
-      } else if (line->type == '-') {
-        wattroff(viewer->file_content_win, COLOR_PAIR(2));
-      }
+      // Regular line rendering
+      int rows_used = render_wrapped_line(viewer->file_content_win, line->line, 
+                                         y, 1, width, line_height, color_pair, is_cursor_line);
+      unstaged_display_count += rows_used;
     }
-
-    if (is_cursor_line) {
-      wattroff(viewer->file_content_win, A_REVERSE);
-    }
-
-    unstaged_display_count++;
   }
 
   // Render staged changes pane
@@ -2588,7 +2665,7 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
     wattroff(viewer->file_content_win, COLOR_PAIR(1));
   }
 
-  // Show staged lines with proper git patch format
+  // Show staged lines with proper git patch format and wrapping
   int staged_display_count = 0;
   for (int i = viewer->staged_scroll_offset;
        i < viewer->staged_line_count &&
@@ -2596,48 +2673,32 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
        i++) {
 
     NCursesFileLine *line = &viewer->staged_lines[i];
+    int is_cursor_line = (i == viewer->staged_cursor_line && viewer->active_pane == 1);
+    
+    // Calculate how many display lines this logical line will need
+    int line_height = calculate_wrapped_line_height(line->line, width - 4);
+    
+    // Skip if this line would exceed remaining space
+    if (staged_display_count + line_height > staged_height - 1) {
+      break;
+    }
 
     int y = split_line + 1 + staged_display_count;
-    int is_cursor_line = (staged_display_count == viewer->staged_cursor_line &&
-                          viewer->active_pane == 1);
-
-    if (is_cursor_line) {
-      wattron(viewer->file_content_win, A_REVERSE);
-    }
-
-    // Display staged lines with proper git diff coloring
-    char display_line[1024];
-    if ((int)strlen(line->line) > width - 4) {
-      strncpy(display_line, line->line, width - 7);
-      display_line[width - 7] = '\0';
-      strcat(display_line, "...");
-    } else {
-      strcpy(display_line, line->line);
-    }
-
+    int color_pair = 0;
+    
+    // Determine color based on line type
     if (line->type == '+') {
-      wattron(viewer->file_content_win, COLOR_PAIR(1)); // Green for additions
+      color_pair = 1; // Green for additions
     } else if (line->type == '-') {
-      wattron(viewer->file_content_win, COLOR_PAIR(2)); // Red for deletions
+      color_pair = 2; // Red for deletions
     } else if (line->type == '@') {
-      wattron(viewer->file_content_win, COLOR_PAIR(3)); // Cyan for headers
+      color_pair = 3; // Cyan for headers
     }
 
-    mvwprintw(viewer->file_content_win, y, 1, "%s", display_line);
-
-    if (line->type == '+') {
-      wattroff(viewer->file_content_win, COLOR_PAIR(1));
-    } else if (line->type == '-') {
-      wattroff(viewer->file_content_win, COLOR_PAIR(2));
-    } else if (line->type == '@') {
-      wattroff(viewer->file_content_win, COLOR_PAIR(3));
-    }
-
-    if (is_cursor_line) {
-      wattroff(viewer->file_content_win, A_REVERSE);
-    }
-
-    staged_display_count++;
+    // Render the line with wrapping
+    int rows_used = render_wrapped_line(viewer->file_content_win, line->line, 
+                                       y, 1, width, line_height, color_pair, is_cursor_line);
+    staged_display_count += rows_used;
   }
 
   wrefresh(viewer->file_content_win);
@@ -3101,24 +3162,26 @@ int commit_staged_changes_only(NCursesDiffViewer *viewer,
   if (!viewer || !commit_title || strlen(commit_title) == 0)
     return 0;
 
+  char temp_msg_file[256];
+  snprintf(temp_msg_file, sizeof(temp_msg_file), "/tmp/commit_msg_%d",
+           getpid());
 
-	char temp_msg_file[256];
-snprintf(temp_msg_file, sizeof(temp_msg_file), "/tmp/commit_msg_%d", getpid());
+  FILE *msg_file = fopen(temp_msg_file, "w");
+  if (!msg_file)
+    return 0;
 
-FILE *msg_file = fopen(temp_msg_file, "w");
-if (!msg_file) return 0;
+  if (commit_message && strlen(commit_message) > 0) {
+    fprintf(msg_file, "%s\n\n%s", commit_title, commit_message);
+  } else {
+    fprintf(msg_file, "%s", commit_title);
+  }
+  fclose(msg_file);
 
-if (commit_message && strlen(commit_message) > 0) {
-  fprintf(msg_file, "%s\n\n%s", commit_title, commit_message);
-} else {
-  fprintf(msg_file, "%s", commit_title);
-}
-fclose(msg_file);
-
-char commit_cmd[512];
-snprintf(commit_cmd, sizeof(commit_cmd), "git commit -F \"%s\" 2>/dev/null >/dev/null", temp_msg_file);
-int result = system(commit_cmd);
-unlink(temp_msg_file);
+  char commit_cmd[512];
+  snprintf(commit_cmd, sizeof(commit_cmd),
+           "git commit -F \"%s\" 2>/dev/null >/dev/null", temp_msg_file);
+  int result = system(commit_cmd);
+  unlink(temp_msg_file);
 
   if (result == 0) {
     usleep(100000);
@@ -3157,6 +3220,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
   switch (key) {
   case '1':
     viewer->current_mode = NCURSES_MODE_FILE_LIST;
+    viewer->split_view_mode = 0; // Exit split view mode
     // Load the selected file content when switching to file list mode
     if (viewer->file_count > 0 && viewer->selected_file < viewer->file_count) {
       load_file_with_staging_info(
@@ -3164,6 +3228,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     }
     break;
   case '2':
+    viewer->split_view_mode = 0; // Exit split view mode
     // Switch to file view mode and load selected file
     if (viewer->file_count > 0 && viewer->selected_file < viewer->file_count) {
       load_file_with_staging_info(
@@ -3173,6 +3238,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     break;
   case '3':
     viewer->current_mode = NCURSES_MODE_BRANCH_LIST;
+    viewer->split_view_mode = 0; // Exit split view mode
     // Load commits for the currently selected branch when entering branch mode
     if (viewer->branch_count > 0) {
       load_branch_commits(viewer,
@@ -3182,6 +3248,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     break;
   case '4':
     viewer->current_mode = NCURSES_MODE_COMMIT_LIST;
+    viewer->split_view_mode = 0; // Exit split view mode
     // Auto-preview the selected commit
     if (viewer->commit_count > 0) {
       load_commit_for_viewing(viewer,
@@ -3190,6 +3257,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     break;
   case '5':
     viewer->current_mode = NCURSES_MODE_STASH_LIST;
+    viewer->split_view_mode = 0; // Exit split view mode
     // Auto-preview the selected stash
     if (viewer->stash_count > 0) {
       load_stash_for_viewing(viewer, viewer->selected_stash);
@@ -3207,11 +3275,6 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     case 'k':
       if (viewer->selected_file > 0) {
         viewer->selected_file--;
-        // Auto-preview the selected file
-        if (viewer->file_count > 0) {
-          load_file_with_staging_info(
-              viewer, viewer->files[viewer->selected_file].filename);
-        }
       }
       break;
 
@@ -3219,11 +3282,6 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     case 'j':
       if (viewer->selected_file < viewer->file_count - 1) {
         viewer->selected_file++;
-        // Auto-preview the selected file
-        if (viewer->file_count > 0) {
-          load_file_with_staging_info(
-              viewer, viewer->files[viewer->selected_file].filename);
-        }
       }
       break;
 
@@ -3310,25 +3368,26 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
       }
       break;
 
-				case ' ': // Space - stage/unstage line
-  if (viewer->split_view_mode) {
-    if (viewer->active_pane == 0) {
-      stage_hunk_by_line(viewer, viewer->file_cursor_line);
-    } else {
-      // Unstage from staged pane
-      unstage_line_from_git(viewer, viewer->staged_cursor_line);
-    }
-  } else {
-    // Existing scroll logic for non-split view
-    if (viewer->file_line_count > max_lines_visible) {
-      viewer->file_scroll_offset += max_lines_visible;
-      if (viewer->file_scroll_offset > viewer->file_line_count - max_lines_visible) {
-        viewer->file_scroll_offset = viewer->file_line_count - max_lines_visible;
+    case ' ': // Space - stage/unstage line
+      if (viewer->split_view_mode) {
+        if (viewer->active_pane == 0) {
+          stage_hunk_by_line(viewer, viewer->file_cursor_line);
+        } else {
+          // Unstage from staged pane
+          unstage_line_from_git(viewer, viewer->staged_cursor_line);
+        }
+      } else {
+        // Existing scroll logic for non-split view
+        if (viewer->file_line_count > max_lines_visible) {
+          viewer->file_scroll_offset += max_lines_visible;
+          if (viewer->file_scroll_offset >
+              viewer->file_line_count - max_lines_visible) {
+            viewer->file_scroll_offset =
+                viewer->file_line_count - max_lines_visible;
+          }
+        }
       }
-    }
-  }
-  break;
-
+      break;
 
     case '\t': // Tab - switch between unstaged and staged panes
       if (viewer->split_view_mode) {
@@ -3361,12 +3420,10 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
       if (viewer->split_view_mode) {
         if (viewer->active_pane == 0) {
           // Unstaged pane
-          move_cursor_smart(viewer, -1);
+          move_cursor_smart_unstaged(viewer, -1);
         } else {
           // Staged pane
-          if (viewer->staged_cursor_line > 0) {
-            viewer->staged_cursor_line--;
-          }
+          move_cursor_smart_staged(viewer, -1);
         }
       } else {
         move_cursor_smart(viewer, -1);
@@ -3378,12 +3435,10 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
       if (viewer->split_view_mode) {
         if (viewer->active_pane == 0) {
           // Unstaged pane
-          move_cursor_smart(viewer, 1);
+          move_cursor_smart_unstaged(viewer, 1);
         } else {
           // Staged pane
-          if (viewer->staged_cursor_line < viewer->staged_line_count - 1) {
-            viewer->staged_cursor_line++;
-          }
+          move_cursor_smart_staged(viewer, 1);
         }
       } else {
         move_cursor_smart(viewer, 1);
@@ -3569,6 +3624,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     case 27:   // ESC
     case '\t': // Tab - return to file list mode
       viewer->current_mode = NCURSES_MODE_FILE_LIST;
+      viewer->split_view_mode = 0; // Exit split view mode
       break;
 
     case KEY_UP:
@@ -3668,6 +3724,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     case 27:   // ESC
     case '\t': // Tab - return to file list mode
       viewer->current_mode = NCURSES_MODE_FILE_LIST;
+      viewer->split_view_mode = 0; // Exit split view mode
       break;
 
     case KEY_UP:
@@ -3794,6 +3851,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     case 27:   // ESC
     case '\t': // Tab - return to file list mode
       viewer->current_mode = NCURSES_MODE_FILE_LIST;
+      viewer->split_view_mode = 0; // Exit split view mode
       break;
 
     case KEY_UP:
@@ -4116,7 +4174,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     case 27: // ESC
       viewer->current_mode =
           NCURSES_MODE_COMMIT_LIST; // Return to commit list mode
-                                    // this is another change
+      viewer->split_view_mode = 0; // Exit split view mode
       break;
 
     case KEY_UP:
@@ -4195,6 +4253,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     case 27: // ESC
       viewer->current_mode =
           NCURSES_MODE_STASH_LIST; // Return to stash list mode
+      viewer->split_view_mode = 0; // Exit split view mode
       break;
 
     case KEY_UP:
@@ -4273,6 +4332,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     case 27: // ESC
       viewer->current_mode =
           NCURSES_MODE_BRANCH_LIST; // Return to branch list mode
+      viewer->split_view_mode = 0; // Exit split view mode
       break;
 
     case KEY_UP:
@@ -4374,9 +4434,7 @@ int run_ncurses_diff_viewer(void) {
   // Load commit history
   get_commit_history(&viewer);
 
-  if (viewer.file_count > 0) {
-    load_file_with_staging_info(&viewer, viewer.files[0].filename);
-  }
+  // Initial preview will be handled by update_preview_for_current_selection
 
   // Initial display
   attron(COLOR_PAIR(3));
@@ -4448,6 +4506,9 @@ int run_ncurses_diff_viewer(void) {
     }
     // Update sync status and check for new files
     update_sync_status(&viewer);
+
+    // Update preview based on current selection
+    update_preview_for_current_selection(&viewer);
 
     render_file_list_window(&viewer);
     render_file_content_window(&viewer);
@@ -6068,6 +6129,193 @@ void check_background_fetch(NCursesDiffViewer *viewer) {
 }
 
 /**
+ * Update preview based on current mode and selection
+ */
+void update_preview_for_current_selection(NCursesDiffViewer *viewer) {
+  if (!viewer) return;
+  
+  static NCursesViewMode last_mode = (NCursesViewMode)-1;
+  static int last_file = -1;
+  static int last_commit = -1;
+  static int last_branch = -1;
+  static int last_stash = -1;
+  
+  int needs_update = 0;
+  
+  if (viewer->current_mode == NCURSES_MODE_FILE_LIST) {
+    if (last_mode != viewer->current_mode || last_file != viewer->selected_file) {
+      if (viewer->file_count > 0 && viewer->selected_file < viewer->file_count) {
+        // Load diff preview instead of raw file content
+        load_file_with_staging_info(viewer, viewer->files[viewer->selected_file].filename);
+      }
+      last_file = viewer->selected_file;
+      needs_update = 1;
+    }
+  } else if (viewer->current_mode == NCURSES_MODE_COMMIT_LIST) {
+    if (last_mode != viewer->current_mode || last_commit != viewer->selected_commit) {
+      if (viewer->commit_count > 0 && viewer->selected_commit < viewer->commit_count) {
+        load_commit_for_viewing(viewer, viewer->commits[viewer->selected_commit].hash);
+      }
+      last_commit = viewer->selected_commit;
+      needs_update = 1;
+    }
+  } else if (viewer->current_mode == NCURSES_MODE_BRANCH_LIST) {
+    if (last_mode != viewer->current_mode || last_branch != viewer->selected_branch) {
+      if (viewer->branch_count > 0 && viewer->selected_branch < viewer->branch_count) {
+        load_branch_commits(viewer, viewer->branches[viewer->selected_branch].name);
+        parse_branch_commits_to_lines(viewer); // Convert to file_lines for preview display
+      }
+      last_branch = viewer->selected_branch;
+      needs_update = 1;
+    }
+  } else if (viewer->current_mode == NCURSES_MODE_STASH_LIST) {
+    if (last_mode != viewer->current_mode || last_stash != viewer->selected_stash) {
+      if (viewer->stash_count > 0 && viewer->selected_stash < viewer->stash_count) {
+        load_stash_for_viewing(viewer, viewer->selected_stash);
+      }
+      last_stash = viewer->selected_stash;
+      needs_update = 1;
+    }
+  }
+  
+  if (needs_update) {
+    last_mode = viewer->current_mode;
+  }
+}
+
+/**
+ * Load file preview showing the top of the file content
+ */
+int load_file_preview(NCursesDiffViewer *viewer, const char *filename) {
+  if (!viewer || !filename)
+    return 0;
+    
+  viewer->file_line_count = 0;
+  viewer->file_scroll_offset = 0;
+  viewer->file_cursor_line = 0;
+  
+  FILE *fp = fopen(filename, "r");
+  if (!fp) {
+    return 0;
+  }
+  
+  char line[1024];
+  int line_count = 0;
+  
+  // Load first 50 lines of the file for preview
+  while (fgets(line, sizeof(line), fp) && line_count < 50 &&
+         line_count < MAX_FULL_FILE_LINES) {
+    // Remove trailing newline
+    int len = strlen(line);
+    if (len > 0 && line[len - 1] == '\n') {
+      line[len - 1] = '\0';
+    }
+    
+    // Store the line as a context line (no diff markings)
+    strncpy(viewer->file_lines[line_count].line, line, 
+            sizeof(viewer->file_lines[line_count].line) - 1);
+    viewer->file_lines[line_count].line[sizeof(viewer->file_lines[line_count].line) - 1] = '\0';
+    viewer->file_lines[line_count].type = ' '; // Context line
+    viewer->file_lines[line_count].is_diff_line = 0;
+    viewer->file_lines[line_count].is_staged = 0;
+    viewer->file_lines[line_count].hunk_id = 0;
+    viewer->file_lines[line_count].line_number_old = line_count + 1;
+    viewer->file_lines[line_count].line_number_new = line_count + 1;
+    viewer->file_lines[line_count].is_context = 1;
+    
+    line_count++;
+  }
+  
+  fclose(fp);
+  viewer->file_line_count = line_count;
+  
+  // Reset staged content since this is just a preview
+  viewer->staged_line_count = 0;
+  viewer->staged_cursor_line = 0;
+  viewer->staged_scroll_offset = 0;
+  
+  return 1;
+}
+
+/**
+ * Helper function to wrap a long line into multiple display lines
+ * Returns the number of wrapped lines created
+ */
+int wrap_line_to_width(const char *input_line, char wrapped_lines[][1024], int max_lines, int width) {
+  int input_len = strlen(input_line);
+  int line_count = 0;
+  int input_pos = 0;
+  
+  // If line fits in width, just copy it
+  if (input_len <= width) {
+    strcpy(wrapped_lines[0], input_line);
+    return 1;
+  }
+  
+  while (input_pos < input_len && line_count < max_lines - 1) {
+    int chars_to_copy = width;
+    
+    // Don't exceed remaining input length
+    if (input_pos + chars_to_copy > input_len) {
+      chars_to_copy = input_len - input_pos;
+    }
+    
+    // Copy the segment
+    strncpy(wrapped_lines[line_count], input_line + input_pos, chars_to_copy);
+    wrapped_lines[line_count][chars_to_copy] = '\0';
+    
+    input_pos += chars_to_copy;
+    line_count++;
+  }
+  
+  return line_count;
+}
+
+/**
+ * Render a single line with proper wrapping and coloring
+ * Returns the number of display rows used
+ */
+int render_wrapped_line(WINDOW *win, const char *line, int start_y, int start_x, 
+                       int width, int max_rows, int color_pair, int reverse) {
+  char wrapped_lines[10][1024]; // Support up to 10 wrapped lines per original line
+  int wrap_count = wrap_line_to_width(line, wrapped_lines, 10, width - start_x);
+  
+  int rows_used = 0;
+  for (int i = 0; i < wrap_count && rows_used < max_rows; i++) {
+    if (reverse) {
+      wattron(win, A_REVERSE);
+    }
+    if (color_pair > 0) {
+      wattron(win, COLOR_PAIR(color_pair));
+    }
+    
+    mvwprintw(win, start_y + rows_used, start_x, "%s", wrapped_lines[i]);
+    
+    if (color_pair > 0) {
+      wattroff(win, COLOR_PAIR(color_pair));
+    }
+    if (reverse) {
+      wattroff(win, A_REVERSE);
+    }
+    
+    rows_used++;
+  }
+  
+  return rows_used;
+}
+
+/**
+ * Calculate how many display lines a wrapped line will take
+ */
+int calculate_wrapped_line_height(const char *line, int width) {
+  int line_len = strlen(line);
+  if (line_len <= width) {
+    return 1;
+  }
+  return (line_len + width - 1) / width; // Ceiling division
+}
+
+/**
  * Move cursor up/down while skipping empty lines
  * direction: -1 for up, 1 for down
  */
@@ -6145,6 +6393,190 @@ void move_cursor_smart(NCursesDiffViewer *viewer, int direction) {
         max_scroll = 0;
       if (viewer->file_scroll_offset > max_scroll) {
         viewer->file_scroll_offset = max_scroll;
+      }
+    }
+  }
+}
+
+/**
+ * Move cursor up/down in unstaged pane with proper scrolling
+ * direction: -1 for up, 1 for down
+ */
+void move_cursor_smart_unstaged(NCursesDiffViewer *viewer, int direction) {
+  if (!viewer || viewer->file_line_count == 0) {
+    return;
+  }
+
+  int original_cursor = viewer->file_cursor_line;
+  int new_cursor = viewer->file_cursor_line;
+  int attempts = 0;
+  const int max_attempts = viewer->file_line_count;
+
+  do {
+    new_cursor += direction;
+    attempts++;
+
+    if (new_cursor < 0) {
+      new_cursor = 0;
+      break;
+    }
+    if (new_cursor >= viewer->file_line_count) {
+      new_cursor = viewer->file_line_count - 1;
+      break;
+    }
+
+    NCursesFileLine *line = &viewer->file_lines[new_cursor];
+    char *trimmed = line->line;
+
+    while (*trimmed == ' ' || *trimmed == '\t') {
+      trimmed++;
+    }
+
+    if (*trimmed != '\0' || attempts >= max_attempts) {
+      break;
+    }
+
+  } while (attempts < max_attempts);
+
+  viewer->file_cursor_line = new_cursor;
+
+  int height, width;
+  getmaxyx(viewer->file_content_win, height, width);
+  int split_line = height / 2;
+  int unstaged_height = split_line - 1;
+  
+  // Calculate display positions accounting for wrapped lines
+  int cursor_display_rows = 0;
+  int scroll_display_rows = 0;
+  
+  // Count display rows from scroll offset to cursor
+  for (int i = viewer->file_scroll_offset; i <= viewer->file_cursor_line && i < viewer->file_line_count; i++) {
+    int line_height = calculate_wrapped_line_height(viewer->file_lines[i].line, width - 4);
+    if (i < viewer->file_cursor_line) {
+      cursor_display_rows += line_height;
+    }
+    if (i >= viewer->file_scroll_offset) {
+      scroll_display_rows += line_height;
+    }
+  }
+  
+  if (direction == -1) {
+    // Moving up - ensure cursor stays visible at top
+    if (cursor_display_rows < 2) {
+      // Need to scroll up to make cursor visible
+      int target_rows = 2;
+      int new_scroll_offset = viewer->file_cursor_line;
+      int accumulated_rows = calculate_wrapped_line_height(viewer->file_lines[viewer->file_cursor_line].line, width - 4);
+      
+      while (new_scroll_offset > 0 && accumulated_rows < target_rows) {
+        new_scroll_offset--;
+        accumulated_rows += calculate_wrapped_line_height(viewer->file_lines[new_scroll_offset].line, width - 4);
+      }
+      
+      viewer->file_scroll_offset = new_scroll_offset;
+      if (viewer->file_scroll_offset < 0) {
+        viewer->file_scroll_offset = 0;
+      }
+    }
+  } else {
+    // Moving down - ensure cursor stays visible at bottom
+    if (cursor_display_rows >= unstaged_height - 2) {
+      // Need to scroll down to make cursor visible
+      int target_remaining_rows = unstaged_height - 3;
+      int new_scroll_offset = viewer->file_cursor_line;
+      int accumulated_rows = calculate_wrapped_line_height(viewer->file_lines[viewer->file_cursor_line].line, width - 4);
+      
+      while (new_scroll_offset > viewer->file_scroll_offset && accumulated_rows > target_remaining_rows) {
+        new_scroll_offset--;
+        accumulated_rows -= calculate_wrapped_line_height(viewer->file_lines[new_scroll_offset].line, width - 4);
+      }
+      
+      if (new_scroll_offset > viewer->file_scroll_offset) {
+        viewer->file_scroll_offset = new_scroll_offset;
+      }
+      
+      int max_scroll = viewer->file_line_count - 1;
+      if (viewer->file_scroll_offset > max_scroll) {
+        viewer->file_scroll_offset = max_scroll;
+      }
+    }
+  }
+}
+
+/**
+ * Move cursor up/down in staged pane with proper scrolling
+ * direction: -1 for up, 1 for down
+ */
+void move_cursor_smart_staged(NCursesDiffViewer *viewer, int direction) {
+  if (!viewer || viewer->staged_line_count == 0) {
+    return;
+  }
+
+  int height, width;
+  getmaxyx(viewer->file_content_win, height, width);
+  int split_line = height / 2;
+  int staged_height = height - split_line - 2;
+  
+  if (direction == -1) {
+    if (viewer->staged_cursor_line > 0) {
+      viewer->staged_cursor_line--;
+      
+      // Calculate display positions accounting for wrapped lines
+      int cursor_display_rows = 0;
+      
+      // Count display rows from scroll offset to cursor
+      for (int i = viewer->staged_scroll_offset; i < viewer->staged_cursor_line && i < viewer->staged_line_count; i++) {
+        cursor_display_rows += calculate_wrapped_line_height(viewer->staged_lines[i].line, width - 4);
+      }
+      
+      if (cursor_display_rows < 1) {
+        // Need to scroll up to make cursor visible
+        int target_rows = 1;
+        int new_scroll_offset = viewer->staged_cursor_line;
+        int accumulated_rows = calculate_wrapped_line_height(viewer->staged_lines[viewer->staged_cursor_line].line, width - 4);
+        
+        while (new_scroll_offset > 0 && accumulated_rows < target_rows) {
+          new_scroll_offset--;
+          accumulated_rows += calculate_wrapped_line_height(viewer->staged_lines[new_scroll_offset].line, width - 4);
+        }
+        
+        viewer->staged_scroll_offset = new_scroll_offset;
+        if (viewer->staged_scroll_offset < 0) {
+          viewer->staged_scroll_offset = 0;
+        }
+      }
+    }
+  } else {
+    if (viewer->staged_cursor_line < viewer->staged_line_count - 1) {
+      viewer->staged_cursor_line++;
+      
+      // Calculate display positions accounting for wrapped lines
+      int cursor_display_rows = 0;
+      
+      // Count display rows from scroll offset to cursor
+      for (int i = viewer->staged_scroll_offset; i < viewer->staged_cursor_line && i < viewer->staged_line_count; i++) {
+        cursor_display_rows += calculate_wrapped_line_height(viewer->staged_lines[i].line, width - 4);
+      }
+      
+      if (cursor_display_rows >= staged_height - 1) {
+        // Need to scroll down to make cursor visible
+        int target_remaining_rows = staged_height - 2;
+        int new_scroll_offset = viewer->staged_cursor_line;
+        int accumulated_rows = calculate_wrapped_line_height(viewer->staged_lines[viewer->staged_cursor_line].line, width - 4);
+        
+        while (new_scroll_offset > viewer->staged_scroll_offset && accumulated_rows > target_remaining_rows) {
+          new_scroll_offset--;
+          accumulated_rows -= calculate_wrapped_line_height(viewer->staged_lines[new_scroll_offset].line, width - 4);
+        }
+        
+        if (new_scroll_offset > viewer->staged_scroll_offset) {
+          viewer->staged_scroll_offset = new_scroll_offset;
+        }
+        
+        int max_scroll = viewer->staged_line_count - 1;
+        if (viewer->staged_scroll_offset > max_scroll) {
+          viewer->staged_scroll_offset = max_scroll;
+        }
       }
     }
   }

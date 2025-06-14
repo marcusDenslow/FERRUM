@@ -341,6 +341,42 @@ void check_background_fetch(NCursesDiffViewer *viewer);
  */
 void move_cursor_smart(NCursesDiffViewer *viewer, int direction);
 
+/**
+ * Move cursor up/down in unstaged pane with proper scrolling
+ */
+void move_cursor_smart_unstaged(NCursesDiffViewer *viewer, int direction);
+
+/**
+ * Move cursor up/down in staged pane with proper scrolling
+ */
+void move_cursor_smart_staged(NCursesDiffViewer *viewer, int direction);
+
+/**
+ * Helper function to wrap a long line into multiple display lines
+ */
+int wrap_line_to_width(const char *input_line, char wrapped_lines[][1024], int max_lines, int width);
+
+/**
+ * Render a single line with proper wrapping and coloring
+ */
+int render_wrapped_line(WINDOW *win, const char *line, int start_y, int start_x, 
+                       int width, int max_rows, int color_pair, int reverse);
+
+/**
+ * Calculate how many display lines a wrapped line will take
+ */
+int calculate_wrapped_line_height(const char *line, int width);
+
+/**
+ * Load file preview showing the top of the file content
+ */
+int load_file_preview(NCursesDiffViewer *viewer, const char *filename);
+
+/**
+ * Update preview based on current mode and selection
+ */
+void update_preview_for_current_selection(NCursesDiffViewer *viewer);
+
 int get_github_credentials(char *username, int username_len, char *token,
                            int token_len);
 

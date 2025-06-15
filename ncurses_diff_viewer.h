@@ -158,12 +158,27 @@ typedef struct {
   int fuzzy_search_active;                    // 1 if fuzzy search is active
   char fuzzy_search_query[256];               // Current search query
   int fuzzy_search_query_len;                 // Length of current query
-  int fuzzy_filtered_files[MAX_FILES];        // Indices of filtered files
+  
+  // Scored search results
+  struct {
+    int file_index;
+    int score;
+  } fuzzy_scored_files[MAX_FILES];            // Scored and sorted results
+  
   int fuzzy_filtered_count;                   // Number of filtered files
   int fuzzy_selected_index;                   // Currently selected in fuzzy list
   int fuzzy_scroll_offset;                    // Scroll position in fuzzy list
   WINDOW *fuzzy_input_win;                    // Input window for search
   WINDOW *fuzzy_list_win;                     // Results list window
+  
+  // State tracking to prevent unnecessary redraws
+  int fuzzy_needs_full_redraw;                // 1 if full redraw needed (borders, input, list)
+  int fuzzy_needs_input_redraw;               // 1 if input field needs redraw
+  int fuzzy_needs_list_redraw;                // 1 if file list needs redraw
+  char fuzzy_last_query[256];                 // Last rendered query
+  int fuzzy_last_selected;                    // Last rendered selection
+  int fuzzy_last_scroll;                      // Last rendered scroll position
+  int fuzzy_last_filtered_count;              // Last rendered result count
 
 } NCursesDiffViewer;
 
@@ -442,6 +457,21 @@ void update_fuzzy_filter(NCursesDiffViewer *viewer);
  * Render fuzzy search UI
  */
 void render_fuzzy_search(NCursesDiffViewer *viewer);
+
+/**
+ * Render fuzzy search input field only
+ */
+void render_fuzzy_input(NCursesDiffViewer *viewer);
+
+/**
+ * Render fuzzy search file list content only
+ */
+void render_fuzzy_list_content(NCursesDiffViewer *viewer);
+
+/**
+ * Create fuzzy search windows with borders (one-time setup)
+ */
+void create_fuzzy_windows_with_borders(NCursesDiffViewer *viewer);
 
 /**
  * Handle fuzzy search input

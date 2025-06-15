@@ -6656,6 +6656,15 @@ void init_fuzzy_search(NCursesDiffViewer *viewer) {
   viewer->fuzzy_scroll_offset = 0;
   viewer->fuzzy_input_win = NULL;
   viewer->fuzzy_list_win = NULL;
+  
+  // Initialize state tracking
+  viewer->fuzzy_needs_full_redraw = 0;
+  viewer->fuzzy_needs_input_redraw = 0;
+  viewer->fuzzy_needs_list_redraw = 0;
+  viewer->fuzzy_last_query[0] = '\0';
+  viewer->fuzzy_last_selected = -1;
+  viewer->fuzzy_last_scroll = -1;
+  viewer->fuzzy_last_filtered_count = -1;
 }
 
 /**
@@ -6675,24 +6684,89 @@ void cleanup_fuzzy_search(NCursesDiffViewer *viewer) {
 }
 
 /**
- * Simple fuzzy matching - returns 1 if pattern matches filename
+ * Calculate fuzzy match score - higher score is better match
+ * Returns 0 if no match, positive score if match
  */
-int fuzzy_match(const char *pattern, const char *filename) {
+int calculate_fuzzy_score(const char *pattern, const char *filename) {
   if (!pattern || !filename) return 0;
-  if (strlen(pattern) == 0) return 1; // Empty pattern matches everything
+  if (strlen(pattern) == 0) return 1000; // Empty pattern matches everything with high score
   
-  const char *p = pattern;
-  const char *f = filename;
+  int pattern_len = strlen(pattern);
+  int filename_len = strlen(filename);
   
-  // Simple substring matching with case insensitive search
-  while (*p && *f) {
-    if (tolower(*p) == tolower(*f)) {
-      p++;
+  if (pattern_len > filename_len) return 0; // Pattern longer than filename
+  
+  int score = 0;
+  int pattern_pos = 0;
+  int consecutive_matches = 0;
+  int first_char_bonus = 0;
+  
+  for (int i = 0; i < filename_len && pattern_pos < pattern_len; i++) {
+    char p_char = tolower(pattern[pattern_pos]);
+    char f_char = tolower(filename[i]);
+    
+    if (p_char == f_char) {
+      // Base score for character match
+      score += 1;
+      
+      // Bonus for consecutive matches (prioritizes contiguous substrings)
+      consecutive_matches++;
+      score += consecutive_matches * 5;
+      
+      // Bonus for matching at word boundaries
+      if (i == 0 || filename[i-1] == '/' || filename[i-1] == '_' || filename[i-1] == '-' || filename[i-1] == '.') {
+        score += 15;
+      }
+      
+      // Bonus for matching first character
+      if (pattern_pos == 0) {
+        if (i == 0) {
+          first_char_bonus = 50; // Very high bonus for first char match
+        } else {
+          // Find start of filename (after last /)
+          const char *basename = strrchr(filename, '/');
+          basename = basename ? basename + 1 : filename;
+          if (filename + i == basename) {
+            first_char_bonus = 30; // High bonus for basename first char
+          }
+        }
+      }
+      
+      // Bonus for exact position match (same position in pattern and filename)
+      if (i == pattern_pos) {
+        score += 10;
+      }
+      
+      pattern_pos++;
+    } else {
+      // Reset consecutive matches
+      consecutive_matches = 0;
     }
-    f++;
   }
   
-  return *p == '\0'; // Pattern fully matched
+  // Must match all pattern characters
+  if (pattern_pos < pattern_len) return 0;
+  
+  // Apply first character bonus
+  score += first_char_bonus;
+  
+  // Bonus for shorter filenames (prefer more specific matches)
+  score += (100 - filename_len);
+  
+  // Bonus for fewer unmatched characters
+  int unmatched_chars = filename_len - pattern_len;
+  score += (50 - unmatched_chars);
+  
+  return score;
+}
+
+/**
+ * Compare function for sorting scored files (higher scores first)
+ */
+int compare_scored_files(const void *a, const void *b) {
+  const struct {int file_index; int score;} *file_a = a;
+  const struct {int file_index; int score;} *file_b = b;
+  return file_b->score - file_a->score; // Descending order (higher scores first)
 }
 
 /**
@@ -6705,11 +6779,20 @@ void update_fuzzy_filter(NCursesDiffViewer *viewer) {
   viewer->fuzzy_selected_index = 0;
   viewer->fuzzy_scroll_offset = 0;
   
-  // Filter files based on fuzzy search query
+  // Calculate scores for all files and collect matches
   for (int i = 0; i < viewer->file_count && viewer->fuzzy_filtered_count < MAX_FILES; i++) {
-    if (fuzzy_match(viewer->fuzzy_search_query, viewer->files[i].filename)) {
-      viewer->fuzzy_filtered_files[viewer->fuzzy_filtered_count++] = i;
+    int score = calculate_fuzzy_score(viewer->fuzzy_search_query, viewer->files[i].filename);
+    if (score > 0) {
+      viewer->fuzzy_scored_files[viewer->fuzzy_filtered_count].file_index = i;
+      viewer->fuzzy_scored_files[viewer->fuzzy_filtered_count].score = score;
+      viewer->fuzzy_filtered_count++;
     }
+  }
+  
+  // Sort results by score (highest first)
+  if (viewer->fuzzy_filtered_count > 1) {
+    qsort(viewer->fuzzy_scored_files, viewer->fuzzy_filtered_count, 
+          sizeof(viewer->fuzzy_scored_files[0]), compare_scored_files);
   }
 }
 
@@ -6744,6 +6827,9 @@ void enter_fuzzy_search_mode(NCursesDiffViewer *viewer) {
   
   // Initialize with all files
   update_fuzzy_filter(viewer);
+  
+  // Force initial full redraw
+  viewer->fuzzy_needs_full_redraw = 1;
 }
 
 /**
@@ -6755,22 +6841,23 @@ void exit_fuzzy_search_mode(NCursesDiffViewer *viewer) {
   viewer->fuzzy_search_active = 0;
   cleanup_fuzzy_search(viewer);
   
-  // Refresh the main screen
-  clear();
+  // Force redraw of main windows next time
+  touchwin(stdscr);
   refresh();
 }
 
 /**
- * Render fuzzy search UI
+ * Render fuzzy search input field only
  */
-void render_fuzzy_search(NCursesDiffViewer *viewer) {
-  if (!viewer || !viewer->fuzzy_search_active) return;
-  if (!viewer->fuzzy_input_win || !viewer->fuzzy_list_win) return;
+void render_fuzzy_input(NCursesDiffViewer *viewer) {
+  if (!viewer->fuzzy_input_win) return;
   
-  // Clear and redraw input window
-  wclear(viewer->fuzzy_input_win);
-  box(viewer->fuzzy_input_win, 0, 0);
-  mvwprintw(viewer->fuzzy_input_win, 0, 2, " Fuzzy File Search ");
+  // Clear only the content area, not the border
+  for (int y = 1; y < getmaxy(viewer->fuzzy_input_win) - 1; y++) {
+    for (int x = 1; x < getmaxx(viewer->fuzzy_input_win) - 1; x++) {
+      mvwaddch(viewer->fuzzy_input_win, y, x, ' ');
+    }
+  }
   
   // Show current query
   mvwprintw(viewer->fuzzy_input_win, 1, 2, "> %s", viewer->fuzzy_search_query);
@@ -6782,20 +6869,30 @@ void render_fuzzy_search(NCursesDiffViewer *viewer) {
   }
   
   wrefresh(viewer->fuzzy_input_win);
-  
-  // Clear and redraw list window
-  wclear(viewer->fuzzy_list_win);
-  box(viewer->fuzzy_list_win, 0, 0);
+}
+
+/**
+ * Render fuzzy search file list content only (no borders)
+ */
+void render_fuzzy_list_content(NCursesDiffViewer *viewer) {
+  if (!viewer->fuzzy_list_win) return;
   
   int list_height = getmaxy(viewer->fuzzy_list_win) - 2;
   int list_width = getmaxx(viewer->fuzzy_list_win) - 4;
+  
+  // Clear only the content area, not the border
+  for (int y = 1; y <= list_height; y++) {
+    for (int x = 1; x < getmaxx(viewer->fuzzy_list_win) - 1; x++) {
+      mvwaddch(viewer->fuzzy_list_win, y, x, ' ');
+    }
+  }
   
   // Show filtered results
   for (int i = 0; i < viewer->fuzzy_filtered_count && i < list_height; i++) {
     int display_index = i + viewer->fuzzy_scroll_offset;
     if (display_index >= viewer->fuzzy_filtered_count) break;
     
-    int file_index = viewer->fuzzy_filtered_files[display_index];
+    int file_index = viewer->fuzzy_scored_files[display_index].file_index;
     char *filename = viewer->files[file_index].filename;
     char status = viewer->files[file_index].status;
     
@@ -6813,7 +6910,7 @@ void render_fuzzy_search(NCursesDiffViewer *viewer) {
     }
   }
   
-  // Show result count
+  // Show result count in top border area
   if (viewer->fuzzy_filtered_count > 0) {
     mvwprintw(viewer->fuzzy_list_win, 0, getmaxx(viewer->fuzzy_list_win) - 15, 
               " %d/%d ", viewer->fuzzy_selected_index + 1, viewer->fuzzy_filtered_count);
@@ -6822,6 +6919,63 @@ void render_fuzzy_search(NCursesDiffViewer *viewer) {
   }
   
   wrefresh(viewer->fuzzy_list_win);
+}
+
+/**
+ * Create fuzzy search windows with borders (one-time setup)
+ */
+void create_fuzzy_windows_with_borders(NCursesDiffViewer *viewer) {
+  if (!viewer->fuzzy_input_win || !viewer->fuzzy_list_win) return;
+  
+  // Draw input window border and title
+  wclear(viewer->fuzzy_input_win);
+  box(viewer->fuzzy_input_win, 0, 0);
+  mvwprintw(viewer->fuzzy_input_win, 0, 2, " Fuzzy File Search ");
+  wrefresh(viewer->fuzzy_input_win);
+  
+  // Draw list window border
+  wclear(viewer->fuzzy_list_win);
+  box(viewer->fuzzy_list_win, 0, 0);
+  wrefresh(viewer->fuzzy_list_win);
+}
+
+/**
+ * Main fuzzy search render function with granular updates
+ */
+void render_fuzzy_search(NCursesDiffViewer *viewer) {
+  if (!viewer || !viewer->fuzzy_search_active) return;
+  if (!viewer->fuzzy_input_win || !viewer->fuzzy_list_win) return;
+  
+  // Check what specifically needs to be redrawn
+  int query_changed = strcmp(viewer->fuzzy_search_query, viewer->fuzzy_last_query) != 0;
+  int selection_changed = viewer->fuzzy_selected_index != viewer->fuzzy_last_selected;
+  int scroll_changed = viewer->fuzzy_scroll_offset != viewer->fuzzy_last_scroll;
+  int results_changed = viewer->fuzzy_filtered_count != viewer->fuzzy_last_filtered_count;
+  
+  // Full redraw needed on first render
+  if (viewer->fuzzy_needs_full_redraw) {
+    create_fuzzy_windows_with_borders(viewer);
+    render_fuzzy_input(viewer);
+    render_fuzzy_list_content(viewer);
+    viewer->fuzzy_needs_full_redraw = 0;
+  }
+  // Redraw input field if query changed
+  else if (query_changed || viewer->fuzzy_needs_input_redraw) {
+    render_fuzzy_input(viewer);
+    viewer->fuzzy_needs_input_redraw = 0;
+  }
+  
+  // Redraw file list if results, selection, or scroll changed
+  if (results_changed || selection_changed || scroll_changed || viewer->fuzzy_needs_list_redraw) {
+    render_fuzzy_list_content(viewer);
+    viewer->fuzzy_needs_list_redraw = 0;
+  }
+  
+  // Update last rendered state
+  strcpy(viewer->fuzzy_last_query, viewer->fuzzy_search_query);
+  viewer->fuzzy_last_selected = viewer->fuzzy_selected_index;
+  viewer->fuzzy_last_scroll = viewer->fuzzy_scroll_offset;
+  viewer->fuzzy_last_filtered_count = viewer->fuzzy_filtered_count;
 }
 
 /**
@@ -6892,8 +7046,8 @@ int handle_fuzzy_search_input(NCursesDiffViewer *viewer, int key) {
 void select_fuzzy_file(NCursesDiffViewer *viewer) {
   if (!viewer || viewer->fuzzy_filtered_count == 0) return;
   
-  // Get the actual file index from filtered results
-  int file_index = viewer->fuzzy_filtered_files[viewer->fuzzy_selected_index];
+  // Get the actual file index from scored results
+  int file_index = viewer->fuzzy_scored_files[viewer->fuzzy_selected_index].file_index;
   
   // Update the main file list selection to point to this file
   viewer->selected_file = file_index;

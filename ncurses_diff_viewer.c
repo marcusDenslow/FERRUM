@@ -104,13 +104,13 @@ int init_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
     return 0;
 
   memset(viewer, 0, sizeof(NCursesDiffViewer));
-  
+
   // Initialize fuzzy search
   init_fuzzy_search(viewer);
-  
+
   // Initialize grep search
   init_grep_search(viewer);
-  
+
   viewer->selected_file = 0;
   viewer->file_scroll_offset = 0;
   viewer->file_cursor_line = 0;
@@ -2423,7 +2423,7 @@ void render_commit_list_window(NCursesDiffViewer *viewer) {
     // Check if this commit line should be highlighted
     int is_selected_commit = (i == viewer->selected_commit &&
                               viewer->current_mode == NCURSES_MODE_COMMIT_LIST);
-    
+
     // Check if this commit is currently being viewed
     int is_being_viewed = (i == viewer->selected_commit &&
                            viewer->current_mode == NCURSES_MODE_COMMIT_VIEW);
@@ -2436,17 +2436,17 @@ void render_commit_list_window(NCursesDiffViewer *viewer) {
     // Show view indicator (currently being viewed)
     if (is_being_viewed) {
       wattron(viewer->commit_list_win, COLOR_PAIR(1)); // Green for active view
-      mvwprintw(viewer->commit_list_win, y, 0, "*");
+      mvwprintw(viewer->commit_list_win, y, 1, "*");
       wattroff(viewer->commit_list_win, COLOR_PAIR(1));
     } else {
-      mvwprintw(viewer->commit_list_win, y, 0, " ");
+      mvwprintw(viewer->commit_list_win, y, 1, " ");
     }
 
     // Show selection indicator
     if (is_selected_commit) {
-      mvwprintw(viewer->commit_list_win, y, 1, ">");
+      mvwprintw(viewer->commit_list_win, y, 2, ">");
     } else {
-      mvwprintw(viewer->commit_list_win, y, 1, " ");
+      mvwprintw(viewer->commit_list_win, y, 2, " ");
     }
 
     // Show commit hash with color based on push status
@@ -2525,60 +2525,61 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
         viewer->current_mode == NCURSES_MODE_BRANCH_VIEW ||
         viewer->current_mode == NCURSES_MODE_STASH_LIST ||
         viewer->current_mode == NCURSES_MODE_STASH_VIEW) {
-      
+
       // Add title based on current mode
-      const char* title = "";
+      const char *title = "";
       switch (viewer->current_mode) {
-        case NCURSES_MODE_FILE_LIST:
-          title = " File Diff Preview ";
-          break;
-        case NCURSES_MODE_COMMIT_LIST:
-          title = " Commit Details ";
-          break;
-        case NCURSES_MODE_COMMIT_VIEW:
-          title = " Commit Diff ";
-          break;
-        case NCURSES_MODE_BRANCH_LIST:
-          title = " Branch Commits ";
-          break;
-        case NCURSES_MODE_BRANCH_VIEW:
-          title = " Branch Details ";
-          break;
-        case NCURSES_MODE_STASH_LIST:
-          title = " Stash Details ";
-          break;
-        case NCURSES_MODE_STASH_VIEW:
-          title = " Stash Diff ";
-          break;
-        default:
-          title = " Preview ";
-          break;
+      case NCURSES_MODE_FILE_LIST:
+        title = " File Diff Preview ";
+        break;
+      case NCURSES_MODE_COMMIT_LIST:
+        title = " Commit Details ";
+        break;
+      case NCURSES_MODE_COMMIT_VIEW:
+        title = " Commit Diff ";
+        break;
+      case NCURSES_MODE_BRANCH_LIST:
+        title = " Branch Commits ";
+        break;
+      case NCURSES_MODE_BRANCH_VIEW:
+        title = " Branch Details ";
+        break;
+      case NCURSES_MODE_STASH_LIST:
+        title = " Stash Details ";
+        break;
+      case NCURSES_MODE_STASH_VIEW:
+        title = " Stash Diff ";
+        break;
+      default:
+        title = " Preview ";
+        break;
       }
       mvwprintw(viewer->file_content_win, 0, 2, "%s", title);
-      
+
       // Render preview content using the loaded file_lines
       if (viewer->file_line_count > 0) {
         int max_lines_visible = height - 2;
         int display_count = 0;
-        
+
         for (int i = viewer->file_scroll_offset;
              i < viewer->file_line_count && display_count < max_lines_visible;
              i++) {
-          
+
           NCursesFileLine *line = &viewer->file_lines[i];
           int is_cursor_line = (i == viewer->file_cursor_line);
-          
+
           // Calculate how many display lines this logical line will need
-          int line_height = calculate_wrapped_line_height(line->line, width - 4);
-          
+          int line_height =
+              calculate_wrapped_line_height(line->line, width - 4);
+
           // Skip if this line would exceed remaining space
           if (display_count + line_height > max_lines_visible) {
             break;
           }
-          
+
           int y = display_count + 1;
           int color_pair = 0;
-          
+
           // Determine color based on line type
           if (line->type == '@') {
             color_pair = 3; // Cyan for hunk headers
@@ -2587,18 +2588,20 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
           } else if (line->type == '-') {
             color_pair = 2; // Red for deletions
           }
-          
+
           // Render the line with wrapping
-          int rows_used = render_wrapped_line(viewer->file_content_win, line->line, 
-                                             y, 1, width, line_height, color_pair, is_cursor_line);
+          int rows_used = render_wrapped_line(
+              viewer->file_content_win, line->line, y, 1, width - 2, line_height,
+              color_pair, is_cursor_line);
           display_count += rows_used;
         }
       } else {
         // No content to show
-        mvwprintw(viewer->file_content_win, height/2, (width - 15)/2, "No preview available");
+        mvwprintw(viewer->file_content_win, height / 2, (width - 15) / 2,
+                  "No preview available");
       }
     }
-    
+
     wrefresh(viewer->file_content_win);
     return;
   }
@@ -2630,11 +2633,12 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
        i++) {
 
     NCursesFileLine *line = &viewer->file_lines[i];
-    int is_cursor_line = (i == viewer->file_cursor_line && viewer->active_pane == 0);
-    
+    int is_cursor_line =
+        (i == viewer->file_cursor_line && viewer->active_pane == 0);
+
     // Calculate how many display lines this logical line will need
     int line_height = calculate_wrapped_line_height(line->line, width - 4);
-    
+
     // Skip if this line would exceed remaining space
     if (unstaged_display_count + line_height > unstaged_height - 1) {
       break;
@@ -2642,7 +2646,7 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
 
     int y = unstaged_display_count + 1;
     int color_pair = 0;
-    
+
     // Determine color based on line type
     if (line->type == '@') {
       color_pair = 3; // Cyan for hunk headers
@@ -2666,17 +2670,20 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
       if (is_cursor_line) {
         wattroff(viewer->file_content_win, A_REVERSE);
       }
-      
-      // Then render the line content starting from column 2, skipping first char
+
+      // Then render the line content starting from column 2, skipping first
+      // char
       char line_without_prefix[1024];
       strcpy(line_without_prefix, line->line + 1);
-      int rows_used = render_wrapped_line(viewer->file_content_win, line_without_prefix, 
-                                         y, 2, width, line_height, color_pair, is_cursor_line);
+      int rows_used = render_wrapped_line(
+          viewer->file_content_win, line_without_prefix, y, 2, width - 2,
+          line_height, color_pair, is_cursor_line);
       unstaged_display_count += rows_used;
     } else {
       // Regular line rendering
-      int rows_used = render_wrapped_line(viewer->file_content_win, line->line, 
-                                         y, 1, width, line_height, color_pair, is_cursor_line);
+      int rows_used =
+          render_wrapped_line(viewer->file_content_win, line->line, y, 1, width - 2,
+                              line_height, color_pair, is_cursor_line);
       unstaged_display_count += rows_used;
     }
   }
@@ -2698,11 +2705,12 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
        i++) {
 
     NCursesFileLine *line = &viewer->staged_lines[i];
-    int is_cursor_line = (i == viewer->staged_cursor_line && viewer->active_pane == 1);
-    
+    int is_cursor_line =
+        (i == viewer->staged_cursor_line && viewer->active_pane == 1);
+
     // Calculate how many display lines this logical line will need
     int line_height = calculate_wrapped_line_height(line->line, width - 4);
-    
+
     // Skip if this line would exceed remaining space
     if (staged_display_count + line_height > staged_height - 1) {
       break;
@@ -2710,7 +2718,7 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
 
     int y = split_line + 1 + staged_display_count;
     int color_pair = 0;
-    
+
     // Determine color based on line type
     if (line->type == '+') {
       color_pair = 1; // Green for additions
@@ -2721,8 +2729,9 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
     }
 
     // Render the line with wrapping
-    int rows_used = render_wrapped_line(viewer->file_content_win, line->line, 
-                                       y, 1, width, line_height, color_pair, is_cursor_line);
+    int rows_used =
+        render_wrapped_line(viewer->file_content_win, line->line, y, 1,
+                            width - 2, line_height, color_pair, is_cursor_line);
     staged_display_count += rows_used;
   }
 
@@ -3238,7 +3247,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
   if (viewer->fuzzy_search_active) {
     return handle_fuzzy_search_input(viewer, key);
   }
-  
+
   // Handle grep search input if active
   if (viewer->grep_search_active) {
     return handle_grep_search_input(viewer, key);
@@ -3756,7 +3765,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
         render_status_bar(viewer);
       }
       break;
-      
+
     case '/': // Forward slash - enter grep search mode
       enter_grep_search_mode(viewer);
       break;
@@ -3887,7 +3896,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
         viewer->critical_operation_in_progress = 0;
       }
       break;
-      
+
     case '/': // Forward slash - enter grep search mode
       enter_grep_search_mode(viewer);
       break;
@@ -4214,7 +4223,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
         viewer->critical_operation_in_progress = 0;
       }
       break;
-      
+
     case '/': // Forward slash - enter grep search mode
       enter_grep_search_mode(viewer);
       break;
@@ -4225,7 +4234,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     case 27: // ESC
       viewer->current_mode =
           NCURSES_MODE_COMMIT_LIST; // Return to commit list mode
-      viewer->split_view_mode = 0; // Exit split view mode
+      viewer->split_view_mode = 0;  // Exit split view mode
       break;
 
     case KEY_UP:
@@ -4383,7 +4392,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     case 27: // ESC
       viewer->current_mode =
           NCURSES_MODE_BRANCH_LIST; // Return to branch list mode
-      viewer->split_view_mode = 0; // Exit split view mode
+      viewer->split_view_mode = 0;  // Exit split view mode
       break;
 
     case KEY_UP:
@@ -4563,7 +4572,8 @@ int run_ncurses_diff_viewer(void) {
     // Update preview based on current selection
     update_preview_for_current_selection(&viewer);
 
-    // Skip main window rendering if fuzzy or grep search is active to prevent flickering
+    // Skip main window rendering if fuzzy or grep search is active to prevent
+    // flickering
     if (!viewer.fuzzy_search_active && !viewer.grep_search_active) {
       render_file_list_window(&viewer);
       render_file_content_window(&viewer);
@@ -4572,7 +4582,7 @@ int run_ncurses_diff_viewer(void) {
       render_stash_list_window(&viewer);
       render_status_bar(&viewer);
     }
-    
+
     // Always render search overlays (they handle their own visibility)
     render_fuzzy_search(&viewer);
     render_grep_search(&viewer);
@@ -5541,7 +5551,7 @@ void render_stash_list_window(NCursesDiffViewer *viewer) {
       // Check if this stash line should be highlighted
       int is_selected_stash = (i == viewer->selected_stash &&
                                viewer->current_mode == NCURSES_MODE_STASH_LIST);
-      
+
       // Check if this stash is currently being viewed
       int is_being_viewed = (i == viewer->selected_stash &&
                              viewer->current_mode == NCURSES_MODE_STASH_VIEW);
@@ -5554,17 +5564,17 @@ void render_stash_list_window(NCursesDiffViewer *viewer) {
       // Show view indicator (currently being viewed)
       if (is_being_viewed) {
         wattron(viewer->stash_list_win, COLOR_PAIR(1)); // Green for active view
-        mvwprintw(viewer->stash_list_win, y, 0, "*");
+        mvwprintw(viewer->stash_list_win, y, 1, "*");
         wattroff(viewer->stash_list_win, COLOR_PAIR(1));
       } else {
-        mvwprintw(viewer->stash_list_win, y, 0, " ");
+        mvwprintw(viewer->stash_list_win, y, 1, " ");
       }
 
       // Show selection indicator
       if (is_selected_stash) {
-        mvwprintw(viewer->stash_list_win, y, 1, ">");
+        mvwprintw(viewer->stash_list_win, y, 2, ">");
       } else {
-        mvwprintw(viewer->stash_list_win, y, 1, " ");
+        mvwprintw(viewer->stash_list_win, y, 2, " ");
       }
 
       // Show stash info (truncated to fit panel)
@@ -6205,52 +6215,65 @@ void check_background_fetch(NCursesDiffViewer *viewer) {
  * Update preview based on current mode and selection
  */
 void update_preview_for_current_selection(NCursesDiffViewer *viewer) {
-  if (!viewer) return;
-  
+  if (!viewer)
+    return;
+
   static NCursesViewMode last_mode = (NCursesViewMode)-1;
   static int last_file = -1;
   static int last_commit = -1;
   static int last_branch = -1;
   static int last_stash = -1;
-  
+
   int needs_update = 0;
-  
+
   if (viewer->current_mode == NCURSES_MODE_FILE_LIST) {
-    if (last_mode != viewer->current_mode || last_file != viewer->selected_file) {
-      if (viewer->file_count > 0 && viewer->selected_file < viewer->file_count) {
+    if (last_mode != viewer->current_mode ||
+        last_file != viewer->selected_file) {
+      if (viewer->file_count > 0 &&
+          viewer->selected_file < viewer->file_count) {
         // Load diff preview instead of raw file content
-        load_file_with_staging_info(viewer, viewer->files[viewer->selected_file].filename);
+        load_file_with_staging_info(
+            viewer, viewer->files[viewer->selected_file].filename);
       }
       last_file = viewer->selected_file;
       needs_update = 1;
     }
   } else if (viewer->current_mode == NCURSES_MODE_COMMIT_LIST) {
-    if (last_mode != viewer->current_mode || last_commit != viewer->selected_commit) {
-      if (viewer->commit_count > 0 && viewer->selected_commit < viewer->commit_count) {
-        load_commit_for_viewing(viewer, viewer->commits[viewer->selected_commit].hash);
+    if (last_mode != viewer->current_mode ||
+        last_commit != viewer->selected_commit) {
+      if (viewer->commit_count > 0 &&
+          viewer->selected_commit < viewer->commit_count) {
+        load_commit_for_viewing(viewer,
+                                viewer->commits[viewer->selected_commit].hash);
       }
       last_commit = viewer->selected_commit;
       needs_update = 1;
     }
   } else if (viewer->current_mode == NCURSES_MODE_BRANCH_LIST) {
-    if (last_mode != viewer->current_mode || last_branch != viewer->selected_branch) {
-      if (viewer->branch_count > 0 && viewer->selected_branch < viewer->branch_count) {
-        load_branch_commits(viewer, viewer->branches[viewer->selected_branch].name);
-        parse_branch_commits_to_lines(viewer); // Convert to file_lines for preview display
+    if (last_mode != viewer->current_mode ||
+        last_branch != viewer->selected_branch) {
+      if (viewer->branch_count > 0 &&
+          viewer->selected_branch < viewer->branch_count) {
+        load_branch_commits(viewer,
+                            viewer->branches[viewer->selected_branch].name);
+        parse_branch_commits_to_lines(
+            viewer); // Convert to file_lines for preview display
       }
       last_branch = viewer->selected_branch;
       needs_update = 1;
     }
   } else if (viewer->current_mode == NCURSES_MODE_STASH_LIST) {
-    if (last_mode != viewer->current_mode || last_stash != viewer->selected_stash) {
-      if (viewer->stash_count > 0 && viewer->selected_stash < viewer->stash_count) {
+    if (last_mode != viewer->current_mode ||
+        last_stash != viewer->selected_stash) {
+      if (viewer->stash_count > 0 &&
+          viewer->selected_stash < viewer->stash_count) {
         load_stash_for_viewing(viewer, viewer->selected_stash);
       }
       last_stash = viewer->selected_stash;
       needs_update = 1;
     }
   }
-  
+
   if (needs_update) {
     last_mode = viewer->current_mode;
   }
@@ -6262,19 +6285,19 @@ void update_preview_for_current_selection(NCursesDiffViewer *viewer) {
 int load_file_preview(NCursesDiffViewer *viewer, const char *filename) {
   if (!viewer || !filename)
     return 0;
-    
+
   viewer->file_line_count = 0;
   viewer->file_scroll_offset = 0;
   viewer->file_cursor_line = 0;
-  
+
   FILE *fp = fopen(filename, "r");
   if (!fp) {
     return 0;
   }
-  
+
   char line[1024];
   int line_count = 0;
-  
+
   // Load first 50 lines of the file for preview
   while (fgets(line, sizeof(line), fp) && line_count < 50 &&
          line_count < MAX_FULL_FILE_LINES) {
@@ -6283,11 +6306,12 @@ int load_file_preview(NCursesDiffViewer *viewer, const char *filename) {
     if (len > 0 && line[len - 1] == '\n') {
       line[len - 1] = '\0';
     }
-    
+
     // Store the line as a context line (no diff markings)
-    strncpy(viewer->file_lines[line_count].line, line, 
+    strncpy(viewer->file_lines[line_count].line, line,
             sizeof(viewer->file_lines[line_count].line) - 1);
-    viewer->file_lines[line_count].line[sizeof(viewer->file_lines[line_count].line) - 1] = '\0';
+    viewer->file_lines[line_count]
+        .line[sizeof(viewer->file_lines[line_count].line) - 1] = '\0';
     viewer->file_lines[line_count].type = ' '; // Context line
     viewer->file_lines[line_count].is_diff_line = 0;
     viewer->file_lines[line_count].is_staged = 0;
@@ -6295,18 +6319,18 @@ int load_file_preview(NCursesDiffViewer *viewer, const char *filename) {
     viewer->file_lines[line_count].line_number_old = line_count + 1;
     viewer->file_lines[line_count].line_number_new = line_count + 1;
     viewer->file_lines[line_count].is_context = 1;
-    
+
     line_count++;
   }
-  
+
   fclose(fp);
   viewer->file_line_count = line_count;
-  
+
   // Reset staged content since this is just a preview
   viewer->staged_line_count = 0;
   viewer->staged_cursor_line = 0;
   viewer->staged_scroll_offset = 0;
-  
+
   return 1;
 }
 
@@ -6314,33 +6338,34 @@ int load_file_preview(NCursesDiffViewer *viewer, const char *filename) {
  * Helper function to wrap a long line into multiple display lines
  * Returns the number of wrapped lines created
  */
-int wrap_line_to_width(const char *input_line, char wrapped_lines[][1024], int max_lines, int width) {
+int wrap_line_to_width(const char *input_line, char wrapped_lines[][1024],
+                       int max_lines, int width) {
   int input_len = strlen(input_line);
   int line_count = 0;
   int input_pos = 0;
-  
+
   // If line fits in width, just copy it
   if (input_len <= width) {
     strcpy(wrapped_lines[0], input_line);
     return 1;
   }
-  
+
   while (input_pos < input_len && line_count < max_lines - 1) {
     int chars_to_copy = width;
-    
+
     // Don't exceed remaining input length
     if (input_pos + chars_to_copy > input_len) {
       chars_to_copy = input_len - input_pos;
     }
-    
+
     // Copy the segment
     strncpy(wrapped_lines[line_count], input_line + input_pos, chars_to_copy);
     wrapped_lines[line_count][chars_to_copy] = '\0';
-    
+
     input_pos += chars_to_copy;
     line_count++;
   }
-  
+
   return line_count;
 }
 
@@ -6348,11 +6373,12 @@ int wrap_line_to_width(const char *input_line, char wrapped_lines[][1024], int m
  * Render a single line with proper wrapping and coloring
  * Returns the number of display rows used
  */
-int render_wrapped_line(WINDOW *win, const char *line, int start_y, int start_x, 
-                       int width, int max_rows, int color_pair, int reverse) {
-  char wrapped_lines[10][1024]; // Support up to 10 wrapped lines per original line
+int render_wrapped_line(WINDOW *win, const char *line, int start_y, int start_x,
+                        int width, int max_rows, int color_pair, int reverse) {
+  char wrapped_lines[10]
+                    [1024]; // Support up to 10 wrapped lines per original line
   int wrap_count = wrap_line_to_width(line, wrapped_lines, 10, width - start_x);
-  
+
   int rows_used = 0;
   for (int i = 0; i < wrap_count && rows_used < max_rows; i++) {
     if (reverse) {
@@ -6361,19 +6387,19 @@ int render_wrapped_line(WINDOW *win, const char *line, int start_y, int start_x,
     if (color_pair > 0) {
       wattron(win, COLOR_PAIR(color_pair));
     }
-    
+
     mvwprintw(win, start_y + rows_used, start_x, "%s", wrapped_lines[i]);
-    
+
     if (color_pair > 0) {
       wattroff(win, COLOR_PAIR(color_pair));
     }
     if (reverse) {
       wattroff(win, A_REVERSE);
     }
-    
+
     rows_used++;
   }
-  
+
   return rows_used;
 }
 
@@ -6517,14 +6543,16 @@ void move_cursor_smart_unstaged(NCursesDiffViewer *viewer, int direction) {
   getmaxyx(viewer->file_content_win, height, width);
   int split_line = height / 2;
   int unstaged_height = split_line - 1;
-  
+
   // Calculate display positions accounting for wrapped lines
   int cursor_display_rows = 0;
   int scroll_display_rows = 0;
-  
+
   // Count display rows from scroll offset to cursor
-  for (int i = viewer->file_scroll_offset; i <= viewer->file_cursor_line && i < viewer->file_line_count; i++) {
-    int line_height = calculate_wrapped_line_height(viewer->file_lines[i].line, width - 4);
+  for (int i = viewer->file_scroll_offset;
+       i <= viewer->file_cursor_line && i < viewer->file_line_count; i++) {
+    int line_height =
+        calculate_wrapped_line_height(viewer->file_lines[i].line, width - 4);
     if (i < viewer->file_cursor_line) {
       cursor_display_rows += line_height;
     }
@@ -6532,20 +6560,22 @@ void move_cursor_smart_unstaged(NCursesDiffViewer *viewer, int direction) {
       scroll_display_rows += line_height;
     }
   }
-  
+
   if (direction == -1) {
     // Moving up - ensure cursor stays visible at top
     if (cursor_display_rows < 2) {
       // Need to scroll up to make cursor visible
       int target_rows = 2;
       int new_scroll_offset = viewer->file_cursor_line;
-      int accumulated_rows = calculate_wrapped_line_height(viewer->file_lines[viewer->file_cursor_line].line, width - 4);
-      
+      int accumulated_rows = calculate_wrapped_line_height(
+          viewer->file_lines[viewer->file_cursor_line].line, width - 4);
+
       while (new_scroll_offset > 0 && accumulated_rows < target_rows) {
         new_scroll_offset--;
-        accumulated_rows += calculate_wrapped_line_height(viewer->file_lines[new_scroll_offset].line, width - 4);
+        accumulated_rows += calculate_wrapped_line_height(
+            viewer->file_lines[new_scroll_offset].line, width - 4);
       }
-      
+
       viewer->file_scroll_offset = new_scroll_offset;
       if (viewer->file_scroll_offset < 0) {
         viewer->file_scroll_offset = 0;
@@ -6557,17 +6587,20 @@ void move_cursor_smart_unstaged(NCursesDiffViewer *viewer, int direction) {
       // Need to scroll down to make cursor visible
       int target_remaining_rows = unstaged_height - 3;
       int new_scroll_offset = viewer->file_cursor_line;
-      int accumulated_rows = calculate_wrapped_line_height(viewer->file_lines[viewer->file_cursor_line].line, width - 4);
-      
-      while (new_scroll_offset > viewer->file_scroll_offset && accumulated_rows > target_remaining_rows) {
+      int accumulated_rows = calculate_wrapped_line_height(
+          viewer->file_lines[viewer->file_cursor_line].line, width - 4);
+
+      while (new_scroll_offset > viewer->file_scroll_offset &&
+             accumulated_rows > target_remaining_rows) {
         new_scroll_offset--;
-        accumulated_rows -= calculate_wrapped_line_height(viewer->file_lines[new_scroll_offset].line, width - 4);
+        accumulated_rows -= calculate_wrapped_line_height(
+            viewer->file_lines[new_scroll_offset].line, width - 4);
       }
-      
+
       if (new_scroll_offset > viewer->file_scroll_offset) {
         viewer->file_scroll_offset = new_scroll_offset;
       }
-      
+
       int max_scroll = viewer->file_line_count - 1;
       if (viewer->file_scroll_offset > max_scroll) {
         viewer->file_scroll_offset = max_scroll;
@@ -6589,30 +6622,35 @@ void move_cursor_smart_staged(NCursesDiffViewer *viewer, int direction) {
   getmaxyx(viewer->file_content_win, height, width);
   int split_line = height / 2;
   int staged_height = height - split_line - 2;
-  
+
   if (direction == -1) {
     if (viewer->staged_cursor_line > 0) {
       viewer->staged_cursor_line--;
-      
+
       // Calculate display positions accounting for wrapped lines
       int cursor_display_rows = 0;
-      
+
       // Count display rows from scroll offset to cursor
-      for (int i = viewer->staged_scroll_offset; i < viewer->staged_cursor_line && i < viewer->staged_line_count; i++) {
-        cursor_display_rows += calculate_wrapped_line_height(viewer->staged_lines[i].line, width - 4);
+      for (int i = viewer->staged_scroll_offset;
+           i < viewer->staged_cursor_line && i < viewer->staged_line_count;
+           i++) {
+        cursor_display_rows += calculate_wrapped_line_height(
+            viewer->staged_lines[i].line, width - 4);
       }
-      
+
       if (cursor_display_rows < 1) {
         // Need to scroll up to make cursor visible
         int target_rows = 1;
         int new_scroll_offset = viewer->staged_cursor_line;
-        int accumulated_rows = calculate_wrapped_line_height(viewer->staged_lines[viewer->staged_cursor_line].line, width - 4);
-        
+        int accumulated_rows = calculate_wrapped_line_height(
+            viewer->staged_lines[viewer->staged_cursor_line].line, width - 4);
+
         while (new_scroll_offset > 0 && accumulated_rows < target_rows) {
           new_scroll_offset--;
-          accumulated_rows += calculate_wrapped_line_height(viewer->staged_lines[new_scroll_offset].line, width - 4);
+          accumulated_rows += calculate_wrapped_line_height(
+              viewer->staged_lines[new_scroll_offset].line, width - 4);
         }
-        
+
         viewer->staged_scroll_offset = new_scroll_offset;
         if (viewer->staged_scroll_offset < 0) {
           viewer->staged_scroll_offset = 0;
@@ -6622,30 +6660,36 @@ void move_cursor_smart_staged(NCursesDiffViewer *viewer, int direction) {
   } else {
     if (viewer->staged_cursor_line < viewer->staged_line_count - 1) {
       viewer->staged_cursor_line++;
-      
+
       // Calculate display positions accounting for wrapped lines
       int cursor_display_rows = 0;
-      
+
       // Count display rows from scroll offset to cursor
-      for (int i = viewer->staged_scroll_offset; i < viewer->staged_cursor_line && i < viewer->staged_line_count; i++) {
-        cursor_display_rows += calculate_wrapped_line_height(viewer->staged_lines[i].line, width - 4);
+      for (int i = viewer->staged_scroll_offset;
+           i < viewer->staged_cursor_line && i < viewer->staged_line_count;
+           i++) {
+        cursor_display_rows += calculate_wrapped_line_height(
+            viewer->staged_lines[i].line, width - 4);
       }
-      
+
       if (cursor_display_rows >= staged_height - 1) {
         // Need to scroll down to make cursor visible
         int target_remaining_rows = staged_height - 2;
         int new_scroll_offset = viewer->staged_cursor_line;
-        int accumulated_rows = calculate_wrapped_line_height(viewer->staged_lines[viewer->staged_cursor_line].line, width - 4);
-        
-        while (new_scroll_offset > viewer->staged_scroll_offset && accumulated_rows > target_remaining_rows) {
+        int accumulated_rows = calculate_wrapped_line_height(
+            viewer->staged_lines[viewer->staged_cursor_line].line, width - 4);
+
+        while (new_scroll_offset > viewer->staged_scroll_offset &&
+               accumulated_rows > target_remaining_rows) {
           new_scroll_offset--;
-          accumulated_rows -= calculate_wrapped_line_height(viewer->staged_lines[new_scroll_offset].line, width - 4);
+          accumulated_rows -= calculate_wrapped_line_height(
+              viewer->staged_lines[new_scroll_offset].line, width - 4);
         }
-        
+
         if (new_scroll_offset > viewer->staged_scroll_offset) {
           viewer->staged_scroll_offset = new_scroll_offset;
         }
-        
+
         int max_scroll = viewer->staged_line_count - 1;
         if (viewer->staged_scroll_offset > max_scroll) {
           viewer->staged_scroll_offset = max_scroll;
@@ -6684,10 +6728,10 @@ void cleanup_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
     if (viewer->status_bar_win) {
       delwin(viewer->status_bar_win);
     }
-    
+
     // Clean up fuzzy search windows
     cleanup_fuzzy_search(viewer);
-    
+
     // Clean up grep search windows
     cleanup_grep_search(viewer);
   }
@@ -6698,8 +6742,9 @@ void cleanup_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
  * Initialize fuzzy search state
  */
 void init_fuzzy_search(NCursesDiffViewer *viewer) {
-  if (!viewer) return;
-  
+  if (!viewer)
+    return;
+
   viewer->fuzzy_search_active = 0;
   viewer->fuzzy_search_query[0] = '\0';
   viewer->fuzzy_search_query_len = 0;
@@ -6708,7 +6753,7 @@ void init_fuzzy_search(NCursesDiffViewer *viewer) {
   viewer->fuzzy_scroll_offset = 0;
   viewer->fuzzy_input_win = NULL;
   viewer->fuzzy_list_win = NULL;
-  
+
   // Initialize state tracking
   viewer->fuzzy_needs_full_redraw = 0;
   viewer->fuzzy_needs_input_redraw = 0;
@@ -6723,8 +6768,9 @@ void init_fuzzy_search(NCursesDiffViewer *viewer) {
  * Cleanup fuzzy search windows
  */
 void cleanup_fuzzy_search(NCursesDiffViewer *viewer) {
-  if (!viewer) return;
-  
+  if (!viewer)
+    return;
+
   if (viewer->fuzzy_input_win) {
     delwin(viewer->fuzzy_input_win);
     viewer->fuzzy_input_win = NULL;
@@ -6740,36 +6786,40 @@ void cleanup_fuzzy_search(NCursesDiffViewer *viewer) {
  * Returns 0 if no match, positive score if match
  */
 int calculate_fuzzy_score(const char *pattern, const char *filename) {
-  if (!pattern || !filename) return 0;
-  if (strlen(pattern) == 0) return 1000; // Empty pattern matches everything with high score
-  
+  if (!pattern || !filename)
+    return 0;
+  if (strlen(pattern) == 0)
+    return 1000; // Empty pattern matches everything with high score
+
   int pattern_len = strlen(pattern);
   int filename_len = strlen(filename);
-  
-  if (pattern_len > filename_len) return 0; // Pattern longer than filename
-  
+
+  if (pattern_len > filename_len)
+    return 0; // Pattern longer than filename
+
   int score = 0;
   int pattern_pos = 0;
   int consecutive_matches = 0;
   int first_char_bonus = 0;
-  
+
   for (int i = 0; i < filename_len && pattern_pos < pattern_len; i++) {
     char p_char = tolower(pattern[pattern_pos]);
     char f_char = tolower(filename[i]);
-    
+
     if (p_char == f_char) {
       // Base score for character match
       score += 1;
-      
+
       // Bonus for consecutive matches (prioritizes contiguous substrings)
       consecutive_matches++;
       score += consecutive_matches * 5;
-      
+
       // Bonus for matching at word boundaries
-      if (i == 0 || filename[i-1] == '/' || filename[i-1] == '_' || filename[i-1] == '-' || filename[i-1] == '.') {
+      if (i == 0 || filename[i - 1] == '/' || filename[i - 1] == '_' ||
+          filename[i - 1] == '-' || filename[i - 1] == '.') {
         score += 15;
       }
-      
+
       // Bonus for matching first character
       if (pattern_pos == 0) {
         if (i == 0) {
@@ -6783,32 +6833,33 @@ int calculate_fuzzy_score(const char *pattern, const char *filename) {
           }
         }
       }
-      
+
       // Bonus for exact position match (same position in pattern and filename)
       if (i == pattern_pos) {
         score += 10;
       }
-      
+
       pattern_pos++;
     } else {
       // Reset consecutive matches
       consecutive_matches = 0;
     }
   }
-  
+
   // Must match all pattern characters
-  if (pattern_pos < pattern_len) return 0;
-  
+  if (pattern_pos < pattern_len)
+    return 0;
+
   // Apply first character bonus
   score += first_char_bonus;
-  
+
   // Bonus for shorter filenames (prefer more specific matches)
   score += (100 - filename_len);
-  
+
   // Bonus for fewer unmatched characters
   int unmatched_chars = filename_len - pattern_len;
   score += (50 - unmatched_chars);
-  
+
   return score;
 }
 
@@ -6816,34 +6867,45 @@ int calculate_fuzzy_score(const char *pattern, const char *filename) {
  * Compare function for sorting scored files (higher scores first)
  */
 int compare_scored_files(const void *a, const void *b) {
-  const struct {int file_index; int score;} *file_a = a;
-  const struct {int file_index; int score;} *file_b = b;
-  return file_b->score - file_a->score; // Descending order (higher scores first)
+  const struct {
+    int file_index;
+    int score;
+  } *file_a = a;
+  const struct {
+    int file_index;
+    int score;
+  } *file_b = b;
+  return file_b->score -
+         file_a->score; // Descending order (higher scores first)
 }
 
 /**
  * Update fuzzy search filter based on current query
  */
 void update_fuzzy_filter(NCursesDiffViewer *viewer) {
-  if (!viewer) return;
-  
+  if (!viewer)
+    return;
+
   viewer->fuzzy_filtered_count = 0;
   viewer->fuzzy_selected_index = 0;
   viewer->fuzzy_scroll_offset = 0;
-  
+
   // Calculate scores for all files and collect matches
-  for (int i = 0; i < viewer->file_count && viewer->fuzzy_filtered_count < MAX_FILES; i++) {
-    int score = calculate_fuzzy_score(viewer->fuzzy_search_query, viewer->files[i].filename);
+  for (int i = 0;
+       i < viewer->file_count && viewer->fuzzy_filtered_count < MAX_FILES;
+       i++) {
+    int score = calculate_fuzzy_score(viewer->fuzzy_search_query,
+                                      viewer->files[i].filename);
     if (score > 0) {
       viewer->fuzzy_scored_files[viewer->fuzzy_filtered_count].file_index = i;
       viewer->fuzzy_scored_files[viewer->fuzzy_filtered_count].score = score;
       viewer->fuzzy_filtered_count++;
     }
   }
-  
+
   // Sort results by score (highest first)
   if (viewer->fuzzy_filtered_count > 1) {
-    qsort(viewer->fuzzy_scored_files, viewer->fuzzy_filtered_count, 
+    qsort(viewer->fuzzy_scored_files, viewer->fuzzy_filtered_count,
           sizeof(viewer->fuzzy_scored_files[0]), compare_scored_files);
   }
 }
@@ -6852,34 +6914,36 @@ void update_fuzzy_filter(NCursesDiffViewer *viewer) {
  * Enter fuzzy search mode
  */
 void enter_fuzzy_search_mode(NCursesDiffViewer *viewer) {
-  if (!viewer || viewer->current_mode != NCURSES_MODE_FILE_LIST) return;
-  
+  if (!viewer || viewer->current_mode != NCURSES_MODE_FILE_LIST)
+    return;
+
   viewer->fuzzy_search_active = 1;
   viewer->fuzzy_search_query[0] = '\0';
   viewer->fuzzy_search_query_len = 0;
-  
+
   // Create fuzzy search windows
   int input_height = 3;
   int list_height = viewer->terminal_height - input_height - 4;
   int width = viewer->terminal_width - 4;
   int start_y = (viewer->terminal_height - input_height - list_height) / 2;
   int start_x = 2;
-  
+
   viewer->fuzzy_input_win = newwin(input_height, width, start_y, start_x);
-  viewer->fuzzy_list_win = newwin(list_height, width, start_y + input_height, start_x);
-  
+  viewer->fuzzy_list_win =
+      newwin(list_height, width, start_y + input_height, start_x);
+
   if (viewer->fuzzy_input_win) {
     box(viewer->fuzzy_input_win, 0, 0);
     mvwprintw(viewer->fuzzy_input_win, 0, 2, " Fuzzy File Search ");
   }
-  
+
   if (viewer->fuzzy_list_win) {
     box(viewer->fuzzy_list_win, 0, 0);
   }
-  
+
   // Initialize with all files
   update_fuzzy_filter(viewer);
-  
+
   // Force initial full redraw
   viewer->fuzzy_needs_full_redraw = 1;
 }
@@ -6888,11 +6952,12 @@ void enter_fuzzy_search_mode(NCursesDiffViewer *viewer) {
  * Exit fuzzy search mode
  */
 void exit_fuzzy_search_mode(NCursesDiffViewer *viewer) {
-  if (!viewer) return;
-  
+  if (!viewer)
+    return;
+
   viewer->fuzzy_search_active = 0;
   cleanup_fuzzy_search(viewer);
-  
+
   // Force redraw of main windows next time
   touchwin(stdscr);
   refresh();
@@ -6902,24 +6967,25 @@ void exit_fuzzy_search_mode(NCursesDiffViewer *viewer) {
  * Render fuzzy search input field only
  */
 void render_fuzzy_input(NCursesDiffViewer *viewer) {
-  if (!viewer->fuzzy_input_win) return;
-  
+  if (!viewer->fuzzy_input_win)
+    return;
+
   // Clear only the content area, not the border
   for (int y = 1; y < getmaxy(viewer->fuzzy_input_win) - 1; y++) {
     for (int x = 1; x < getmaxx(viewer->fuzzy_input_win) - 1; x++) {
       mvwaddch(viewer->fuzzy_input_win, y, x, ' ');
     }
   }
-  
+
   // Show current query
   mvwprintw(viewer->fuzzy_input_win, 1, 2, "> %s", viewer->fuzzy_search_query);
-  
+
   // Show cursor
   int cursor_x = 4 + viewer->fuzzy_search_query_len;
   if (cursor_x < getmaxx(viewer->fuzzy_input_win) - 1) {
     mvwaddch(viewer->fuzzy_input_win, 1, cursor_x, '_');
   }
-  
+
   wrefresh(viewer->fuzzy_input_win);
 }
 
@@ -6927,49 +6993,53 @@ void render_fuzzy_input(NCursesDiffViewer *viewer) {
  * Render fuzzy search file list content only (no borders)
  */
 void render_fuzzy_list_content(NCursesDiffViewer *viewer) {
-  if (!viewer->fuzzy_list_win) return;
-  
+  if (!viewer->fuzzy_list_win)
+    return;
+
   int list_height = getmaxy(viewer->fuzzy_list_win) - 2;
   int list_width = getmaxx(viewer->fuzzy_list_win) - 4;
-  
+
   // Clear only the content area, not the border
   for (int y = 1; y <= list_height; y++) {
     for (int x = 1; x < getmaxx(viewer->fuzzy_list_win) - 1; x++) {
       mvwaddch(viewer->fuzzy_list_win, y, x, ' ');
     }
   }
-  
+
   // Show filtered results
   for (int i = 0; i < viewer->fuzzy_filtered_count && i < list_height; i++) {
     int display_index = i + viewer->fuzzy_scroll_offset;
-    if (display_index >= viewer->fuzzy_filtered_count) break;
-    
+    if (display_index >= viewer->fuzzy_filtered_count)
+      break;
+
     int file_index = viewer->fuzzy_scored_files[display_index].file_index;
     char *filename = viewer->files[file_index].filename;
     char status = viewer->files[file_index].status;
-    
+
     // Highlight selected item
     if (display_index == viewer->fuzzy_selected_index) {
       wattron(viewer->fuzzy_list_win, A_REVERSE);
     }
-    
+
     // Show status character and filename
-    mvwprintw(viewer->fuzzy_list_win, i + 1, 2, "%c %-*.*s", 
-              status, list_width - 3, list_width - 3, filename);
-    
+    mvwprintw(viewer->fuzzy_list_win, i + 1, 2, "%c %-*.*s", status,
+              list_width - 3, list_width - 3, filename);
+
     if (display_index == viewer->fuzzy_selected_index) {
       wattroff(viewer->fuzzy_list_win, A_REVERSE);
     }
   }
-  
+
   // Show result count in top border area
   if (viewer->fuzzy_filtered_count > 0) {
-    mvwprintw(viewer->fuzzy_list_win, 0, getmaxx(viewer->fuzzy_list_win) - 15, 
-              " %d/%d ", viewer->fuzzy_selected_index + 1, viewer->fuzzy_filtered_count);
+    mvwprintw(viewer->fuzzy_list_win, 0, getmaxx(viewer->fuzzy_list_win) - 15,
+              " %d/%d ", viewer->fuzzy_selected_index + 1,
+              viewer->fuzzy_filtered_count);
   } else {
-    mvwprintw(viewer->fuzzy_list_win, 0, getmaxx(viewer->fuzzy_list_win) - 10, " 0/0 ");
+    mvwprintw(viewer->fuzzy_list_win, 0, getmaxx(viewer->fuzzy_list_win) - 10,
+              " 0/0 ");
   }
-  
+
   wrefresh(viewer->fuzzy_list_win);
 }
 
@@ -6977,14 +7047,15 @@ void render_fuzzy_list_content(NCursesDiffViewer *viewer) {
  * Create fuzzy search windows with borders (one-time setup)
  */
 void create_fuzzy_windows_with_borders(NCursesDiffViewer *viewer) {
-  if (!viewer->fuzzy_input_win || !viewer->fuzzy_list_win) return;
-  
+  if (!viewer->fuzzy_input_win || !viewer->fuzzy_list_win)
+    return;
+
   // Draw input window border and title
   wclear(viewer->fuzzy_input_win);
   box(viewer->fuzzy_input_win, 0, 0);
   mvwprintw(viewer->fuzzy_input_win, 0, 2, " Fuzzy File Search ");
   wrefresh(viewer->fuzzy_input_win);
-  
+
   // Draw list window border
   wclear(viewer->fuzzy_list_win);
   box(viewer->fuzzy_list_win, 0, 0);
@@ -6995,15 +7066,20 @@ void create_fuzzy_windows_with_borders(NCursesDiffViewer *viewer) {
  * Main fuzzy search render function with granular updates
  */
 void render_fuzzy_search(NCursesDiffViewer *viewer) {
-  if (!viewer || !viewer->fuzzy_search_active) return;
-  if (!viewer->fuzzy_input_win || !viewer->fuzzy_list_win) return;
-  
+  if (!viewer || !viewer->fuzzy_search_active)
+    return;
+  if (!viewer->fuzzy_input_win || !viewer->fuzzy_list_win)
+    return;
+
   // Check what specifically needs to be redrawn
-  int query_changed = strcmp(viewer->fuzzy_search_query, viewer->fuzzy_last_query) != 0;
-  int selection_changed = viewer->fuzzy_selected_index != viewer->fuzzy_last_selected;
+  int query_changed =
+      strcmp(viewer->fuzzy_search_query, viewer->fuzzy_last_query) != 0;
+  int selection_changed =
+      viewer->fuzzy_selected_index != viewer->fuzzy_last_selected;
   int scroll_changed = viewer->fuzzy_scroll_offset != viewer->fuzzy_last_scroll;
-  int results_changed = viewer->fuzzy_filtered_count != viewer->fuzzy_last_filtered_count;
-  
+  int results_changed =
+      viewer->fuzzy_filtered_count != viewer->fuzzy_last_filtered_count;
+
   // Full redraw needed on first render
   if (viewer->fuzzy_needs_full_redraw) {
     create_fuzzy_windows_with_borders(viewer);
@@ -7016,13 +7092,14 @@ void render_fuzzy_search(NCursesDiffViewer *viewer) {
     render_fuzzy_input(viewer);
     viewer->fuzzy_needs_input_redraw = 0;
   }
-  
+
   // Redraw file list if results, selection, or scroll changed
-  if (results_changed || selection_changed || scroll_changed || viewer->fuzzy_needs_list_redraw) {
+  if (results_changed || selection_changed || scroll_changed ||
+      viewer->fuzzy_needs_list_redraw) {
     render_fuzzy_list_content(viewer);
     viewer->fuzzy_needs_list_redraw = 0;
   }
-  
+
   // Update last rendered state
   strcpy(viewer->fuzzy_last_query, viewer->fuzzy_search_query);
   viewer->fuzzy_last_selected = viewer->fuzzy_selected_index;
@@ -7034,61 +7111,64 @@ void render_fuzzy_search(NCursesDiffViewer *viewer) {
  * Handle fuzzy search input
  */
 int handle_fuzzy_search_input(NCursesDiffViewer *viewer, int key) {
-  if (!viewer || !viewer->fuzzy_search_active) return 0;
-  
+  if (!viewer || !viewer->fuzzy_search_active)
+    return 0;
+
   switch (key) {
-    case 27: // ESC
+  case 27: // ESC
+    exit_fuzzy_search_mode(viewer);
+    return 1;
+
+  case KEY_ENTER:
+  case '\n':
+  case '\r':
+    if (viewer->fuzzy_filtered_count > 0) {
+      select_fuzzy_file(viewer);
       exit_fuzzy_search_mode(viewer);
-      return 1;
-      
-    case KEY_ENTER:
-    case '\n':
-    case '\r':
-      if (viewer->fuzzy_filtered_count > 0) {
-        select_fuzzy_file(viewer);
-        exit_fuzzy_search_mode(viewer);
+    }
+    return 1;
+
+  case KEY_UP:
+    if (viewer->fuzzy_selected_index > 0) {
+      viewer->fuzzy_selected_index--;
+      // Adjust scroll if needed
+      if (viewer->fuzzy_selected_index < viewer->fuzzy_scroll_offset) {
+        viewer->fuzzy_scroll_offset = viewer->fuzzy_selected_index;
       }
-      return 1;
-      
-    case KEY_UP:
-      if (viewer->fuzzy_selected_index > 0) {
-        viewer->fuzzy_selected_index--;
-        // Adjust scroll if needed
-        if (viewer->fuzzy_selected_index < viewer->fuzzy_scroll_offset) {
-          viewer->fuzzy_scroll_offset = viewer->fuzzy_selected_index;
-        }
+    }
+    return 1;
+
+  case KEY_DOWN:
+    if (viewer->fuzzy_selected_index < viewer->fuzzy_filtered_count - 1) {
+      viewer->fuzzy_selected_index++;
+      // Adjust scroll if needed
+      int list_height = getmaxy(viewer->fuzzy_list_win) - 2;
+      if (viewer->fuzzy_selected_index >=
+          viewer->fuzzy_scroll_offset + list_height) {
+        viewer->fuzzy_scroll_offset =
+            viewer->fuzzy_selected_index - list_height + 1;
       }
-      return 1;
-      
-    case KEY_DOWN:
-      if (viewer->fuzzy_selected_index < viewer->fuzzy_filtered_count - 1) {
-        viewer->fuzzy_selected_index++;
-        // Adjust scroll if needed
-        int list_height = getmaxy(viewer->fuzzy_list_win) - 2;
-        if (viewer->fuzzy_selected_index >= viewer->fuzzy_scroll_offset + list_height) {
-          viewer->fuzzy_scroll_offset = viewer->fuzzy_selected_index - list_height + 1;
-        }
-      }
-      return 1;
-      
-    case KEY_BACKSPACE:
-    case 127:
-    case '\b':
-      if (viewer->fuzzy_search_query_len > 0) {
-        viewer->fuzzy_search_query_len--;
-        viewer->fuzzy_search_query[viewer->fuzzy_search_query_len] = '\0';
-        update_fuzzy_filter(viewer);
-      }
-      return 1;
-      
-    default:
-      // Add printable characters to search query
-      if (key >= 32 && key <= 126 && viewer->fuzzy_search_query_len < 255) {
-        viewer->fuzzy_search_query[viewer->fuzzy_search_query_len++] = key;
-        viewer->fuzzy_search_query[viewer->fuzzy_search_query_len] = '\0';
-        update_fuzzy_filter(viewer);
-      }
-      return 1;
+    }
+    return 1;
+
+  case KEY_BACKSPACE:
+  case 127:
+  case '\b':
+    if (viewer->fuzzy_search_query_len > 0) {
+      viewer->fuzzy_search_query_len--;
+      viewer->fuzzy_search_query[viewer->fuzzy_search_query_len] = '\0';
+      update_fuzzy_filter(viewer);
+    }
+    return 1;
+
+  default:
+    // Add printable characters to search query
+    if (key >= 32 && key <= 126 && viewer->fuzzy_search_query_len < 255) {
+      viewer->fuzzy_search_query[viewer->fuzzy_search_query_len++] = key;
+      viewer->fuzzy_search_query[viewer->fuzzy_search_query_len] = '\0';
+      update_fuzzy_filter(viewer);
+    }
+    return 1;
   }
 }
 
@@ -7096,14 +7176,16 @@ int handle_fuzzy_search_input(NCursesDiffViewer *viewer, int key) {
  * Select file from fuzzy search results
  */
 void select_fuzzy_file(NCursesDiffViewer *viewer) {
-  if (!viewer || viewer->fuzzy_filtered_count == 0) return;
-  
+  if (!viewer || viewer->fuzzy_filtered_count == 0)
+    return;
+
   // Get the actual file index from scored results
-  int file_index = viewer->fuzzy_scored_files[viewer->fuzzy_selected_index].file_index;
-  
+  int file_index =
+      viewer->fuzzy_scored_files[viewer->fuzzy_selected_index].file_index;
+
   // Update the main file list selection to point to this file
   viewer->selected_file = file_index;
-  
+
   // Scroll the main file list to show the selected file
   int file_panel_height = getmaxy(viewer->file_list_win) - 2;
   if (viewer->selected_file < viewer->file_count) {
@@ -7111,26 +7193,29 @@ void select_fuzzy_file(NCursesDiffViewer *viewer) {
     if (viewer->selected_file < file_panel_height / 2) {
       // If near the top, scroll to top
       // No action needed as the file list starts from 0
-    } else if (viewer->selected_file >= viewer->file_count - file_panel_height / 2) {
+    } else if (viewer->selected_file >=
+               viewer->file_count - file_panel_height / 2) {
       // If near the bottom, show as much as possible
       // No action needed as we'll handle this in rendering
     }
   }
-  
+
   // Load the selected file with split staging view (same as pressing Enter)
-  if (viewer->selected_file >= 0 && viewer->selected_file < viewer->file_count) {
+  if (viewer->selected_file >= 0 &&
+      viewer->selected_file < viewer->file_count) {
     const char *filename = viewer->files[viewer->selected_file].filename;
-    
+
     // Load file with staging information
     load_file_with_staging_info(viewer, filename);
-    
+
     // Switch to split view mode
     viewer->split_view_mode = 1;
     viewer->current_mode = NCURSES_MODE_FILE_VIEW;
     viewer->active_pane = 0; // Start with unstaged pane active
-    
+
     // Store current file path
-    strncpy(viewer->current_file_path, filename, sizeof(viewer->current_file_path) - 1);
+    strncpy(viewer->current_file_path, filename,
+            sizeof(viewer->current_file_path) - 1);
     viewer->current_file_path[sizeof(viewer->current_file_path) - 1] = '\0';
   }
 }
@@ -7139,8 +7224,9 @@ void select_fuzzy_file(NCursesDiffViewer *viewer) {
  * Initialize grep search state
  */
 void init_grep_search(NCursesDiffViewer *viewer) {
-  if (!viewer) return;
-  
+  if (!viewer)
+    return;
+
   viewer->grep_search_active = 0;
   viewer->grep_search_mode = NCURSES_MODE_FILE_LIST;
   viewer->grep_search_query[0] = '\0';
@@ -7150,7 +7236,7 @@ void init_grep_search(NCursesDiffViewer *viewer) {
   viewer->grep_scroll_offset = 0;
   viewer->grep_input_win = NULL;
   viewer->grep_list_win = NULL;
-  
+
   // Initialize state tracking
   viewer->grep_needs_full_redraw = 0;
   viewer->grep_needs_input_redraw = 0;
@@ -7165,8 +7251,9 @@ void init_grep_search(NCursesDiffViewer *viewer) {
  * Cleanup grep search windows
  */
 void cleanup_grep_search(NCursesDiffViewer *viewer) {
-  if (!viewer) return;
-  
+  if (!viewer)
+    return;
+
   if (viewer->grep_input_win) {
     delwin(viewer->grep_input_win);
     viewer->grep_input_win = NULL;
@@ -7180,25 +7267,27 @@ void cleanup_grep_search(NCursesDiffViewer *viewer) {
 /**
  * Extract branch name from stash info
  */
-void extract_branch_from_stash(const char *stash_info, char *branch_name, int max_len) {
-  if (!stash_info || !branch_name || max_len <= 0) return;
-  
+void extract_branch_from_stash(const char *stash_info, char *branch_name,
+                               int max_len) {
+  if (!stash_info || !branch_name || max_len <= 0)
+    return;
+
   branch_name[0] = '\0';
-  
+
   // Look for "On " pattern in stash info
   const char *on_pattern = "On ";
   const char *on_pos = strstr(stash_info, on_pattern);
-  
+
   if (on_pos) {
     const char *branch_start = on_pos + strlen(on_pattern);
     const char *branch_end = strchr(branch_start, ':');
-    
+
     if (branch_end && branch_end > branch_start) {
       int branch_len = branch_end - branch_start;
       if (branch_len < max_len) {
         strncpy(branch_name, branch_start, branch_len);
         branch_name[branch_len] = '\0';
-        
+
         // Trim trailing spaces
         while (branch_len > 0 && branch_name[branch_len - 1] == ' ') {
           branch_name[--branch_len] = '\0';
@@ -7212,59 +7301,64 @@ void extract_branch_from_stash(const char *stash_info, char *branch_name, int ma
  * Calculate grep match score for text content
  */
 int calculate_grep_score(const char *pattern, const char *text) {
-  if (!pattern || !text) return 0;
-  if (strlen(pattern) == 0) return 1000; // Empty pattern matches everything
-  
+  if (!pattern || !text)
+    return 0;
+  if (strlen(pattern) == 0)
+    return 1000; // Empty pattern matches everything
+
   int pattern_len = strlen(pattern);
   int text_len = strlen(text);
-  
-  if (pattern_len > text_len) return 0;
-  
+
+  if (pattern_len > text_len)
+    return 0;
+
   int score = 0;
   int pattern_pos = 0;
   int consecutive_matches = 0;
   int first_char_bonus = 0;
-  
+
   for (int i = 0; i < text_len && pattern_pos < pattern_len; i++) {
     char p_char = tolower(pattern[pattern_pos]);
     char t_char = tolower(text[i]);
-    
+
     if (p_char == t_char) {
       // Base score for character match
       score += 1;
-      
+
       // Bonus for consecutive matches
       consecutive_matches++;
       score += consecutive_matches * 3;
-      
+
       // Bonus for matching at word boundaries
-      if (i == 0 || text[i-1] == ' ' || text[i-1] == '-' || text[i-1] == '_') {
+      if (i == 0 || text[i - 1] == ' ' || text[i - 1] == '-' ||
+          text[i - 1] == '_') {
         score += 10;
       }
-      
+
       // Bonus for matching first character
       if (pattern_pos == 0 && i == 0) {
         first_char_bonus = 30;
       }
-      
+
       // Bonus for exact position match
       if (i == pattern_pos) {
         score += 5;
       }
-      
+
       pattern_pos++;
     } else {
       consecutive_matches = 0;
     }
   }
-  
+
   // Must match all pattern characters
-  if (pattern_pos < pattern_len) return 0;
-  
+  if (pattern_pos < pattern_len)
+    return 0;
+
   score += first_char_bonus;
-  score += (50 - text_len); // Prefer shorter text
+  score += (50 - text_len);                 // Prefer shorter text
   score += (30 - (text_len - pattern_len)); // Fewer unmatched chars
-  
+
   return score;
 }
 
@@ -7272,8 +7366,14 @@ int calculate_grep_score(const char *pattern, const char *text) {
  * Compare function for sorting grep scored items
  */
 int compare_grep_scored_items(const void *a, const void *b) {
-  const struct {int item_index; int score;} *item_a = a;
-  const struct {int item_index; int score;} *item_b = b;
+  const struct {
+    int item_index;
+    int score;
+  } *item_a = a;
+  const struct {
+    int item_index;
+    int score;
+  } *item_b = b;
   return item_b->score - item_a->score; // Descending order
 }
 
@@ -7281,76 +7381,90 @@ int compare_grep_scored_items(const void *a, const void *b) {
  * Update grep search filter based on current query and mode
  */
 void update_grep_filter(NCursesDiffViewer *viewer) {
-  if (!viewer) return;
-  
+  if (!viewer)
+    return;
+
   viewer->grep_filtered_count = 0;
   viewer->grep_selected_index = 0;
   viewer->grep_scroll_offset = 0;
-  
+
   // Search different data based on current mode
   switch (viewer->grep_search_mode) {
-    case NCURSES_MODE_COMMIT_LIST:
-      // Search commit titles and author initials
-      for (int i = 0; i < viewer->commit_count && viewer->grep_filtered_count < MAX_COMMITS; i++) {
-        // Try matching against title first
-        int title_score = calculate_grep_score(viewer->grep_search_query, viewer->commits[i].title);
-        
-        // Try matching against author initials
-        int author_score = calculate_grep_score(viewer->grep_search_query, viewer->commits[i].author_initials);
-        
-        // Use the higher score (prefer title matches over author matches)
-        int score = (title_score > author_score) ? title_score : author_score;
-        
-        if (score > 0) {
-          viewer->grep_scored_items[viewer->grep_filtered_count].item_index = i;
-          viewer->grep_scored_items[viewer->grep_filtered_count].score = score;
-          viewer->grep_filtered_count++;
-        }
+  case NCURSES_MODE_COMMIT_LIST:
+    // Search commit titles and author initials
+    for (int i = 0;
+         i < viewer->commit_count && viewer->grep_filtered_count < MAX_COMMITS;
+         i++) {
+      // Try matching against title first
+      int title_score = calculate_grep_score(viewer->grep_search_query,
+                                             viewer->commits[i].title);
+
+      // Try matching against author initials
+      int author_score = calculate_grep_score(
+          viewer->grep_search_query, viewer->commits[i].author_initials);
+
+      // Use the higher score (prefer title matches over author matches)
+      int score = (title_score > author_score) ? title_score : author_score;
+
+      if (score > 0) {
+        viewer->grep_scored_items[viewer->grep_filtered_count].item_index = i;
+        viewer->grep_scored_items[viewer->grep_filtered_count].score = score;
+        viewer->grep_filtered_count++;
       }
-      break;
-      
-    case NCURSES_MODE_STASH_LIST:
-      // Search stash info and branch names
-      for (int i = 0; i < viewer->stash_count && viewer->grep_filtered_count < MAX_COMMITS; i++) {
-        // Try matching against full stash info first
-        int stash_score = calculate_grep_score(viewer->grep_search_query, viewer->stashes[i].stash_info);
-        
-        // Extract and try matching against branch name
-        char branch_name[64];
-        extract_branch_from_stash(viewer->stashes[i].stash_info, branch_name, sizeof(branch_name));
-        int branch_score = 0;
-        if (strlen(branch_name) > 0) {
-          branch_score = calculate_grep_score(viewer->grep_search_query, branch_name);
-        }
-        
-        // Use the higher score (prefer full stash info matches over branch-only matches)
-        int score = (stash_score > branch_score) ? stash_score : branch_score;
-        
-        if (score > 0) {
-          viewer->grep_scored_items[viewer->grep_filtered_count].item_index = i;
-          viewer->grep_scored_items[viewer->grep_filtered_count].score = score;
-          viewer->grep_filtered_count++;
-        }
+    }
+    break;
+
+  case NCURSES_MODE_STASH_LIST:
+    // Search stash info and branch names
+    for (int i = 0;
+         i < viewer->stash_count && viewer->grep_filtered_count < MAX_COMMITS;
+         i++) {
+      // Try matching against full stash info first
+      int stash_score = calculate_grep_score(viewer->grep_search_query,
+                                             viewer->stashes[i].stash_info);
+
+      // Extract and try matching against branch name
+      char branch_name[64];
+      extract_branch_from_stash(viewer->stashes[i].stash_info, branch_name,
+                                sizeof(branch_name));
+      int branch_score = 0;
+      if (strlen(branch_name) > 0) {
+        branch_score =
+            calculate_grep_score(viewer->grep_search_query, branch_name);
       }
-      break;
-      
-    case NCURSES_MODE_BRANCH_LIST:
-      // Search branch names
-      for (int i = 0; i < viewer->branch_count && viewer->grep_filtered_count < MAX_COMMITS; i++) {
-        int score = calculate_grep_score(viewer->grep_search_query, viewer->branches[i].name);
-        if (score > 0) {
-          viewer->grep_scored_items[viewer->grep_filtered_count].item_index = i;
-          viewer->grep_scored_items[viewer->grep_filtered_count].score = score;
-          viewer->grep_filtered_count++;
-        }
+
+      // Use the higher score (prefer full stash info matches over branch-only
+      // matches)
+      int score = (stash_score > branch_score) ? stash_score : branch_score;
+
+      if (score > 0) {
+        viewer->grep_scored_items[viewer->grep_filtered_count].item_index = i;
+        viewer->grep_scored_items[viewer->grep_filtered_count].score = score;
+        viewer->grep_filtered_count++;
       }
-      break;
-      
-    default:
-      // No grep search for other modes
-      break;
+    }
+    break;
+
+  case NCURSES_MODE_BRANCH_LIST:
+    // Search branch names
+    for (int i = 0;
+         i < viewer->branch_count && viewer->grep_filtered_count < MAX_COMMITS;
+         i++) {
+      int score = calculate_grep_score(viewer->grep_search_query,
+                                       viewer->branches[i].name);
+      if (score > 0) {
+        viewer->grep_scored_items[viewer->grep_filtered_count].item_index = i;
+        viewer->grep_scored_items[viewer->grep_filtered_count].score = score;
+        viewer->grep_filtered_count++;
+      }
+    }
+    break;
+
+  default:
+    // No grep search for other modes
+    break;
   }
-  
+
   // Sort results by score
   if (viewer->grep_filtered_count > 1) {
     qsort(viewer->grep_scored_items, viewer->grep_filtered_count,
@@ -7362,33 +7476,35 @@ void update_grep_filter(NCursesDiffViewer *viewer) {
  * Enter grep search mode for current view mode
  */
 void enter_grep_search_mode(NCursesDiffViewer *viewer) {
-  if (!viewer) return;
-  
+  if (!viewer)
+    return;
+
   // Only allow grep search in specific modes
   if (viewer->current_mode != NCURSES_MODE_COMMIT_LIST &&
       viewer->current_mode != NCURSES_MODE_STASH_LIST &&
       viewer->current_mode != NCURSES_MODE_BRANCH_LIST) {
     return;
   }
-  
+
   viewer->grep_search_active = 1;
   viewer->grep_search_mode = viewer->current_mode;
   viewer->grep_search_query[0] = '\0';
   viewer->grep_search_query_len = 0;
-  
+
   // Create grep search windows
   int input_height = 3;
   int list_height = viewer->terminal_height - input_height - 4;
   int width = viewer->terminal_width - 4;
   int start_y = (viewer->terminal_height - input_height - list_height) / 2;
   int start_x = 2;
-  
+
   viewer->grep_input_win = newwin(input_height, width, start_y, start_x);
-  viewer->grep_list_win = newwin(list_height, width, start_y + input_height, start_x);
-  
+  viewer->grep_list_win =
+      newwin(list_height, width, start_y + input_height, start_x);
+
   // Initialize with all items
   update_grep_filter(viewer);
-  
+
   // Force initial full redraw
   viewer->grep_needs_full_redraw = 1;
 }
@@ -7397,11 +7513,12 @@ void enter_grep_search_mode(NCursesDiffViewer *viewer) {
  * Exit grep search mode
  */
 void exit_grep_search_mode(NCursesDiffViewer *viewer) {
-  if (!viewer) return;
-  
+  if (!viewer)
+    return;
+
   viewer->grep_search_active = 0;
   cleanup_grep_search(viewer);
-  
+
   // Force redraw of main windows next time
   touchwin(stdscr);
   refresh();
@@ -7411,24 +7528,25 @@ void exit_grep_search_mode(NCursesDiffViewer *viewer) {
  * Render grep search input field only
  */
 void render_grep_input(NCursesDiffViewer *viewer) {
-  if (!viewer->grep_input_win) return;
-  
+  if (!viewer->grep_input_win)
+    return;
+
   // Clear only the content area, not the border
   for (int y = 1; y < getmaxy(viewer->grep_input_win) - 1; y++) {
     for (int x = 1; x < getmaxx(viewer->grep_input_win) - 1; x++) {
       mvwaddch(viewer->grep_input_win, y, x, ' ');
     }
   }
-  
+
   // Show current query
   mvwprintw(viewer->grep_input_win, 1, 2, "> %s", viewer->grep_search_query);
-  
+
   // Show cursor
   int cursor_x = 4 + viewer->grep_search_query_len;
   if (cursor_x < getmaxx(viewer->grep_input_win) - 1) {
     mvwaddch(viewer->grep_input_win, 1, cursor_x, '_');
   }
-  
+
   wrefresh(viewer->grep_input_win);
 }
 
@@ -7436,133 +7554,143 @@ void render_grep_input(NCursesDiffViewer *viewer) {
  * Render grep search list content only (no borders)
  */
 void render_grep_list_content(NCursesDiffViewer *viewer) {
-  if (!viewer->grep_list_win) return;
-  
+  if (!viewer->grep_list_win)
+    return;
+
   int list_height = getmaxy(viewer->grep_list_win) - 2;
   int list_width = getmaxx(viewer->grep_list_win) - 4;
-  
+
   // Clear only the content area, not the border
   for (int y = 1; y <= list_height; y++) {
     for (int x = 1; x < getmaxx(viewer->grep_list_win) - 1; x++) {
       mvwaddch(viewer->grep_list_win, y, x, ' ');
     }
   }
-  
+
   // Show filtered results
   for (int i = 0; i < viewer->grep_filtered_count && i < list_height; i++) {
     int display_index = i + viewer->grep_scroll_offset;
-    if (display_index >= viewer->grep_filtered_count) break;
-    
+    if (display_index >= viewer->grep_filtered_count)
+      break;
+
     int item_index = viewer->grep_scored_items[display_index].item_index;
     char display_text[512] = "";
-    
+
     // Get display text based on mode
     switch (viewer->grep_search_mode) {
-      case NCURSES_MODE_COMMIT_LIST:
-        // For commits, we'll handle colors separately
-        break;
-      case NCURSES_MODE_STASH_LIST:
-        // For stashes, we'll handle special formatting to highlight branch
-        break;
-      case NCURSES_MODE_BRANCH_LIST:
-        strncpy(display_text, viewer->branches[item_index].name, sizeof(display_text) - 1);
-        break;
-      default:
-        strcpy(display_text, "Unknown");
-        break;
+    case NCURSES_MODE_COMMIT_LIST:
+      // For commits, we'll handle colors separately
+      break;
+    case NCURSES_MODE_STASH_LIST:
+      // For stashes, we'll handle special formatting to highlight branch
+      break;
+    case NCURSES_MODE_BRANCH_LIST:
+      strncpy(display_text, viewer->branches[item_index].name,
+              sizeof(display_text) - 1);
+      break;
+    default:
+      strcpy(display_text, "Unknown");
+      break;
     }
     display_text[sizeof(display_text) - 1] = '\0';
-    
+
     // Highlight selected item
     if (display_index == viewer->grep_selected_index) {
       wattron(viewer->grep_list_win, A_REVERSE);
     }
-    
+
     // Render based on mode with appropriate colors
     if (viewer->grep_search_mode == NCURSES_MODE_COMMIT_LIST) {
-      // Render commit with colors: hash (yellow) + author initials (green) + title
+      // Render commit with colors: hash (yellow) + author initials (green) +
+      // title
       int x_pos = 2;
-      
+
       // Hash in yellow (COLOR_PAIR(10))
       wattron(viewer->grep_list_win, COLOR_PAIR(10));
-      mvwprintw(viewer->grep_list_win, i + 1, x_pos, "%s", viewer->commits[item_index].hash);
+      mvwprintw(viewer->grep_list_win, i + 1, x_pos, "%s",
+                viewer->commits[item_index].hash);
       wattroff(viewer->grep_list_win, COLOR_PAIR(10));
       x_pos += strlen(viewer->commits[item_index].hash) + 1;
-      
+
       // Author initials in green (COLOR_PAIR(8))
       wattron(viewer->grep_list_win, COLOR_PAIR(8));
-      mvwprintw(viewer->grep_list_win, i + 1, x_pos, "%s", viewer->commits[item_index].author_initials);
+      mvwprintw(viewer->grep_list_win, i + 1, x_pos, "%s",
+                viewer->commits[item_index].author_initials);
       wattroff(viewer->grep_list_win, COLOR_PAIR(8));
       x_pos += strlen(viewer->commits[item_index].author_initials) + 1;
-      
+
       // Title in default color
       int remaining_width = list_width - (x_pos - 2);
       if (remaining_width > 0) {
-        mvwprintw(viewer->grep_list_win, i + 1, x_pos, "%-*.*s", 
-                  remaining_width, remaining_width, viewer->commits[item_index].title);
+        mvwprintw(viewer->grep_list_win, i + 1, x_pos, "%-*.*s",
+                  remaining_width, remaining_width,
+                  viewer->commits[item_index].title);
       }
     } else if (viewer->grep_search_mode == NCURSES_MODE_STASH_LIST) {
       // Render stash with branch name highlighted
       const char *stash_info = viewer->stashes[item_index].stash_info;
       char branch_name[64];
       extract_branch_from_stash(stash_info, branch_name, sizeof(branch_name));
-      
+
       // Find the "On branch_name:" part to highlight
       char on_pattern[80];
       snprintf(on_pattern, sizeof(on_pattern), "On %s:", branch_name);
       const char *on_pos = strstr(stash_info, on_pattern);
-      
+
       if (on_pos && strlen(branch_name) > 0) {
         int x_pos = 2;
-        
+
         // Render text before "On"
         int before_len = on_pos - stash_info;
         if (before_len > 0) {
-          mvwprintw(viewer->grep_list_win, i + 1, x_pos, "%.*s", before_len, stash_info);
+          mvwprintw(viewer->grep_list_win, i + 1, x_pos, "%.*s", before_len,
+                    stash_info);
           x_pos += before_len;
         }
-        
+
         // Render "On " in default color
         mvwprintw(viewer->grep_list_win, i + 1, x_pos, "On ");
         x_pos += 3;
-        
+
         // Render branch name in green (COLOR_PAIR(8))
         wattron(viewer->grep_list_win, COLOR_PAIR(8));
         mvwprintw(viewer->grep_list_win, i + 1, x_pos, "%s", branch_name);
         wattroff(viewer->grep_list_win, COLOR_PAIR(8));
         x_pos += strlen(branch_name);
-        
+
         // Render remaining text after branch name
         const char *after_pos = on_pos + strlen(on_pattern);
         int remaining_width = list_width - (x_pos - 2);
         if (remaining_width > 0 && *after_pos) {
-          mvwprintw(viewer->grep_list_win, i + 1, x_pos, ":%-*.*s", 
+          mvwprintw(viewer->grep_list_win, i + 1, x_pos, ":%-*.*s",
                     remaining_width - 1, remaining_width - 1, after_pos);
         }
       } else {
         // Fallback: render normally if no branch pattern found
-        mvwprintw(viewer->grep_list_win, i + 1, 2, "%-*.*s", 
-                  list_width - 2, list_width - 2, stash_info);
+        mvwprintw(viewer->grep_list_win, i + 1, 2, "%-*.*s", list_width - 2,
+                  list_width - 2, stash_info);
       }
     } else {
       // Show item text for other modes (branches)
-      mvwprintw(viewer->grep_list_win, i + 1, 2, "%-*.*s", 
-                list_width - 2, list_width - 2, display_text);
+      mvwprintw(viewer->grep_list_win, i + 1, 2, "%-*.*s", list_width - 2,
+                list_width - 2, display_text);
     }
-    
+
     if (display_index == viewer->grep_selected_index) {
       wattroff(viewer->grep_list_win, A_REVERSE);
     }
   }
-  
+
   // Show result count
   if (viewer->grep_filtered_count > 0) {
-    mvwprintw(viewer->grep_list_win, 0, getmaxx(viewer->grep_list_win) - 15, 
-              " %d/%d ", viewer->grep_selected_index + 1, viewer->grep_filtered_count);
+    mvwprintw(viewer->grep_list_win, 0, getmaxx(viewer->grep_list_win) - 15,
+              " %d/%d ", viewer->grep_selected_index + 1,
+              viewer->grep_filtered_count);
   } else {
-    mvwprintw(viewer->grep_list_win, 0, getmaxx(viewer->grep_list_win) - 10, " 0/0 ");
+    mvwprintw(viewer->grep_list_win, 0, getmaxx(viewer->grep_list_win) - 10,
+              " 0/0 ");
   }
-  
+
   wrefresh(viewer->grep_list_win);
 }
 
@@ -7570,30 +7698,31 @@ void render_grep_list_content(NCursesDiffViewer *viewer) {
  * Create grep search windows with borders (one-time setup)
  */
 void create_grep_windows_with_borders(NCursesDiffViewer *viewer) {
-  if (!viewer->grep_input_win || !viewer->grep_list_win) return;
-  
+  if (!viewer->grep_input_win || !viewer->grep_list_win)
+    return;
+
   // Get mode name for title
   const char *mode_name = "Search";
   switch (viewer->grep_search_mode) {
-    case NCURSES_MODE_COMMIT_LIST:
-      mode_name = "Commit Grep";
-      break;
-    case NCURSES_MODE_STASH_LIST:
-      mode_name = "Stash Grep";
-      break;
-    case NCURSES_MODE_BRANCH_LIST:
-      mode_name = "Branch Grep";
-      break;
-    default:
-      break;
+  case NCURSES_MODE_COMMIT_LIST:
+    mode_name = "Commit Grep";
+    break;
+  case NCURSES_MODE_STASH_LIST:
+    mode_name = "Stash Grep";
+    break;
+  case NCURSES_MODE_BRANCH_LIST:
+    mode_name = "Branch Grep";
+    break;
+  default:
+    break;
   }
-  
+
   // Draw input window border and title
   wclear(viewer->grep_input_win);
   box(viewer->grep_input_win, 0, 0);
   mvwprintw(viewer->grep_input_win, 0, 2, " %s ", mode_name);
   wrefresh(viewer->grep_input_win);
-  
+
   // Draw list window border
   wclear(viewer->grep_list_win);
   box(viewer->grep_list_win, 0, 0);
@@ -7604,15 +7733,20 @@ void create_grep_windows_with_borders(NCursesDiffViewer *viewer) {
  * Main grep search render function with granular updates
  */
 void render_grep_search(NCursesDiffViewer *viewer) {
-  if (!viewer || !viewer->grep_search_active) return;
-  if (!viewer->grep_input_win || !viewer->grep_list_win) return;
-  
+  if (!viewer || !viewer->grep_search_active)
+    return;
+  if (!viewer->grep_input_win || !viewer->grep_list_win)
+    return;
+
   // Check what specifically needs to be redrawn
-  int query_changed = strcmp(viewer->grep_search_query, viewer->grep_last_query) != 0;
-  int selection_changed = viewer->grep_selected_index != viewer->grep_last_selected;
+  int query_changed =
+      strcmp(viewer->grep_search_query, viewer->grep_last_query) != 0;
+  int selection_changed =
+      viewer->grep_selected_index != viewer->grep_last_selected;
   int scroll_changed = viewer->grep_scroll_offset != viewer->grep_last_scroll;
-  int results_changed = viewer->grep_filtered_count != viewer->grep_last_filtered_count;
-  
+  int results_changed =
+      viewer->grep_filtered_count != viewer->grep_last_filtered_count;
+
   // Full redraw needed on first render
   if (viewer->grep_needs_full_redraw) {
     create_grep_windows_with_borders(viewer);
@@ -7625,13 +7759,14 @@ void render_grep_search(NCursesDiffViewer *viewer) {
     render_grep_input(viewer);
     viewer->grep_needs_input_redraw = 0;
   }
-  
+
   // Redraw list if results, selection, or scroll changed
-  if (results_changed || selection_changed || scroll_changed || viewer->grep_needs_list_redraw) {
+  if (results_changed || selection_changed || scroll_changed ||
+      viewer->grep_needs_list_redraw) {
     render_grep_list_content(viewer);
     viewer->grep_needs_list_redraw = 0;
   }
-  
+
   // Update last rendered state
   strcpy(viewer->grep_last_query, viewer->grep_search_query);
   viewer->grep_last_selected = viewer->grep_selected_index;
@@ -7643,61 +7778,64 @@ void render_grep_search(NCursesDiffViewer *viewer) {
  * Handle grep search input
  */
 int handle_grep_search_input(NCursesDiffViewer *viewer, int key) {
-  if (!viewer || !viewer->grep_search_active) return 0;
-  
+  if (!viewer || !viewer->grep_search_active)
+    return 0;
+
   switch (key) {
-    case 27: // ESC
+  case 27: // ESC
+    exit_grep_search_mode(viewer);
+    return 1;
+
+  case KEY_ENTER:
+  case '\n':
+  case '\r':
+    if (viewer->grep_filtered_count > 0) {
+      select_grep_item(viewer);
       exit_grep_search_mode(viewer);
-      return 1;
-      
-    case KEY_ENTER:
-    case '\n':
-    case '\r':
-      if (viewer->grep_filtered_count > 0) {
-        select_grep_item(viewer);
-        exit_grep_search_mode(viewer);
+    }
+    return 1;
+
+  case KEY_UP:
+    if (viewer->grep_selected_index > 0) {
+      viewer->grep_selected_index--;
+      // Adjust scroll if needed
+      if (viewer->grep_selected_index < viewer->grep_scroll_offset) {
+        viewer->grep_scroll_offset = viewer->grep_selected_index;
       }
-      return 1;
-      
-    case KEY_UP:
-      if (viewer->grep_selected_index > 0) {
-        viewer->grep_selected_index--;
-        // Adjust scroll if needed
-        if (viewer->grep_selected_index < viewer->grep_scroll_offset) {
-          viewer->grep_scroll_offset = viewer->grep_selected_index;
-        }
+    }
+    return 1;
+
+  case KEY_DOWN:
+    if (viewer->grep_selected_index < viewer->grep_filtered_count - 1) {
+      viewer->grep_selected_index++;
+      // Adjust scroll if needed
+      int list_height = getmaxy(viewer->grep_list_win) - 2;
+      if (viewer->grep_selected_index >=
+          viewer->grep_scroll_offset + list_height) {
+        viewer->grep_scroll_offset =
+            viewer->grep_selected_index - list_height + 1;
       }
-      return 1;
-      
-    case KEY_DOWN:
-      if (viewer->grep_selected_index < viewer->grep_filtered_count - 1) {
-        viewer->grep_selected_index++;
-        // Adjust scroll if needed
-        int list_height = getmaxy(viewer->grep_list_win) - 2;
-        if (viewer->grep_selected_index >= viewer->grep_scroll_offset + list_height) {
-          viewer->grep_scroll_offset = viewer->grep_selected_index - list_height + 1;
-        }
-      }
-      return 1;
-      
-    case KEY_BACKSPACE:
-    case 127:
-    case '\b':
-      if (viewer->grep_search_query_len > 0) {
-        viewer->grep_search_query_len--;
-        viewer->grep_search_query[viewer->grep_search_query_len] = '\0';
-        update_grep_filter(viewer);
-      }
-      return 1;
-      
-    default:
-      // Add printable characters to search query
-      if (key >= 32 && key <= 126 && viewer->grep_search_query_len < 255) {
-        viewer->grep_search_query[viewer->grep_search_query_len++] = key;
-        viewer->grep_search_query[viewer->grep_search_query_len] = '\0';
-        update_grep_filter(viewer);
-      }
-      return 1;
+    }
+    return 1;
+
+  case KEY_BACKSPACE:
+  case 127:
+  case '\b':
+    if (viewer->grep_search_query_len > 0) {
+      viewer->grep_search_query_len--;
+      viewer->grep_search_query[viewer->grep_search_query_len] = '\0';
+      update_grep_filter(viewer);
+    }
+    return 1;
+
+  default:
+    // Add printable characters to search query
+    if (key >= 32 && key <= 126 && viewer->grep_search_query_len < 255) {
+      viewer->grep_search_query[viewer->grep_search_query_len++] = key;
+      viewer->grep_search_query[viewer->grep_search_query_len] = '\0';
+      update_grep_filter(viewer);
+    }
+    return 1;
   }
 }
 
@@ -7705,42 +7843,44 @@ int handle_grep_search_input(NCursesDiffViewer *viewer, int key) {
  * Select item from grep search results
  */
 void select_grep_item(NCursesDiffViewer *viewer) {
-  if (!viewer || viewer->grep_filtered_count == 0) return;
-  
+  if (!viewer || viewer->grep_filtered_count == 0)
+    return;
+
   // Get the actual item index from scored results
-  int item_index = viewer->grep_scored_items[viewer->grep_selected_index].item_index;
-  
+  int item_index =
+      viewer->grep_scored_items[viewer->grep_selected_index].item_index;
+
   // Update the main selection based on mode
   switch (viewer->grep_search_mode) {
-    case NCURSES_MODE_COMMIT_LIST:
-      viewer->selected_commit = item_index;
-      viewer->current_mode = NCURSES_MODE_COMMIT_VIEW;
-      // Load the selected commit for viewing
-      if (item_index >= 0 && item_index < viewer->commit_count) {
-        load_commit_for_viewing(viewer, viewer->commits[item_index].hash);
-      }
-      break;
-      
-    case NCURSES_MODE_STASH_LIST:
-      viewer->selected_stash = item_index;
-      viewer->current_mode = NCURSES_MODE_STASH_VIEW;
-      // Load the selected stash for viewing
-      if (item_index >= 0 && item_index < viewer->stash_count) {
-        load_stash_for_viewing(viewer, item_index);
-      }
-      break;
-      
-    case NCURSES_MODE_BRANCH_LIST:
-      viewer->selected_branch = item_index;
-      viewer->current_mode = NCURSES_MODE_BRANCH_VIEW;
-      // Load commits for the selected branch
-      if (item_index >= 0 && item_index < viewer->branch_count) {
-        load_branch_commits(viewer, viewer->branches[item_index].name);
-        parse_branch_commits_to_lines(viewer);
-      }
-      break;
-      
-    default:
-      break;
+  case NCURSES_MODE_COMMIT_LIST:
+    viewer->selected_commit = item_index;
+    viewer->current_mode = NCURSES_MODE_COMMIT_VIEW;
+    // Load the selected commit for viewing
+    if (item_index >= 0 && item_index < viewer->commit_count) {
+      load_commit_for_viewing(viewer, viewer->commits[item_index].hash);
+    }
+    break;
+
+  case NCURSES_MODE_STASH_LIST:
+    viewer->selected_stash = item_index;
+    viewer->current_mode = NCURSES_MODE_STASH_VIEW;
+    // Load the selected stash for viewing
+    if (item_index >= 0 && item_index < viewer->stash_count) {
+      load_stash_for_viewing(viewer, item_index);
+    }
+    break;
+
+  case NCURSES_MODE_BRANCH_LIST:
+    viewer->selected_branch = item_index;
+    viewer->current_mode = NCURSES_MODE_BRANCH_VIEW;
+    // Load commits for the selected branch
+    if (item_index >= 0 && item_index < viewer->branch_count) {
+      load_branch_commits(viewer, viewer->branches[item_index].name);
+      parse_branch_commits_to_lines(viewer);
+    }
+    break;
+
+  default:
+    break;
   }
 }

@@ -45,8 +45,9 @@ void handle_terminal_resize(NCursesDiffViewer *viewer) {
   if (viewer->status_bar_win)
     delwin(viewer->status_bar_win);
 
-  // Clean up fuzzy search windows during resize
+  // Clean up search windows during resize
   cleanup_fuzzy_search(viewer);
+  cleanup_grep_search(viewer);
 
   // Reinitialize ncurses with new terminal size
   endwin();
@@ -106,6 +107,9 @@ int init_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
   
   // Initialize fuzzy search
   init_fuzzy_search(viewer);
+  
+  // Initialize grep search
+  init_grep_search(viewer);
   
   viewer->selected_file = 0;
   viewer->file_scroll_offset = 0;
@@ -3221,6 +3225,11 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
   if (viewer->fuzzy_search_active) {
     return handle_fuzzy_search_input(viewer, key);
   }
+  
+  // Handle grep search input if active
+  if (viewer->grep_search_active) {
+    return handle_grep_search_input(viewer, key);
+  }
 
   int max_lines_visible = viewer->terminal_height - 4;
 
@@ -3734,6 +3743,10 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
         render_status_bar(viewer);
       }
       break;
+      
+    case '/': // Forward slash - enter grep search mode
+      enter_grep_search_mode(viewer);
+      break;
     }
   } else if (viewer->current_mode == NCURSES_MODE_STASH_LIST) {
     // Stash list mode navigation
@@ -3860,6 +3873,10 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
         }
         viewer->critical_operation_in_progress = 0;
       }
+      break;
+      
+    case '/': // Forward slash - enter grep search mode
+      enter_grep_search_mode(viewer);
       break;
     }
   } else if (viewer->current_mode == NCURSES_MODE_BRANCH_LIST) {
@@ -4184,6 +4201,10 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
         viewer->critical_operation_in_progress = 0;
       }
       break;
+      
+    case '/': // Forward slash - enter grep search mode
+      enter_grep_search_mode(viewer);
+      break;
     }
   } else if (viewer->current_mode == NCURSES_MODE_COMMIT_VIEW) {
     // Commit view mode navigation (same as file view)
@@ -4483,6 +4504,7 @@ int run_ncurses_diff_viewer(void) {
   render_stash_list_window(&viewer);
   render_status_bar(&viewer);
   render_fuzzy_search(&viewer);
+  render_grep_search(&viewer);
 
   // Main display loop
   int running = 1;
@@ -4528,8 +4550,8 @@ int run_ncurses_diff_viewer(void) {
     // Update preview based on current selection
     update_preview_for_current_selection(&viewer);
 
-    // Skip main window rendering if fuzzy search is active to prevent flickering
-    if (!viewer.fuzzy_search_active) {
+    // Skip main window rendering if fuzzy or grep search is active to prevent flickering
+    if (!viewer.fuzzy_search_active && !viewer.grep_search_active) {
       render_file_list_window(&viewer);
       render_file_content_window(&viewer);
       render_commit_list_window(&viewer);
@@ -4538,8 +4560,9 @@ int run_ncurses_diff_viewer(void) {
       render_status_bar(&viewer);
     }
     
-    // Always render fuzzy search (it handles its own visibility)
+    // Always render search overlays (they handle their own visibility)
     render_fuzzy_search(&viewer);
+    render_grep_search(&viewer);
 
     // Keep cursor hidden
     curs_set(0);
@@ -6638,6 +6661,9 @@ void cleanup_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
     
     // Clean up fuzzy search windows
     cleanup_fuzzy_search(viewer);
+    
+    // Clean up grep search windows
+    cleanup_grep_search(viewer);
   }
   endwin();
 }
@@ -7080,5 +7106,496 @@ void select_fuzzy_file(NCursesDiffViewer *viewer) {
     // Store current file path
     strncpy(viewer->current_file_path, filename, sizeof(viewer->current_file_path) - 1);
     viewer->current_file_path[sizeof(viewer->current_file_path) - 1] = '\0';
+  }
+}
+
+/**
+ * Initialize grep search state
+ */
+void init_grep_search(NCursesDiffViewer *viewer) {
+  if (!viewer) return;
+  
+  viewer->grep_search_active = 0;
+  viewer->grep_search_mode = NCURSES_MODE_FILE_LIST;
+  viewer->grep_search_query[0] = '\0';
+  viewer->grep_search_query_len = 0;
+  viewer->grep_filtered_count = 0;
+  viewer->grep_selected_index = 0;
+  viewer->grep_scroll_offset = 0;
+  viewer->grep_input_win = NULL;
+  viewer->grep_list_win = NULL;
+  
+  // Initialize state tracking
+  viewer->grep_needs_full_redraw = 0;
+  viewer->grep_needs_input_redraw = 0;
+  viewer->grep_needs_list_redraw = 0;
+  viewer->grep_last_query[0] = '\0';
+  viewer->grep_last_selected = -1;
+  viewer->grep_last_scroll = -1;
+  viewer->grep_last_filtered_count = -1;
+}
+
+/**
+ * Cleanup grep search windows
+ */
+void cleanup_grep_search(NCursesDiffViewer *viewer) {
+  if (!viewer) return;
+  
+  if (viewer->grep_input_win) {
+    delwin(viewer->grep_input_win);
+    viewer->grep_input_win = NULL;
+  }
+  if (viewer->grep_list_win) {
+    delwin(viewer->grep_list_win);
+    viewer->grep_list_win = NULL;
+  }
+}
+
+/**
+ * Calculate grep match score for text content
+ */
+int calculate_grep_score(const char *pattern, const char *text) {
+  if (!pattern || !text) return 0;
+  if (strlen(pattern) == 0) return 1000; // Empty pattern matches everything
+  
+  int pattern_len = strlen(pattern);
+  int text_len = strlen(text);
+  
+  if (pattern_len > text_len) return 0;
+  
+  int score = 0;
+  int pattern_pos = 0;
+  int consecutive_matches = 0;
+  int first_char_bonus = 0;
+  
+  for (int i = 0; i < text_len && pattern_pos < pattern_len; i++) {
+    char p_char = tolower(pattern[pattern_pos]);
+    char t_char = tolower(text[i]);
+    
+    if (p_char == t_char) {
+      // Base score for character match
+      score += 1;
+      
+      // Bonus for consecutive matches
+      consecutive_matches++;
+      score += consecutive_matches * 3;
+      
+      // Bonus for matching at word boundaries
+      if (i == 0 || text[i-1] == ' ' || text[i-1] == '-' || text[i-1] == '_') {
+        score += 10;
+      }
+      
+      // Bonus for matching first character
+      if (pattern_pos == 0 && i == 0) {
+        first_char_bonus = 30;
+      }
+      
+      // Bonus for exact position match
+      if (i == pattern_pos) {
+        score += 5;
+      }
+      
+      pattern_pos++;
+    } else {
+      consecutive_matches = 0;
+    }
+  }
+  
+  // Must match all pattern characters
+  if (pattern_pos < pattern_len) return 0;
+  
+  score += first_char_bonus;
+  score += (50 - text_len); // Prefer shorter text
+  score += (30 - (text_len - pattern_len)); // Fewer unmatched chars
+  
+  return score;
+}
+
+/**
+ * Compare function for sorting grep scored items
+ */
+int compare_grep_scored_items(const void *a, const void *b) {
+  const struct {int item_index; int score;} *item_a = a;
+  const struct {int item_index; int score;} *item_b = b;
+  return item_b->score - item_a->score; // Descending order
+}
+
+/**
+ * Update grep search filter based on current query and mode
+ */
+void update_grep_filter(NCursesDiffViewer *viewer) {
+  if (!viewer) return;
+  
+  viewer->grep_filtered_count = 0;
+  viewer->grep_selected_index = 0;
+  viewer->grep_scroll_offset = 0;
+  
+  // Search different data based on current mode
+  switch (viewer->grep_search_mode) {
+    case NCURSES_MODE_COMMIT_LIST:
+      // Search commit titles
+      for (int i = 0; i < viewer->commit_count && viewer->grep_filtered_count < MAX_COMMITS; i++) {
+        int score = calculate_grep_score(viewer->grep_search_query, viewer->commits[i].title);
+        if (score > 0) {
+          viewer->grep_scored_items[viewer->grep_filtered_count].item_index = i;
+          viewer->grep_scored_items[viewer->grep_filtered_count].score = score;
+          viewer->grep_filtered_count++;
+        }
+      }
+      break;
+      
+    case NCURSES_MODE_STASH_LIST:
+      // Search stash info
+      for (int i = 0; i < viewer->stash_count && viewer->grep_filtered_count < MAX_COMMITS; i++) {
+        int score = calculate_grep_score(viewer->grep_search_query, viewer->stashes[i].stash_info);
+        if (score > 0) {
+          viewer->grep_scored_items[viewer->grep_filtered_count].item_index = i;
+          viewer->grep_scored_items[viewer->grep_filtered_count].score = score;
+          viewer->grep_filtered_count++;
+        }
+      }
+      break;
+      
+    case NCURSES_MODE_BRANCH_LIST:
+      // Search branch names
+      for (int i = 0; i < viewer->branch_count && viewer->grep_filtered_count < MAX_COMMITS; i++) {
+        int score = calculate_grep_score(viewer->grep_search_query, viewer->branches[i].name);
+        if (score > 0) {
+          viewer->grep_scored_items[viewer->grep_filtered_count].item_index = i;
+          viewer->grep_scored_items[viewer->grep_filtered_count].score = score;
+          viewer->grep_filtered_count++;
+        }
+      }
+      break;
+      
+    default:
+      // No grep search for other modes
+      break;
+  }
+  
+  // Sort results by score
+  if (viewer->grep_filtered_count > 1) {
+    qsort(viewer->grep_scored_items, viewer->grep_filtered_count,
+          sizeof(viewer->grep_scored_items[0]), compare_grep_scored_items);
+  }
+}
+
+/**
+ * Enter grep search mode for current view mode
+ */
+void enter_grep_search_mode(NCursesDiffViewer *viewer) {
+  if (!viewer) return;
+  
+  // Only allow grep search in specific modes
+  if (viewer->current_mode != NCURSES_MODE_COMMIT_LIST &&
+      viewer->current_mode != NCURSES_MODE_STASH_LIST &&
+      viewer->current_mode != NCURSES_MODE_BRANCH_LIST) {
+    return;
+  }
+  
+  viewer->grep_search_active = 1;
+  viewer->grep_search_mode = viewer->current_mode;
+  viewer->grep_search_query[0] = '\0';
+  viewer->grep_search_query_len = 0;
+  
+  // Create grep search windows
+  int input_height = 3;
+  int list_height = viewer->terminal_height - input_height - 4;
+  int width = viewer->terminal_width - 4;
+  int start_y = (viewer->terminal_height - input_height - list_height) / 2;
+  int start_x = 2;
+  
+  viewer->grep_input_win = newwin(input_height, width, start_y, start_x);
+  viewer->grep_list_win = newwin(list_height, width, start_y + input_height, start_x);
+  
+  // Initialize with all items
+  update_grep_filter(viewer);
+  
+  // Force initial full redraw
+  viewer->grep_needs_full_redraw = 1;
+}
+
+/**
+ * Exit grep search mode
+ */
+void exit_grep_search_mode(NCursesDiffViewer *viewer) {
+  if (!viewer) return;
+  
+  viewer->grep_search_active = 0;
+  cleanup_grep_search(viewer);
+  
+  // Force redraw of main windows next time
+  touchwin(stdscr);
+  refresh();
+}
+
+/**
+ * Render grep search input field only
+ */
+void render_grep_input(NCursesDiffViewer *viewer) {
+  if (!viewer->grep_input_win) return;
+  
+  // Clear only the content area, not the border
+  for (int y = 1; y < getmaxy(viewer->grep_input_win) - 1; y++) {
+    for (int x = 1; x < getmaxx(viewer->grep_input_win) - 1; x++) {
+      mvwaddch(viewer->grep_input_win, y, x, ' ');
+    }
+  }
+  
+  // Show current query
+  mvwprintw(viewer->grep_input_win, 1, 2, "> %s", viewer->grep_search_query);
+  
+  // Show cursor
+  int cursor_x = 4 + viewer->grep_search_query_len;
+  if (cursor_x < getmaxx(viewer->grep_input_win) - 1) {
+    mvwaddch(viewer->grep_input_win, 1, cursor_x, '_');
+  }
+  
+  wrefresh(viewer->grep_input_win);
+}
+
+/**
+ * Render grep search list content only (no borders)
+ */
+void render_grep_list_content(NCursesDiffViewer *viewer) {
+  if (!viewer->grep_list_win) return;
+  
+  int list_height = getmaxy(viewer->grep_list_win) - 2;
+  int list_width = getmaxx(viewer->grep_list_win) - 4;
+  
+  // Clear only the content area, not the border
+  for (int y = 1; y <= list_height; y++) {
+    for (int x = 1; x < getmaxx(viewer->grep_list_win) - 1; x++) {
+      mvwaddch(viewer->grep_list_win, y, x, ' ');
+    }
+  }
+  
+  // Show filtered results
+  for (int i = 0; i < viewer->grep_filtered_count && i < list_height; i++) {
+    int display_index = i + viewer->grep_scroll_offset;
+    if (display_index >= viewer->grep_filtered_count) break;
+    
+    int item_index = viewer->grep_scored_items[display_index].item_index;
+    char display_text[512] = "";
+    
+    // Get display text based on mode
+    switch (viewer->grep_search_mode) {
+      case NCURSES_MODE_COMMIT_LIST:
+        snprintf(display_text, sizeof(display_text), "%s %s", 
+                viewer->commits[item_index].hash, viewer->commits[item_index].title);
+        break;
+      case NCURSES_MODE_STASH_LIST:
+        strncpy(display_text, viewer->stashes[item_index].stash_info, sizeof(display_text) - 1);
+        break;
+      case NCURSES_MODE_BRANCH_LIST:
+        strncpy(display_text, viewer->branches[item_index].name, sizeof(display_text) - 1);
+        break;
+      default:
+        strcpy(display_text, "Unknown");
+        break;
+    }
+    display_text[sizeof(display_text) - 1] = '\0';
+    
+    // Highlight selected item
+    if (display_index == viewer->grep_selected_index) {
+      wattron(viewer->grep_list_win, A_REVERSE);
+    }
+    
+    // Show item text
+    mvwprintw(viewer->grep_list_win, i + 1, 2, "%-*.*s", 
+              list_width - 2, list_width - 2, display_text);
+    
+    if (display_index == viewer->grep_selected_index) {
+      wattroff(viewer->grep_list_win, A_REVERSE);
+    }
+  }
+  
+  // Show result count
+  if (viewer->grep_filtered_count > 0) {
+    mvwprintw(viewer->grep_list_win, 0, getmaxx(viewer->grep_list_win) - 15, 
+              " %d/%d ", viewer->grep_selected_index + 1, viewer->grep_filtered_count);
+  } else {
+    mvwprintw(viewer->grep_list_win, 0, getmaxx(viewer->grep_list_win) - 10, " 0/0 ");
+  }
+  
+  wrefresh(viewer->grep_list_win);
+}
+
+/**
+ * Create grep search windows with borders (one-time setup)
+ */
+void create_grep_windows_with_borders(NCursesDiffViewer *viewer) {
+  if (!viewer->grep_input_win || !viewer->grep_list_win) return;
+  
+  // Get mode name for title
+  const char *mode_name = "Search";
+  switch (viewer->grep_search_mode) {
+    case NCURSES_MODE_COMMIT_LIST:
+      mode_name = "Commit Grep";
+      break;
+    case NCURSES_MODE_STASH_LIST:
+      mode_name = "Stash Grep";
+      break;
+    case NCURSES_MODE_BRANCH_LIST:
+      mode_name = "Branch Grep";
+      break;
+    default:
+      break;
+  }
+  
+  // Draw input window border and title
+  wclear(viewer->grep_input_win);
+  box(viewer->grep_input_win, 0, 0);
+  mvwprintw(viewer->grep_input_win, 0, 2, " %s ", mode_name);
+  wrefresh(viewer->grep_input_win);
+  
+  // Draw list window border
+  wclear(viewer->grep_list_win);
+  box(viewer->grep_list_win, 0, 0);
+  wrefresh(viewer->grep_list_win);
+}
+
+/**
+ * Main grep search render function with granular updates
+ */
+void render_grep_search(NCursesDiffViewer *viewer) {
+  if (!viewer || !viewer->grep_search_active) return;
+  if (!viewer->grep_input_win || !viewer->grep_list_win) return;
+  
+  // Check what specifically needs to be redrawn
+  int query_changed = strcmp(viewer->grep_search_query, viewer->grep_last_query) != 0;
+  int selection_changed = viewer->grep_selected_index != viewer->grep_last_selected;
+  int scroll_changed = viewer->grep_scroll_offset != viewer->grep_last_scroll;
+  int results_changed = viewer->grep_filtered_count != viewer->grep_last_filtered_count;
+  
+  // Full redraw needed on first render
+  if (viewer->grep_needs_full_redraw) {
+    create_grep_windows_with_borders(viewer);
+    render_grep_input(viewer);
+    render_grep_list_content(viewer);
+    viewer->grep_needs_full_redraw = 0;
+  }
+  // Redraw input field if query changed
+  else if (query_changed || viewer->grep_needs_input_redraw) {
+    render_grep_input(viewer);
+    viewer->grep_needs_input_redraw = 0;
+  }
+  
+  // Redraw list if results, selection, or scroll changed
+  if (results_changed || selection_changed || scroll_changed || viewer->grep_needs_list_redraw) {
+    render_grep_list_content(viewer);
+    viewer->grep_needs_list_redraw = 0;
+  }
+  
+  // Update last rendered state
+  strcpy(viewer->grep_last_query, viewer->grep_search_query);
+  viewer->grep_last_selected = viewer->grep_selected_index;
+  viewer->grep_last_scroll = viewer->grep_scroll_offset;
+  viewer->grep_last_filtered_count = viewer->grep_filtered_count;
+}
+
+/**
+ * Handle grep search input
+ */
+int handle_grep_search_input(NCursesDiffViewer *viewer, int key) {
+  if (!viewer || !viewer->grep_search_active) return 0;
+  
+  switch (key) {
+    case 27: // ESC
+      exit_grep_search_mode(viewer);
+      return 1;
+      
+    case KEY_ENTER:
+    case '\n':
+    case '\r':
+      if (viewer->grep_filtered_count > 0) {
+        select_grep_item(viewer);
+        exit_grep_search_mode(viewer);
+      }
+      return 1;
+      
+    case KEY_UP:
+      if (viewer->grep_selected_index > 0) {
+        viewer->grep_selected_index--;
+        // Adjust scroll if needed
+        if (viewer->grep_selected_index < viewer->grep_scroll_offset) {
+          viewer->grep_scroll_offset = viewer->grep_selected_index;
+        }
+      }
+      return 1;
+      
+    case KEY_DOWN:
+      if (viewer->grep_selected_index < viewer->grep_filtered_count - 1) {
+        viewer->grep_selected_index++;
+        // Adjust scroll if needed
+        int list_height = getmaxy(viewer->grep_list_win) - 2;
+        if (viewer->grep_selected_index >= viewer->grep_scroll_offset + list_height) {
+          viewer->grep_scroll_offset = viewer->grep_selected_index - list_height + 1;
+        }
+      }
+      return 1;
+      
+    case KEY_BACKSPACE:
+    case 127:
+    case '\b':
+      if (viewer->grep_search_query_len > 0) {
+        viewer->grep_search_query_len--;
+        viewer->grep_search_query[viewer->grep_search_query_len] = '\0';
+        update_grep_filter(viewer);
+      }
+      return 1;
+      
+    default:
+      // Add printable characters to search query
+      if (key >= 32 && key <= 126 && viewer->grep_search_query_len < 255) {
+        viewer->grep_search_query[viewer->grep_search_query_len++] = key;
+        viewer->grep_search_query[viewer->grep_search_query_len] = '\0';
+        update_grep_filter(viewer);
+      }
+      return 1;
+  }
+}
+
+/**
+ * Select item from grep search results
+ */
+void select_grep_item(NCursesDiffViewer *viewer) {
+  if (!viewer || viewer->grep_filtered_count == 0) return;
+  
+  // Get the actual item index from scored results
+  int item_index = viewer->grep_scored_items[viewer->grep_selected_index].item_index;
+  
+  // Update the main selection based on mode
+  switch (viewer->grep_search_mode) {
+    case NCURSES_MODE_COMMIT_LIST:
+      viewer->selected_commit = item_index;
+      viewer->current_mode = NCURSES_MODE_COMMIT_VIEW;
+      // Load the selected commit for viewing
+      if (item_index >= 0 && item_index < viewer->commit_count) {
+        load_commit_for_viewing(viewer, viewer->commits[item_index].hash);
+      }
+      break;
+      
+    case NCURSES_MODE_STASH_LIST:
+      viewer->selected_stash = item_index;
+      viewer->current_mode = NCURSES_MODE_STASH_VIEW;
+      // Load the selected stash for viewing
+      if (item_index >= 0 && item_index < viewer->stash_count) {
+        load_stash_for_viewing(viewer, item_index);
+      }
+      break;
+      
+    case NCURSES_MODE_BRANCH_LIST:
+      viewer->selected_branch = item_index;
+      viewer->current_mode = NCURSES_MODE_BRANCH_VIEW;
+      // Load commits for the selected branch
+      if (item_index >= 0 && item_index < viewer->branch_count) {
+        load_branch_commits(viewer, viewer->branches[item_index].name);
+        parse_branch_commits_to_lines(viewer);
+      }
+      break;
+      
+    default:
+      break;
   }
 }

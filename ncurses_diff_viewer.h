@@ -180,6 +180,33 @@ typedef struct {
   int fuzzy_last_scroll;                      // Last rendered scroll position
   int fuzzy_last_filtered_count;              // Last rendered result count
 
+  // Generic grep search state (for commits, stashes, branches)
+  int grep_search_active;                     // 1 if grep search is active
+  NCursesViewMode grep_search_mode;           // Which mode grep is searching in
+  char grep_search_query[256];                // Current search query
+  int grep_search_query_len;                  // Length of current query
+  
+  // Scored grep search results
+  struct {
+    int item_index;
+    int score;
+  } grep_scored_items[MAX_COMMITS];           // Scored and sorted results (reuse MAX_COMMITS)
+  
+  int grep_filtered_count;                    // Number of filtered items
+  int grep_selected_index;                    // Currently selected in grep list
+  int grep_scroll_offset;                     // Scroll position in grep list
+  WINDOW *grep_input_win;                     // Input window for search
+  WINDOW *grep_list_win;                      // Results list window
+  
+  // State tracking for grep search rendering
+  int grep_needs_full_redraw;                 // 1 if full redraw needed
+  int grep_needs_input_redraw;                // 1 if input field needs redraw
+  int grep_needs_list_redraw;                 // 1 if item list needs redraw
+  char grep_last_query[256];                  // Last rendered query
+  int grep_last_selected;                     // Last rendered selection
+  int grep_last_scroll;                       // Last rendered scroll position
+  int grep_last_filtered_count;               // Last rendered result count
+
 } NCursesDiffViewer;
 
 /**
@@ -482,5 +509,50 @@ int handle_fuzzy_search_input(NCursesDiffViewer *viewer, int key);
  * Select file from fuzzy search results
  */
 void select_fuzzy_file(NCursesDiffViewer *viewer);
+
+/**
+ * Initialize grep search state
+ */
+void init_grep_search(NCursesDiffViewer *viewer);
+
+/**
+ * Cleanup grep search windows
+ */
+void cleanup_grep_search(NCursesDiffViewer *viewer);
+
+/**
+ * Enter grep search mode for current view mode
+ */
+void enter_grep_search_mode(NCursesDiffViewer *viewer);
+
+/**
+ * Exit grep search mode
+ */
+void exit_grep_search_mode(NCursesDiffViewer *viewer);
+
+/**
+ * Update grep search filter based on current query and mode
+ */
+void update_grep_filter(NCursesDiffViewer *viewer);
+
+/**
+ * Render grep search UI
+ */
+void render_grep_search(NCursesDiffViewer *viewer);
+
+/**
+ * Handle grep search input
+ */
+int handle_grep_search_input(NCursesDiffViewer *viewer, int key);
+
+/**
+ * Select item from grep search results
+ */
+void select_grep_item(NCursesDiffViewer *viewer);
+
+/**
+ * Calculate grep match score for text content
+ */
+int calculate_grep_score(const char *pattern, const char *text);
 
 #endif // NCURSES_DIFF_VIEWER_H

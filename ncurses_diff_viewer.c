@@ -2423,10 +2423,23 @@ void render_commit_list_window(NCursesDiffViewer *viewer) {
     // Check if this commit line should be highlighted
     int is_selected_commit = (i == viewer->selected_commit &&
                               viewer->current_mode == NCURSES_MODE_COMMIT_LIST);
+    
+    // Check if this commit is currently being viewed
+    int is_being_viewed = (i == viewer->selected_commit &&
+                           viewer->current_mode == NCURSES_MODE_COMMIT_VIEW);
 
     // Apply line highlight if selected
     if (is_selected_commit) {
       wattron(viewer->commit_list_win, COLOR_PAIR(5));
+    }
+
+    // Show view indicator (currently being viewed)
+    if (is_being_viewed) {
+      wattron(viewer->commit_list_win, COLOR_PAIR(1)); // Green for active view
+      mvwprintw(viewer->commit_list_win, y, 0, "*");
+      wattroff(viewer->commit_list_win, COLOR_PAIR(1));
+    } else {
+      mvwprintw(viewer->commit_list_win, y, 0, " ");
     }
 
     // Show selection indicator
@@ -5528,10 +5541,23 @@ void render_stash_list_window(NCursesDiffViewer *viewer) {
       // Check if this stash line should be highlighted
       int is_selected_stash = (i == viewer->selected_stash &&
                                viewer->current_mode == NCURSES_MODE_STASH_LIST);
+      
+      // Check if this stash is currently being viewed
+      int is_being_viewed = (i == viewer->selected_stash &&
+                             viewer->current_mode == NCURSES_MODE_STASH_VIEW);
 
       // Apply line highlight if selected
       if (is_selected_stash) {
         wattron(viewer->stash_list_win, COLOR_PAIR(5));
+      }
+
+      // Show view indicator (currently being viewed)
+      if (is_being_viewed) {
+        wattron(viewer->stash_list_win, COLOR_PAIR(1)); // Green for active view
+        mvwprintw(viewer->stash_list_win, y, 0, "*");
+        wattroff(viewer->stash_list_win, COLOR_PAIR(1));
+      } else {
+        mvwprintw(viewer->stash_list_win, y, 0, " ");
       }
 
       // Show selection indicator
@@ -7152,6 +7178,37 @@ void cleanup_grep_search(NCursesDiffViewer *viewer) {
 }
 
 /**
+ * Extract branch name from stash info
+ */
+void extract_branch_from_stash(const char *stash_info, char *branch_name, int max_len) {
+  if (!stash_info || !branch_name || max_len <= 0) return;
+  
+  branch_name[0] = '\0';
+  
+  // Look for "On " pattern in stash info
+  const char *on_pattern = "On ";
+  const char *on_pos = strstr(stash_info, on_pattern);
+  
+  if (on_pos) {
+    const char *branch_start = on_pos + strlen(on_pattern);
+    const char *branch_end = strchr(branch_start, ':');
+    
+    if (branch_end && branch_end > branch_start) {
+      int branch_len = branch_end - branch_start;
+      if (branch_len < max_len) {
+        strncpy(branch_name, branch_start, branch_len);
+        branch_name[branch_len] = '\0';
+        
+        // Trim trailing spaces
+        while (branch_len > 0 && branch_name[branch_len - 1] == ' ') {
+          branch_name[--branch_len] = '\0';
+        }
+      }
+    }
+  }
+}
+
+/**
  * Calculate grep match score for text content
  */
 int calculate_grep_score(const char *pattern, const char *text) {
@@ -7233,9 +7290,17 @@ void update_grep_filter(NCursesDiffViewer *viewer) {
   // Search different data based on current mode
   switch (viewer->grep_search_mode) {
     case NCURSES_MODE_COMMIT_LIST:
-      // Search commit titles
+      // Search commit titles and author initials
       for (int i = 0; i < viewer->commit_count && viewer->grep_filtered_count < MAX_COMMITS; i++) {
-        int score = calculate_grep_score(viewer->grep_search_query, viewer->commits[i].title);
+        // Try matching against title first
+        int title_score = calculate_grep_score(viewer->grep_search_query, viewer->commits[i].title);
+        
+        // Try matching against author initials
+        int author_score = calculate_grep_score(viewer->grep_search_query, viewer->commits[i].author_initials);
+        
+        // Use the higher score (prefer title matches over author matches)
+        int score = (title_score > author_score) ? title_score : author_score;
+        
         if (score > 0) {
           viewer->grep_scored_items[viewer->grep_filtered_count].item_index = i;
           viewer->grep_scored_items[viewer->grep_filtered_count].score = score;
@@ -7245,9 +7310,22 @@ void update_grep_filter(NCursesDiffViewer *viewer) {
       break;
       
     case NCURSES_MODE_STASH_LIST:
-      // Search stash info
+      // Search stash info and branch names
       for (int i = 0; i < viewer->stash_count && viewer->grep_filtered_count < MAX_COMMITS; i++) {
-        int score = calculate_grep_score(viewer->grep_search_query, viewer->stashes[i].stash_info);
+        // Try matching against full stash info first
+        int stash_score = calculate_grep_score(viewer->grep_search_query, viewer->stashes[i].stash_info);
+        
+        // Extract and try matching against branch name
+        char branch_name[64];
+        extract_branch_from_stash(viewer->stashes[i].stash_info, branch_name, sizeof(branch_name));
+        int branch_score = 0;
+        if (strlen(branch_name) > 0) {
+          branch_score = calculate_grep_score(viewer->grep_search_query, branch_name);
+        }
+        
+        // Use the higher score (prefer full stash info matches over branch-only matches)
+        int score = (stash_score > branch_score) ? stash_score : branch_score;
+        
         if (score > 0) {
           viewer->grep_scored_items[viewer->grep_filtered_count].item_index = i;
           viewer->grep_scored_items[viewer->grep_filtered_count].score = score;
@@ -7381,11 +7459,10 @@ void render_grep_list_content(NCursesDiffViewer *viewer) {
     // Get display text based on mode
     switch (viewer->grep_search_mode) {
       case NCURSES_MODE_COMMIT_LIST:
-        snprintf(display_text, sizeof(display_text), "%s %s", 
-                viewer->commits[item_index].hash, viewer->commits[item_index].title);
+        // For commits, we'll handle colors separately
         break;
       case NCURSES_MODE_STASH_LIST:
-        strncpy(display_text, viewer->stashes[item_index].stash_info, sizeof(display_text) - 1);
+        // For stashes, we'll handle special formatting to highlight branch
         break;
       case NCURSES_MODE_BRANCH_LIST:
         strncpy(display_text, viewer->branches[item_index].name, sizeof(display_text) - 1);
@@ -7401,9 +7478,77 @@ void render_grep_list_content(NCursesDiffViewer *viewer) {
       wattron(viewer->grep_list_win, A_REVERSE);
     }
     
-    // Show item text
-    mvwprintw(viewer->grep_list_win, i + 1, 2, "%-*.*s", 
-              list_width - 2, list_width - 2, display_text);
+    // Render based on mode with appropriate colors
+    if (viewer->grep_search_mode == NCURSES_MODE_COMMIT_LIST) {
+      // Render commit with colors: hash (yellow) + author initials (green) + title
+      int x_pos = 2;
+      
+      // Hash in yellow (COLOR_PAIR(10))
+      wattron(viewer->grep_list_win, COLOR_PAIR(10));
+      mvwprintw(viewer->grep_list_win, i + 1, x_pos, "%s", viewer->commits[item_index].hash);
+      wattroff(viewer->grep_list_win, COLOR_PAIR(10));
+      x_pos += strlen(viewer->commits[item_index].hash) + 1;
+      
+      // Author initials in green (COLOR_PAIR(8))
+      wattron(viewer->grep_list_win, COLOR_PAIR(8));
+      mvwprintw(viewer->grep_list_win, i + 1, x_pos, "%s", viewer->commits[item_index].author_initials);
+      wattroff(viewer->grep_list_win, COLOR_PAIR(8));
+      x_pos += strlen(viewer->commits[item_index].author_initials) + 1;
+      
+      // Title in default color
+      int remaining_width = list_width - (x_pos - 2);
+      if (remaining_width > 0) {
+        mvwprintw(viewer->grep_list_win, i + 1, x_pos, "%-*.*s", 
+                  remaining_width, remaining_width, viewer->commits[item_index].title);
+      }
+    } else if (viewer->grep_search_mode == NCURSES_MODE_STASH_LIST) {
+      // Render stash with branch name highlighted
+      const char *stash_info = viewer->stashes[item_index].stash_info;
+      char branch_name[64];
+      extract_branch_from_stash(stash_info, branch_name, sizeof(branch_name));
+      
+      // Find the "On branch_name:" part to highlight
+      char on_pattern[80];
+      snprintf(on_pattern, sizeof(on_pattern), "On %s:", branch_name);
+      const char *on_pos = strstr(stash_info, on_pattern);
+      
+      if (on_pos && strlen(branch_name) > 0) {
+        int x_pos = 2;
+        
+        // Render text before "On"
+        int before_len = on_pos - stash_info;
+        if (before_len > 0) {
+          mvwprintw(viewer->grep_list_win, i + 1, x_pos, "%.*s", before_len, stash_info);
+          x_pos += before_len;
+        }
+        
+        // Render "On " in default color
+        mvwprintw(viewer->grep_list_win, i + 1, x_pos, "On ");
+        x_pos += 3;
+        
+        // Render branch name in green (COLOR_PAIR(8))
+        wattron(viewer->grep_list_win, COLOR_PAIR(8));
+        mvwprintw(viewer->grep_list_win, i + 1, x_pos, "%s", branch_name);
+        wattroff(viewer->grep_list_win, COLOR_PAIR(8));
+        x_pos += strlen(branch_name);
+        
+        // Render remaining text after branch name
+        const char *after_pos = on_pos + strlen(on_pattern);
+        int remaining_width = list_width - (x_pos - 2);
+        if (remaining_width > 0 && *after_pos) {
+          mvwprintw(viewer->grep_list_win, i + 1, x_pos, ":%-*.*s", 
+                    remaining_width - 1, remaining_width - 1, after_pos);
+        }
+      } else {
+        // Fallback: render normally if no branch pattern found
+        mvwprintw(viewer->grep_list_win, i + 1, 2, "%-*.*s", 
+                  list_width - 2, list_width - 2, stash_info);
+      }
+    } else {
+      // Show item text for other modes (branches)
+      mvwprintw(viewer->grep_list_win, i + 1, 2, "%-*.*s", 
+                list_width - 2, list_width - 2, display_text);
+    }
     
     if (display_index == viewer->grep_selected_index) {
       wattroff(viewer->grep_list_win, A_REVERSE);

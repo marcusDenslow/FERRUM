@@ -555,4 +555,9 @@ void select_grep_item(NCursesDiffViewer *viewer);
  */
 int calculate_grep_score(const char *pattern, const char *text);
 
+/**
+ * Extract branch name from stash info
+ */
+void extract_branch_from_stash(const char *stash_info, char *branch_name, int max_len);
+
 #endif // NCURSES_DIFF_VIEWER_H

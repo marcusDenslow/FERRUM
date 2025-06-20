@@ -10,7 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>  // For stat
+#include <sys/stat.h> // For stat
 
 /**
  * Check if native fzf is installed on the system
@@ -68,7 +68,8 @@ char *run_native_fzf_files(int preview, char **args) {
   }
 
   // Build the command
-  char command[1024] = "find . -type f -not -path \"*/\.*\" -printf \"%P\\n\" | fzf";
+  char command[1024] =
+      "find . -type f -not -path \"*/\.*\" -printf \"%P\\n\" | fzf";
 
   // Add proper keybindings for both navigation and search toggle
   strcat(command, " --bind=\"ctrl-j:down,ctrl-k:up,/:toggle-search\"");
@@ -169,7 +170,8 @@ char *run_native_fzf_all(int recursive, char **args) {
   if (recursive) {
     strcpy(command, "find . -not -path \"*/\.*\" -printf \"%P\\n\" | fzf");
   } else {
-    strcpy(command, "find . -maxdepth 1 -not -path \"*/\.*\" -printf \"%P\\n\" | fzf");
+    strcpy(command,
+           "find . -maxdepth 1 -not -path \"*/\.*\" -printf \"%P\\n\" | fzf");
   }
 
   // Add proper keybindings for both navigation and search toggle
@@ -569,3 +571,5 @@ int lsh_fzf_native(char **args) {
 
   return 1;
 }
+
+// this is a change

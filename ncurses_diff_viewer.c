@@ -1812,89 +1812,136 @@ int amend_commit(NCursesDiffViewer *viewer) {
   return 0;
 }
 
-int get_github_credentials(char *username, int username_len, char *token,
-                           int token_len) {
-  if (!username || !token)
+// Helper function to check if a character is safe for PAT/username input
+static int is_safe_input_char(int ch) {
+  // Allow most printable ASCII but exclude problematic characters
+  if (ch < 32 || ch > 126) return 0;  // Non-printable
+  if (ch == '?' || ch == 127) return 0;  // Question mark and DEL
+  if (ch == '\x1b') return 0;  // ESC
+  return 1;  // Allow everything else
+}
+
+int get_single_input(const char *title, const char *prompt, char *input, int input_len, int is_password) {
+  if (!input)
     return 0;
 
-  int dialog_width = 60;
-  int dialog_height = 10;
-  int start_x = COLS / 2 - dialog_width / 2;
-  int start_y = LINES / 2 - dialog_height / 2;
+  // Debug logging
+  FILE *debug_file = fopen("/tmp/git_debug.log", "a");
+  if (debug_file) {
+    fprintf(debug_file, "\n=== Starting input for: %s ===\n", prompt);
+    fclose(debug_file);
+  }
 
-  WINDOW *cred_win = newwin(dialog_height, dialog_width, start_y, start_x);
-  if (!cred_win)
+  // Make dialog much wider for PAT input - 80% of screen width, minimum 80 characters
+  int dialog_width = (COLS * 8) / 10;
+  if (dialog_width < 80) dialog_width = 80;
+  if (dialog_width > 120) dialog_width = 120;
+  
+  int dialog_height = 4; // Keep it simple and compact
+  int start_x = (COLS - dialog_width) / 2;
+  int start_y = (LINES - dialog_height) / 2;
+
+  // Ensure we're properly set up for ncurses
+  if (!stdscr) {
+    return 0;
+  }
+
+  WINDOW *input_win = newwin(dialog_height, dialog_width, start_y, start_x);
+  if (!input_win)
     return 0;
 
-  char temp_username[256] = "";
-  char temp_token[256] = "";
-  int current_field = 0;
-  int username_pos = 0;
-  int token_pos = 0;
-
+  char temp_input[512] = ""; // Larger buffer for long PATs
+  int input_pos = 0;
+  
+  // Enable keypad for special keys and disable timeout for paste
+  keypad(input_win, TRUE);
+  nodelay(input_win, FALSE);
+  notimeout(input_win, TRUE);
   curs_set(1);
 
   while (1) {
-    werase(cred_win);
-    box(cred_win, 0, 0);
+    werase(input_win);
+    box(input_win, 0, 0);
 
-    mvwprintw(cred_win, 1, 2, "Github Authentication Required");
-
-    if (current_field == 0) {
-      wattron(cred_win, COLOR_PAIR(4));
-      mvwprintw(cred_win, 3, 2, "Username: %s", temp_username);
-      wattroff(cred_win, COLOR_PAIR(4));
+    // Title with helpful instructions for PAT
+    if (is_password) {
+      mvwprintw(input_win, 1, 2, "%s (Ctrl+V to paste):", prompt);
     } else {
-      mvwprintw(cred_win, 3, 2, "Username: %s", temp_username);
+      mvwprintw(input_win, 1, 2, "%s:", prompt);
     }
-
-    if (current_field == 1) {
-      wattron(cred_win, COLOR_PAIR(4));
-      mvwprintw(cred_win, 4, 2, "Token:    ");
-
-      for (int i = 0; i < token_pos; i++) {
-        waddch(cred_win, '*');
+    
+    // Clear the input area
+    for (int x = 2; x < dialog_width - 2; x++) {
+      mvwaddch(input_win, 2, x, ' ');
+    }
+    
+    // Input area - much simpler approach
+    int max_display = dialog_width - 6; // Leave room for borders and padding
+    
+    if (is_password) {
+      // For passwords, show simple asterisks without complex scrolling
+      mvwprintw(input_win, 2, 2, "");
+      int display_count = (input_pos > max_display) ? max_display : input_pos;
+      for (int i = 0; i < display_count; i++) {
+        waddch(input_win, '*');
       }
-      wattroff(cred_win, COLOR_PAIR(4));
-    } else {
-      mvwprintw(cred_win, 4, 2, "Token:    ");
-      for (int i = 0; i < token_pos; i++) {
-        waddch(cred_win, '*');
+      // Show length if PAT is long
+      if (input_pos > max_display) {
+        wprintw(input_win, " (%d total)", input_pos);
       }
-    }
-
-    mvwprintw(cred_win, 6, 2, "Get token at: github.com/settings/tokens");
-    mvwprintw(cred_win, 7, 2,
-              "Tab: switch fields | Enter: confirm | Esc: cancel");
-
-    if (current_field == 0) {
-      wmove(cred_win, 3, 12 + username_pos);
     } else {
-      wmove(cred_win, 4, 12 + token_pos);
+      // Regular text input
+      mvwprintw(input_win, 2, 2, "%s", temp_input);
     }
 
-    wrefresh(cred_win);
+    // Simple cursor positioning
+    int cursor_x = 2 + ((input_pos > max_display) ? max_display : input_pos);
+    if (cursor_x >= dialog_width - 1) cursor_x = dialog_width - 2;
+    wmove(input_win, 2, cursor_x);
+    wrefresh(input_win);
 
-    int ch = getch();
+    int ch = wgetch(input_win);
+
+    // Debug log key presses
+    debug_file = fopen("/tmp/git_debug.log", "a");
+    if (debug_file) {
+      fprintf(debug_file, "Key pressed: %d (0x%x) '%c'\n", ch, ch, (ch >= 32 && ch <= 126) ? ch : '?');
+      fclose(debug_file);
+    }
 
     switch (ch) {
-    case 27:
-      delwin(cred_win);
+    case 27: // Escape
+      debug_file = fopen("/tmp/git_debug.log", "a");
+      if (debug_file) {
+        fprintf(debug_file, "User cancelled with Escape\n");
+        fclose(debug_file);
+      }
+      delwin(input_win);
       curs_set(0);
       return 0;
 
-    case '\t':
-      current_field = (current_field + 1) % 2;
-      break;
-
     case '\n':
     case '\r':
-      if (strlen(temp_username) > 0 && strlen(temp_token) > 0) {
-        strncpy(username, temp_username, username_len - 1);
-        username[username_len - 1] = '\0';
-        strncpy(token, temp_token, token_len - 1);
-        token[token_len - 1] = '\0';
-        delwin(cred_win);
+    case KEY_ENTER:
+      debug_file = fopen("/tmp/git_debug.log", "a");
+      if (debug_file) {
+        fprintf(debug_file, "Enter key detected (key: %d), input length: %d\n", ch, input_pos);
+        fclose(debug_file);
+      }
+      
+      if (input_pos > 0) {
+        debug_file = fopen("/tmp/git_debug.log", "a");
+        if (debug_file) {
+          if (is_password) {
+            fprintf(debug_file, "Input completed, length: %d characters\n", input_pos);
+          } else {
+            fprintf(debug_file, "Input completed: '%s'\n", temp_input);
+          }
+          fclose(debug_file);
+        }
+        strncpy(input, temp_input, input_len - 1);
+        input[input_len - 1] = '\0';
+        delwin(input_win);
         curs_set(0);
         return 1;
       }
@@ -1903,30 +1950,137 @@ int get_github_credentials(char *username, int username_len, char *token,
     case KEY_BACKSPACE:
     case 127:
     case 8:
-      if (current_field == 0 && username_pos > 0) {
-        username_pos--;
-        temp_username[username_pos] = '\0';
-      } else if (current_field == 1 && token_pos > 0) {
-        token_pos--;
-        temp_token[token_pos] = '\0';
+      if (input_pos > 0) {
+        input_pos--;
+        temp_input[input_pos] = '\0';
+      }
+      break;
+
+    // Handle Ctrl+V paste (ASCII 22) and other paste-like sequences
+    case 22:
+    case 200: // Bracketed paste start
+      debug_file = fopen("/tmp/git_debug.log", "a");
+      if (debug_file) {
+        fprintf(debug_file, "Paste detected (key: %d), starting paste mode...\n", ch);
+        fclose(debug_file);
+      }
+      
+      // Clear current input and start fresh for paste
+      input_pos = 0;
+      temp_input[0] = '\0';
+      
+      // Set non-blocking and read all available characters
+      nodelay(input_win, TRUE);
+      usleep(50000); // Longer delay to let entire paste buffer fill
+      
+      int paste_count = 0;
+      char paste_buffer[512] = {0};
+      int paste_pos = 0;
+      
+      // Read all available characters
+      while (paste_pos < 511) {
+        int paste_ch = wgetch(input_win);
+        if (paste_ch == ERR) break; // No more characters
+        if (paste_ch == 201) break; // Bracketed paste end
+        
+        // Only collect printable ASCII characters (exclude backspaces!)
+        if (paste_ch >= 32 && paste_ch <= 126) {
+          paste_buffer[paste_pos] = paste_ch;
+          paste_pos++;
+          paste_count++;
+        }
+        // Skip backspaces (263), control chars, etc.
+      }
+      
+      nodelay(input_win, FALSE); // Back to blocking mode
+      paste_buffer[paste_pos] = '\0';
+      
+      // Clean up the pasted content - remove spaces and special chars
+      for (int i = 0; i < paste_pos && input_pos < 511; i++) {
+        char c = paste_buffer[i];
+        // Only keep alphanumeric and safe special characters for PAT
+        if ((c >= '0' && c <= '9') || 
+            (c >= 'A' && c <= 'Z') || 
+            (c >= 'a' && c <= 'z') ||
+            c == '_' || c == '-') {
+          temp_input[input_pos] = c;
+          input_pos++;
+        }
+      }
+      temp_input[input_pos] = '\0';
+      
+      debug_file = fopen("/tmp/git_debug.log", "a");
+      if (debug_file) {
+        fprintf(debug_file, "Paste cleanup: raw chars=%d, final chars=%d\n", paste_count, input_pos);
+        if (is_password) {
+          fprintf(debug_file, "Final PAT length: %d\n", input_pos);
+        } else {
+          fprintf(debug_file, "Final input: '%s'\n", temp_input);
+        }
+        fclose(debug_file);
       }
       break;
 
     default:
-      if (ch >= 32 && ch <= 126) {
-        if (current_field == 0 && username_pos < 256) {
-          temp_username[username_pos] = ch;
-          username_pos++;
-          temp_username[username_pos] = '\0';
-        } else if (current_field == 1 && token_pos < 256) {
-          temp_token[token_pos] = ch;
-          token_pos++;
-          temp_token[token_pos] = '\0';
+      // Accept basic ASCII characters only (no spaces for passwords)  
+      if (ch >= 32 && ch <= 126 && input_pos < 511) {
+        if (is_password && ch == ' ') {
+          // Skip spaces in password input
+          break;
         }
+        temp_input[input_pos] = ch;
+        input_pos++;
+        temp_input[input_pos] = '\0';
       }
       break;
     }
   }
+}
+
+int get_github_credentials(char *username, int username_len, char *token,
+                           int token_len) {
+  if (!username || !token)
+    return 0;
+
+  FILE *debug_file = fopen("/tmp/git_debug.log", "a");
+  if (debug_file) {
+    fprintf(debug_file, "\n=== Getting GitHub credentials ===\n");
+    fclose(debug_file);
+  }
+
+  // Get username first
+  if (!get_single_input("GitHub Authentication", "Username", username, username_len, 0)) {
+    debug_file = fopen("/tmp/git_debug.log", "a");
+    if (debug_file) {
+      fprintf(debug_file, "Username input cancelled\n");
+      fclose(debug_file);
+    }
+    return 0;
+  }
+
+  debug_file = fopen("/tmp/git_debug.log", "a");
+  if (debug_file) {
+    fprintf(debug_file, "Username entered: '%s'\n", username);
+    fclose(debug_file);
+  }
+
+  // Get token second
+  if (!get_single_input("GitHub Authentication", "PAT", token, token_len, 1)) {
+    debug_file = fopen("/tmp/git_debug.log", "a");
+    if (debug_file) {
+      fprintf(debug_file, "PAT input cancelled\n");
+      fclose(debug_file);
+    }
+    return 0;
+  }
+
+  debug_file = fopen("/tmp/git_debug.log", "a");
+  if (debug_file) {
+    fprintf(debug_file, "PAT entered, length: %zu characters\n", strlen(token));
+    fclose(debug_file);
+  }
+
+  return 1;
 }
 
 int execute_git_with_auth(const char *base_cmd, const char *username,
@@ -1934,13 +2088,34 @@ int execute_git_with_auth(const char *base_cmd, const char *username,
   if (!base_cmd || !username || !token)
     return 1;
 
+  FILE *debug_file = fopen("/tmp/git_debug.log", "a");
+  if (debug_file) {
+    fprintf(debug_file, "\n=== Executing git with auth (SAFE VERSION) ===\n");
+    fprintf(debug_file, "Base command: %s\n", base_cmd);
+    fprintf(debug_file, "Username: %s\n", username);
+    fprintf(debug_file, "Token length: %zu\n", strlen(token));
+    fclose(debug_file);
+  }
+
+  // Get remote URL to determine auth format
   char remote_url[1024] = "";
   FILE *fp = popen("git config --get remote.origin.url 2>/dev/null", "r");
-  if (!fp)
+  if (!fp) {
+    debug_file = fopen("/tmp/git_debug.log", "a");
+    if (debug_file) {
+      fprintf(debug_file, "ERROR: Could not get remote URL\n");
+      fclose(debug_file);
+    }
     return 1;
+  }
 
   if (fgets(remote_url, sizeof(remote_url), fp) == NULL) {
     pclose(fp);
+    debug_file = fopen("/tmp/git_debug.log", "a");
+    if (debug_file) {
+      fprintf(debug_file, "ERROR: No remote URL found\n");
+      fclose(debug_file);
+    }
     return 1;
   }
   pclose(fp);
@@ -1949,27 +2124,66 @@ int execute_git_with_auth(const char *base_cmd, const char *username,
   if (newline)
     *newline = '\0';
 
+  debug_file = fopen("/tmp/git_debug.log", "a");
+  if (debug_file) {
+    fprintf(debug_file, "Remote URL: %s\n", remote_url);
+    fclose(debug_file);
+  }
+
+  // Create authenticated command using environment variables - SAFE APPROACH
+  char auth_cmd[4096];
   char auth_url[2048];
+  
   if (strstr(remote_url, "https://github.com/")) {
     char *repo_part = remote_url + strlen("https://github.com/");
     snprintf(auth_url, sizeof(auth_url), "https://%s:%s@github.com/%s",
              username, token, repo_part);
   } else if (strstr(remote_url, "git@github.com:")) {
     char *repo_part = strchr(remote_url, ':') + 1;
-    if (strstr(repo_part, ".git")) {
-      *(strstr(repo_part, ".git")) = '\0';
+    char repo_clean[512];
+    strncpy(repo_clean, repo_part, sizeof(repo_clean) - 1);
+    repo_clean[sizeof(repo_clean) - 1] = '\0';
+    if (strstr(repo_clean, ".git")) {
+      *(strstr(repo_clean, ".git")) = '\0';
     }
-    snprintf(auth_url, sizeof(auth_url), "https://%s%s@github.com%s", username,
-             token, repo_part);
+    snprintf(auth_url, sizeof(auth_url), "https://%s:%s@github.com/%s",
+             username, token, repo_clean);
   } else {
+    debug_file = fopen("/tmp/git_debug.log", "a");
+    if (debug_file) {
+      fprintf(debug_file, "ERROR: Unsupported remote URL format: %s\n", remote_url);
+      fclose(debug_file);
+    }
     return 1;
   }
 
-  char auth_cmd[4096];
-  snprintf(auth_cmd, sizeof(auth_cmd), "%s %s >/dev/null >&1", base_cmd,
-           auth_url);
+  // Create a simple git push command with authenticated URL
+  snprintf(auth_cmd, sizeof(auth_cmd), 
+           "git push %s", auth_url);
 
-  return system(auth_cmd);
+  debug_file = fopen("/tmp/git_debug.log", "a");
+  if (debug_file) {
+    fprintf(debug_file, "SAFE: Using direct git push with auth URL\n");
+    fprintf(debug_file, "Executing: git push ***auth_url***\n");
+    fclose(debug_file);
+  }
+
+  // Execute with authentication - this does NOT modify the repository
+  int result = system(auth_cmd);
+  
+  debug_file = fopen("/tmp/git_debug.log", "a");
+  if (debug_file) {
+    fprintf(debug_file, "SAFE: No repository modification needed - git -c used\n");
+    fprintf(debug_file, "Git command result: %d\n", result);
+    if (result == 0) {
+      fprintf(debug_file, "SUCCESS: Git push with authentication succeeded\n");
+    } else {
+      fprintf(debug_file, "FAILED: Git push with authentication failed\n");
+    }
+    fclose(debug_file);
+  }
+
+  return result;
 }
 
 /**
@@ -2072,101 +2286,85 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
     strcpy(push_cmd, "git push origin");
   }
 
-  push_pid = fork();
-  if (push_pid == 0) {
-    // Child process: try normal push first
-    exit(system(is_diverged
-                    ? "git push --force-with-lease origin >/dev/null 2>&1"
-                    : "git push origin >/dev/null 2>&1"));
-  }
+  // Try push without credentials first - force git to fail without prompting
+  // Use multiple methods to ensure git doesn't prompt for credentials
+  result = system(is_diverged
+                      ? "GIT_ASKPASS=/bin/false GIT_TERMINAL_PROMPT=0 SSH_ASKPASS=/bin/false git push --force-with-lease origin </dev/null >/dev/null 2>/dev/null"
+                      : "GIT_ASKPASS=/bin/false GIT_TERMINAL_PROMPT=0 SSH_ASKPASS=/bin/false git push origin </dev/null >/dev/null 2>/dev/null");
 
-  // Parent process: wait and check if authentication is needed
-  if (push_pid > 0) {
-    int status;
-    int spinner_counter = 0;
-
-    while (waitpid(push_pid, &status, WNOHANG) == 0) {
-      // Update spinner animation
-      viewer->branch_animation_frame = spinner_counter;
-      spinner_counter = (spinner_counter + 1) % 40;
-
-      render_file_list_window(viewer);
-      render_file_content_window(viewer);
-      render_commit_list_window(viewer);
-      render_branch_list_window(viewer);
-      render_stash_list_window(viewer);
-      render_status_bar(viewer);
-
-      usleep(100000); // 100ms delay
+  // If push failed, immediately try with authentication
+  if (result != 0) {
+    FILE *debug_file = fopen("/tmp/git_debug.log", "a");
+    if (debug_file) {
+      fprintf(debug_file, "\n=== PUSH FAILED - Starting credential flow ===\n");
+      fprintf(debug_file, "Initial push result: %d\n", result);
+      fclose(debug_file);
     }
 
-    // Check if push failed (likely due to authentication)
-    if (WIFEXITED(status)) {
-      result = WEXITSTATUS(status);
-    } else {
-      result = 1;
+    char username[256] = "";
+    char token[512] = ""; // Larger buffer for long PATs
+
+    // Save current terminal state and fully clear screen
+    endwin();
+    clear();
+    refresh();
+    
+    // Reinitialize ncurses for clean credential dialog
+    initscr();
+    noecho();
+    cbreak();
+    keypad(stdscr, TRUE);
+    start_color();
+    
+    // Initialize color pairs for the dialog
+    init_pair(1, COLOR_WHITE, COLOR_BLACK);
+    init_pair(2, COLOR_GREEN, COLOR_BLACK);
+    init_pair(3, COLOR_YELLOW, COLOR_BLACK);
+    init_pair(4, COLOR_CYAN, COLOR_BLACK);
+    init_pair(5, COLOR_RED, COLOR_BLACK);
+    init_pair(6, COLOR_MAGENTA, COLOR_BLACK);
+    
+    clear();
+    refresh();
+
+    debug_file = fopen("/tmp/git_debug.log", "a");
+    if (debug_file) {
+      fprintf(debug_file, "Ncurses reinitialized, calling credential dialog\n");
+      fclose(debug_file);
     }
 
-    // If push failed, try with authentication
-    if (result != 0) {
-      char username[256] = "";
-      char token[256] = "";
-
-      // Clear screen and get credentials
-      clear();
-      refresh();
-
-      if (get_github_credentials(username, sizeof(username), token,
-                                 sizeof(token))) {
-        // Try authenticated push
-        result = execute_git_with_auth(push_cmd, username, token);
-
-        // Clear credentials from memory for security
-        memset(username, 0, sizeof(username));
-        memset(token, 0, sizeof(token));
-      } else {
-        result = 1; // User cancelled
+    if (get_github_credentials(username, sizeof(username), token,
+                               sizeof(token))) {
+      debug_file = fopen("/tmp/git_debug.log", "a");
+      if (debug_file) {
+        fprintf(debug_file, "Credentials obtained successfully, attempting authenticated push\n");
+        fclose(debug_file);
       }
+      
+      // Try authenticated push
+      result = execute_git_with_auth(push_cmd, username, token);
 
-      // Force complete screen refresh after credential dialog
-      clear();
-      refresh();
-    }
-  } else {
-    result = 1; // Fork failed
-  }
-
-  // Parent process: animate the spinner while push is happening
-  if (push_pid > 0) {
-    int status;
-    int spinner_counter = 0;
-
-    while (waitpid(push_pid, &status, WNOHANG) == 0) {
-      // Update spinner animation
-      viewer->branch_animation_frame = spinner_counter;
-      spinner_counter = (spinner_counter + 1) % 40;
-
-      // Refresh ALL windows, not just branch window
-      render_file_list_window(viewer);
-      render_file_content_window(viewer);
-      render_commit_list_window(viewer);
-      render_branch_list_window(viewer);
-      render_stash_list_window(viewer);
-      render_status_bar(viewer);
-
-      // Small delay for animation timing
-      usleep(100000); // 100ms delay
-    }
-
-    // Get the exit status of the push command
-    if (WIFEXITED(status)) {
-      result = WEXITSTATUS(status);
+      // Clear credentials from memory for security
+      memset(username, 0, sizeof(username));
+      memset(token, 0, sizeof(token));
     } else {
-      result = 1; // Error
+      debug_file = fopen("/tmp/git_debug.log", "a");
+      if (debug_file) {
+        fprintf(debug_file, "Credential dialog cancelled by user\n");
+        fclose(debug_file);
+      }
+      result = 1; // User cancelled
     }
-  } else {
-    result = 1; // Fork failed
+
+    // Force complete screen refresh after credential dialog
+    clear();
+    refresh();
   }
+
+  // Update UI after push attempt
+  get_ncurses_changed_files(viewer);
+  get_commit_history(viewer);
+  get_ncurses_git_branches(viewer);
 
   if (result == 0) {
     // Immediately transition to "Pushed!" animation

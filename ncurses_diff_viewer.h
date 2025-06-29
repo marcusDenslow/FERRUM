@@ -430,6 +430,8 @@ int load_file_preview(NCursesDiffViewer *viewer, const char *filename);
  */
 void update_preview_for_current_selection(NCursesDiffViewer *viewer);
 
+int get_single_input(const char *title, const char *prompt, char *input, int input_len, int is_password);
+
 int get_github_credentials(char *username, int username_len, char *token,
                            int token_len);
 

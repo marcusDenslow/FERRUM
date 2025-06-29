@@ -20,6 +20,7 @@
 #include <fcntl.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -1110,7 +1111,54 @@ int lsh_gg(char **args) {
   } else if (strcmp(args[1], "p") == 0) {
     system("git pull");
   } else if (strcmp(args[1], "ps") == 0) {
-    system("git push");
+    // Try push without credentials first - force git to fail without prompting
+    int result = system("GIT_ASKPASS=/bin/false GIT_TERMINAL_PROMPT=0 git push </dev/null 2>/dev/null");
+    
+    // If push failed, try with credentials
+    if (result != 0) {
+      char username[256] = "";
+      char token[256] = "";
+      
+      printf("Push failed. Authentication required.\n");
+      printf("GitHub Username: ");
+      fflush(stdout);
+      
+      if (fgets(username, sizeof(username), stdin)) {
+        // Remove newline
+        username[strcspn(username, "\n")] = 0;
+        
+        printf("Personal Access Token: ");
+        fflush(stdout);
+        
+        // Hide token input
+        system("stty -echo");
+        if (fgets(token, sizeof(token), stdin)) {
+          token[strcspn(token, "\n")] = 0;
+          system("stty echo");
+          printf("\n");
+          
+          printf("Attempting authenticated push...\n");
+          result = execute_git_with_auth("git push", username, token);
+          
+          // Clear credentials from memory for security
+          memset(username, 0, sizeof(username));
+          memset(token, 0, sizeof(token));
+          
+          if (result == 0) {
+            printf("Push successful!\n");
+          } else {
+            printf("Push failed. Please check your credentials and try again.\n");
+          }
+        } else {
+          system("stty echo");
+          printf("\nAuthentication cancelled.\n");
+        }
+      } else {
+        printf("Authentication cancelled.\n");
+      }
+    } else {
+      printf("Push successful!\n");
+    }
   } else if (strcmp(args[1], "a") == 0) {
     system("git add .");
   } else if (strcmp(args[1], "l") == 0) {
@@ -1129,6 +1177,17 @@ int lsh_gg(char **args) {
     } else {
       printf("Please specify a branch to checkout\n");
     }
+  } else if (strcmp(args[1], "debug") == 0) {
+    printf("=== Git Debug Log ===\n");
+    if (access("/tmp/git_debug.log", F_OK) == 0) {
+      system("cat /tmp/git_debug.log");
+    } else {
+      printf("No debug log found. Try pushing to generate debug info.\n");
+    }
+    printf("\n=== End Debug Log ===\n");
+  } else if (strcmp(args[1], "debug-clear") == 0) {
+    system("rm -f /tmp/git_debug.log");
+    printf("Debug log cleared.\n");
   } else {
     printf("Unknown git command shorthand: %s\n", args[1]);
   }

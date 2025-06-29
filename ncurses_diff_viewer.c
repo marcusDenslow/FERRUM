@@ -159,6 +159,9 @@ int init_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
   nodelay(stdscr, TRUE); // Make getch() non-blocking
   curs_set(0);           // Hide cursor to prevent flickering
 
+  // Set fast escape key detection
+  set_escdelay(25);
+
   // Enable colors
   if (has_colors()) {
     start_color();
@@ -6923,10 +6926,10 @@ void enter_fuzzy_search_mode(NCursesDiffViewer *viewer) {
 
   // Create fuzzy search windows
   int input_height = 3;
-  int list_height = viewer->terminal_height - input_height - 4;
-  int width = viewer->terminal_width - 4;
+  int list_height = viewer->terminal_height - input_height - 6;
+  int width = viewer->terminal_width * 0.5;
   int start_y = (viewer->terminal_height - input_height - list_height) / 2;
-  int start_x = 2;
+  int start_x = (viewer->terminal_width - width) / 2;
 
   viewer->fuzzy_input_win = newwin(input_height, width, start_y, start_x);
   viewer->fuzzy_list_win =
@@ -7493,10 +7496,10 @@ void enter_grep_search_mode(NCursesDiffViewer *viewer) {
 
   // Create grep search windows
   int input_height = 3;
-  int list_height = viewer->terminal_height - input_height - 4;
-  int width = viewer->terminal_width - 4;
+  int list_height = viewer->terminal_height - input_height - 6;
+  int width = viewer->terminal_width * 0.5;
   int start_y = (viewer->terminal_height - input_height - list_height) / 2;
-  int start_x = 2;
+  int start_x = (viewer->terminal_width - width) / 2;
 
   viewer->grep_input_win = newwin(input_height, width, start_y, start_x);
   viewer->grep_list_win =

@@ -99,11 +99,13 @@ typedef struct {
   NCursesCommit commits[MAX_COMMITS];
   int commit_count;
   int selected_commit;
+  int commit_scroll_offset;
   NCursesStash stashes[MAX_STASHES];
   NCursesBranches branches[MAX_BRANCHES];
   int stash_count;
   int branch_count;
   int selected_stash;
+  int stash_scroll_offset;
   int selected_branch;
   WINDOW *file_list_win;
   WINDOW *file_content_win;
@@ -155,57 +157,58 @@ typedef struct {
   int staged_cursor_line;
 
   // Fuzzy search state
-  int fuzzy_search_active;                    // 1 if fuzzy search is active
-  char fuzzy_search_query[256];               // Current search query
-  int fuzzy_search_query_len;                 // Length of current query
-  
+  int fuzzy_search_active;      // 1 if fuzzy search is active
+  char fuzzy_search_query[256]; // Current search query
+  int fuzzy_search_query_len;   // Length of current query
+
   // Scored search results
   struct {
     int file_index;
     int score;
-  } fuzzy_scored_files[MAX_FILES];            // Scored and sorted results
-  
-  int fuzzy_filtered_count;                   // Number of filtered files
-  int fuzzy_selected_index;                   // Currently selected in fuzzy list
-  int fuzzy_scroll_offset;                    // Scroll position in fuzzy list
-  WINDOW *fuzzy_input_win;                    // Input window for search
-  WINDOW *fuzzy_list_win;                     // Results list window
-  
+  } fuzzy_scored_files[MAX_FILES]; // Scored and sorted results
+
+  int fuzzy_filtered_count; // Number of filtered files
+  int fuzzy_selected_index; // Currently selected in fuzzy list
+  int fuzzy_scroll_offset;  // Scroll position in fuzzy list
+  WINDOW *fuzzy_input_win;  // Input window for search
+  WINDOW *fuzzy_list_win;   // Results list window
+
   // State tracking to prevent unnecessary redraws
-  int fuzzy_needs_full_redraw;                // 1 if full redraw needed (borders, input, list)
-  int fuzzy_needs_input_redraw;               // 1 if input field needs redraw
-  int fuzzy_needs_list_redraw;                // 1 if file list needs redraw
-  char fuzzy_last_query[256];                 // Last rendered query
-  int fuzzy_last_selected;                    // Last rendered selection
-  int fuzzy_last_scroll;                      // Last rendered scroll position
-  int fuzzy_last_filtered_count;              // Last rendered result count
+  int fuzzy_needs_full_redraw; // 1 if full redraw needed (borders, input, list)
+  int fuzzy_needs_input_redraw;  // 1 if input field needs redraw
+  int fuzzy_needs_list_redraw;   // 1 if file list needs redraw
+  char fuzzy_last_query[256];    // Last rendered query
+  int fuzzy_last_selected;       // Last rendered selection
+  int fuzzy_last_scroll;         // Last rendered scroll position
+  int fuzzy_last_filtered_count; // Last rendered result count
 
   // Generic grep search state (for commits, stashes, branches)
-  int grep_search_active;                     // 1 if grep search is active
-  NCursesViewMode grep_search_mode;           // Which mode grep is searching in
-  char grep_search_query[256];                // Current search query
-  int grep_search_query_len;                  // Length of current query
-  
+  int grep_search_active;           // 1 if grep search is active
+  NCursesViewMode grep_search_mode; // Which mode grep is searching in
+  char grep_search_query[256];      // Current search query
+  int grep_search_query_len;        // Length of current query
+
   // Scored grep search results
   struct {
     int item_index;
     int score;
-  } grep_scored_items[MAX_COMMITS];           // Scored and sorted results (reuse MAX_COMMITS)
-  
-  int grep_filtered_count;                    // Number of filtered items
-  int grep_selected_index;                    // Currently selected in grep list
-  int grep_scroll_offset;                     // Scroll position in grep list
-  WINDOW *grep_input_win;                     // Input window for search
-  WINDOW *grep_list_win;                      // Results list window
-  
+  } grep_scored_items[MAX_COMMITS]; // Scored and sorted results (reuse
+                                    // MAX_COMMITS)
+
+  int grep_filtered_count; // Number of filtered items
+  int grep_selected_index; // Currently selected in grep list
+  int grep_scroll_offset;  // Scroll position in grep list
+  WINDOW *grep_input_win;  // Input window for search
+  WINDOW *grep_list_win;   // Results list window
+
   // State tracking for grep search rendering
-  int grep_needs_full_redraw;                 // 1 if full redraw needed
-  int grep_needs_input_redraw;                // 1 if input field needs redraw
-  int grep_needs_list_redraw;                 // 1 if item list needs redraw
-  char grep_last_query[256];                  // Last rendered query
-  int grep_last_selected;                     // Last rendered selection
-  int grep_last_scroll;                       // Last rendered scroll position
-  int grep_last_filtered_count;               // Last rendered result count
+  int grep_needs_full_redraw;   // 1 if full redraw needed
+  int grep_needs_input_redraw;  // 1 if input field needs redraw
+  int grep_needs_list_redraw;   // 1 if item list needs redraw
+  char grep_last_query[256];    // Last rendered query
+  int grep_last_selected;       // Last rendered selection
+  int grep_last_scroll;         // Last rendered scroll position
+  int grep_last_filtered_count; // Last rendered result count
 
 } NCursesDiffViewer;
 
@@ -407,13 +410,14 @@ void move_cursor_smart_staged(NCursesDiffViewer *viewer, int direction);
 /**
  * Helper function to wrap a long line into multiple display lines
  */
-int wrap_line_to_width(const char *input_line, char wrapped_lines[][1024], int max_lines, int width);
+int wrap_line_to_width(const char *input_line, char wrapped_lines[][1024],
+                       int max_lines, int width);
 
 /**
  * Render a single line with proper wrapping and coloring
  */
-int render_wrapped_line(WINDOW *win, const char *line, int start_y, int start_x, 
-                       int width, int max_rows, int color_pair, int reverse);
+int render_wrapped_line(WINDOW *win, const char *line, int start_y, int start_x,
+                        int width, int max_rows, int color_pair, int reverse);
 
 /**
  * Calculate how many display lines a wrapped line will take
@@ -430,7 +434,8 @@ int load_file_preview(NCursesDiffViewer *viewer, const char *filename);
  */
 void update_preview_for_current_selection(NCursesDiffViewer *viewer);
 
-int get_single_input(const char *title, const char *prompt, char *input, int input_len, int is_password);
+int get_single_input(const char *title, const char *prompt, char *input,
+                     int input_len, int is_password);
 
 int get_github_credentials(char *username, int username_len, char *token,
                            int token_len);
@@ -560,6 +565,7 @@ int calculate_grep_score(const char *pattern, const char *text);
 /**
  * Extract branch name from stash info
  */
-void extract_branch_from_stash(const char *stash_info, char *branch_name, int max_len);
+void extract_branch_from_stash(const char *stash_info, char *branch_name,
+                               int max_len);
 
 #endif // NCURSES_DIFF_VIEWER_H

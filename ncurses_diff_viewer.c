@@ -111,10 +111,12 @@ int init_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
   // Initialize grep search
   init_grep_search(viewer);
 
+  viewer->commit_scroll_offset = 0;
   viewer->selected_file = 0;
   viewer->file_scroll_offset = 0;
   viewer->file_cursor_line = 0;
   viewer->selected_stash = 0;
+  viewer->stash_scroll_offset = 0;
   viewer->selected_branch = 0;
   viewer->current_mode = NCURSES_MODE_FILE_LIST;
   viewer->sync_status = SYNC_STATUS_IDLE;
@@ -1815,13 +1817,17 @@ int amend_commit(NCursesDiffViewer *viewer) {
 // Helper function to check if a character is safe for PAT/username input
 static int is_safe_input_char(int ch) {
   // Allow most printable ASCII but exclude problematic characters
-  if (ch < 32 || ch > 126) return 0;  // Non-printable
-  if (ch == '?' || ch == 127) return 0;  // Question mark and DEL
-  if (ch == '\x1b') return 0;  // ESC
-  return 1;  // Allow everything else
+  if (ch < 32 || ch > 126)
+    return 0; // Non-printable
+  if (ch == '?' || ch == 127)
+    return 0; // Question mark and DEL
+  if (ch == '\x1b')
+    return 0; // ESC
+  return 1;   // Allow everything else
 }
 
-int get_single_input(const char *title, const char *prompt, char *input, int input_len, int is_password) {
+int get_single_input(const char *title, const char *prompt, char *input,
+                     int input_len, int is_password) {
   if (!input)
     return 0;
 
@@ -1832,11 +1838,14 @@ int get_single_input(const char *title, const char *prompt, char *input, int inp
     fclose(debug_file);
   }
 
-  // Make dialog much wider for PAT input - 80% of screen width, minimum 80 characters
+  // Make dialog much wider for PAT input - 80% of screen width, minimum 80
+  // characters
   int dialog_width = (COLS * 8) / 10;
-  if (dialog_width < 80) dialog_width = 80;
-  if (dialog_width > 120) dialog_width = 120;
-  
+  if (dialog_width < 80)
+    dialog_width = 80;
+  if (dialog_width > 120)
+    dialog_width = 120;
+
   int dialog_height = 4; // Keep it simple and compact
   int start_x = (COLS - dialog_width) / 2;
   int start_y = (LINES - dialog_height) / 2;
@@ -1852,7 +1861,7 @@ int get_single_input(const char *title, const char *prompt, char *input, int inp
 
   char temp_input[512] = ""; // Larger buffer for long PATs
   int input_pos = 0;
-  
+
   // Enable keypad for special keys and disable timeout for paste
   keypad(input_win, TRUE);
   nodelay(input_win, FALSE);
@@ -1869,15 +1878,15 @@ int get_single_input(const char *title, const char *prompt, char *input, int inp
     } else {
       mvwprintw(input_win, 1, 2, "%s:", prompt);
     }
-    
+
     // Clear the input area
     for (int x = 2; x < dialog_width - 2; x++) {
       mvwaddch(input_win, 2, x, ' ');
     }
-    
+
     // Input area - much simpler approach
     int max_display = dialog_width - 6; // Leave room for borders and padding
-    
+
     if (is_password) {
       // For passwords, show simple asterisks without complex scrolling
       mvwprintw(input_win, 2, 2, "");
@@ -1896,7 +1905,8 @@ int get_single_input(const char *title, const char *prompt, char *input, int inp
 
     // Simple cursor positioning
     int cursor_x = 2 + ((input_pos > max_display) ? max_display : input_pos);
-    if (cursor_x >= dialog_width - 1) cursor_x = dialog_width - 2;
+    if (cursor_x >= dialog_width - 1)
+      cursor_x = dialog_width - 2;
     wmove(input_win, 2, cursor_x);
     wrefresh(input_win);
 
@@ -1905,7 +1915,8 @@ int get_single_input(const char *title, const char *prompt, char *input, int inp
     // Debug log key presses
     debug_file = fopen("/tmp/git_debug.log", "a");
     if (debug_file) {
-      fprintf(debug_file, "Key pressed: %d (0x%x) '%c'\n", ch, ch, (ch >= 32 && ch <= 126) ? ch : '?');
+      fprintf(debug_file, "Key pressed: %d (0x%x) '%c'\n", ch, ch,
+              (ch >= 32 && ch <= 126) ? ch : '?');
       fclose(debug_file);
     }
 
@@ -1925,15 +1936,17 @@ int get_single_input(const char *title, const char *prompt, char *input, int inp
     case KEY_ENTER:
       debug_file = fopen("/tmp/git_debug.log", "a");
       if (debug_file) {
-        fprintf(debug_file, "Enter key detected (key: %d), input length: %d\n", ch, input_pos);
+        fprintf(debug_file, "Enter key detected (key: %d), input length: %d\n",
+                ch, input_pos);
         fclose(debug_file);
       }
-      
+
       if (input_pos > 0) {
         debug_file = fopen("/tmp/git_debug.log", "a");
         if (debug_file) {
           if (is_password) {
-            fprintf(debug_file, "Input completed, length: %d characters\n", input_pos);
+            fprintf(debug_file, "Input completed, length: %d characters\n",
+                    input_pos);
           } else {
             fprintf(debug_file, "Input completed: '%s'\n", temp_input);
           }
@@ -1961,28 +1974,31 @@ int get_single_input(const char *title, const char *prompt, char *input, int inp
     case 200: // Bracketed paste start
       debug_file = fopen("/tmp/git_debug.log", "a");
       if (debug_file) {
-        fprintf(debug_file, "Paste detected (key: %d), starting paste mode...\n", ch);
+        fprintf(debug_file,
+                "Paste detected (key: %d), starting paste mode...\n", ch);
         fclose(debug_file);
       }
-      
+
       // Clear current input and start fresh for paste
       input_pos = 0;
       temp_input[0] = '\0';
-      
+
       // Set non-blocking and read all available characters
       nodelay(input_win, TRUE);
       usleep(50000); // Longer delay to let entire paste buffer fill
-      
+
       int paste_count = 0;
       char paste_buffer[512] = {0};
       int paste_pos = 0;
-      
+
       // Read all available characters
       while (paste_pos < 511) {
         int paste_ch = wgetch(input_win);
-        if (paste_ch == ERR) break; // No more characters
-        if (paste_ch == 201) break; // Bracketed paste end
-        
+        if (paste_ch == ERR)
+          break; // No more characters
+        if (paste_ch == 201)
+          break; // Bracketed paste end
+
         // Only collect printable ASCII characters (exclude backspaces!)
         if (paste_ch >= 32 && paste_ch <= 126) {
           paste_buffer[paste_pos] = paste_ch;
@@ -1991,27 +2007,26 @@ int get_single_input(const char *title, const char *prompt, char *input, int inp
         }
         // Skip backspaces (263), control chars, etc.
       }
-      
+
       nodelay(input_win, FALSE); // Back to blocking mode
       paste_buffer[paste_pos] = '\0';
-      
+
       // Clean up the pasted content - remove spaces and special chars
       for (int i = 0; i < paste_pos && input_pos < 511; i++) {
         char c = paste_buffer[i];
         // Only keep alphanumeric and safe special characters for PAT
-        if ((c >= '0' && c <= '9') || 
-            (c >= 'A' && c <= 'Z') || 
-            (c >= 'a' && c <= 'z') ||
-            c == '_' || c == '-') {
+        if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') ||
+            (c >= 'a' && c <= 'z') || c == '_' || c == '-') {
           temp_input[input_pos] = c;
           input_pos++;
         }
       }
       temp_input[input_pos] = '\0';
-      
+
       debug_file = fopen("/tmp/git_debug.log", "a");
       if (debug_file) {
-        fprintf(debug_file, "Paste cleanup: raw chars=%d, final chars=%d\n", paste_count, input_pos);
+        fprintf(debug_file, "Paste cleanup: raw chars=%d, final chars=%d\n",
+                paste_count, input_pos);
         if (is_password) {
           fprintf(debug_file, "Final PAT length: %d\n", input_pos);
         } else {
@@ -2022,7 +2037,7 @@ int get_single_input(const char *title, const char *prompt, char *input, int inp
       break;
 
     default:
-      // Accept basic ASCII characters only (no spaces for passwords)  
+      // Accept basic ASCII characters only (no spaces for passwords)
       if (ch >= 32 && ch <= 126 && input_pos < 511) {
         if (is_password && ch == ' ') {
           // Skip spaces in password input
@@ -2049,7 +2064,8 @@ int get_github_credentials(char *username, int username_len, char *token,
   }
 
   // Get username first
-  if (!get_single_input("GitHub Authentication", "Username", username, username_len, 0)) {
+  if (!get_single_input("GitHub Authentication", "Username", username,
+                        username_len, 0)) {
     debug_file = fopen("/tmp/git_debug.log", "a");
     if (debug_file) {
       fprintf(debug_file, "Username input cancelled\n");
@@ -2133,7 +2149,7 @@ int execute_git_with_auth(const char *base_cmd, const char *username,
   // Create authenticated command using environment variables - SAFE APPROACH
   char auth_cmd[4096];
   char auth_url[2048];
-  
+
   if (strstr(remote_url, "https://github.com/")) {
     char *repo_part = remote_url + strlen("https://github.com/");
     snprintf(auth_url, sizeof(auth_url), "https://%s:%s@github.com/%s",
@@ -2151,15 +2167,15 @@ int execute_git_with_auth(const char *base_cmd, const char *username,
   } else {
     debug_file = fopen("/tmp/git_debug.log", "a");
     if (debug_file) {
-      fprintf(debug_file, "ERROR: Unsupported remote URL format: %s\n", remote_url);
+      fprintf(debug_file, "ERROR: Unsupported remote URL format: %s\n",
+              remote_url);
       fclose(debug_file);
     }
     return 1;
   }
 
   // Create a simple git push command with authenticated URL
-  snprintf(auth_cmd, sizeof(auth_cmd), 
-           "git push %s", auth_url);
+  snprintf(auth_cmd, sizeof(auth_cmd), "git push %s", auth_url);
 
   debug_file = fopen("/tmp/git_debug.log", "a");
   if (debug_file) {
@@ -2170,10 +2186,11 @@ int execute_git_with_auth(const char *base_cmd, const char *username,
 
   // Execute with authentication - this does NOT modify the repository
   int result = system(auth_cmd);
-  
+
   debug_file = fopen("/tmp/git_debug.log", "a");
   if (debug_file) {
-    fprintf(debug_file, "SAFE: No repository modification needed - git -c used\n");
+    fprintf(debug_file,
+            "SAFE: No repository modification needed - git -c used\n");
     fprintf(debug_file, "Git command result: %d\n", result);
     if (result == 0) {
       fprintf(debug_file, "SUCCESS: Git push with authentication succeeded\n");
@@ -2288,9 +2305,13 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
 
   // Try push without credentials first - force git to fail without prompting
   // Use multiple methods to ensure git doesn't prompt for credentials
-  result = system(is_diverged
-                      ? "GIT_ASKPASS=/bin/false GIT_TERMINAL_PROMPT=0 SSH_ASKPASS=/bin/false git push --force-with-lease origin </dev/null >/dev/null 2>/dev/null"
-                      : "GIT_ASKPASS=/bin/false GIT_TERMINAL_PROMPT=0 SSH_ASKPASS=/bin/false git push origin </dev/null >/dev/null 2>/dev/null");
+  result =
+      system(is_diverged ? "GIT_ASKPASS=/bin/false GIT_TERMINAL_PROMPT=0 "
+                           "SSH_ASKPASS=/bin/false git push --force-with-lease "
+                           "origin </dev/null >/dev/null 2>/dev/null"
+                         : "GIT_ASKPASS=/bin/false GIT_TERMINAL_PROMPT=0 "
+                           "SSH_ASKPASS=/bin/false git push origin </dev/null "
+                           ">/dev/null 2>/dev/null");
 
   // If push failed, immediately try with authentication
   if (result != 0) {
@@ -2308,14 +2329,14 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
     endwin();
     clear();
     refresh();
-    
+
     // Reinitialize ncurses for clean credential dialog
     initscr();
     noecho();
     cbreak();
     keypad(stdscr, TRUE);
     start_color();
-    
+
     // Initialize color pairs for the dialog
     init_pair(1, COLOR_WHITE, COLOR_BLACK);
     init_pair(2, COLOR_GREEN, COLOR_BLACK);
@@ -2323,7 +2344,7 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
     init_pair(4, COLOR_CYAN, COLOR_BLACK);
     init_pair(5, COLOR_RED, COLOR_BLACK);
     init_pair(6, COLOR_MAGENTA, COLOR_BLACK);
-    
+
     clear();
     refresh();
 
@@ -2337,10 +2358,11 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
                                sizeof(token))) {
       debug_file = fopen("/tmp/git_debug.log", "a");
       if (debug_file) {
-        fprintf(debug_file, "Credentials obtained successfully, attempting authenticated push\n");
+        fprintf(debug_file, "Credentials obtained successfully, attempting "
+                            "authenticated push\n");
         fclose(debug_file);
       }
-      
+
       // Try authenticated push
       result = execute_git_with_auth(push_cmd, username, token);
 
@@ -2616,17 +2638,18 @@ void render_commit_list_window(NCursesDiffViewer *viewer) {
 
   for (int i = 0; i < max_commits_visible; i++) {
     int y = i + 1;
+    int commit_index = i + viewer->commit_scroll_offset;
 
     // Skip if no more commits
-    if (i >= viewer->commit_count)
+    if (commit_index >= viewer->commit_count)
       continue;
 
     // Check if this commit line should be highlighted
-    int is_selected_commit = (i == viewer->selected_commit &&
+    int is_selected_commit = (commit_index == viewer->selected_commit &&
                               viewer->current_mode == NCURSES_MODE_COMMIT_LIST);
 
     // Check if this commit is currently being viewed
-    int is_being_viewed = (i == viewer->selected_commit &&
+    int is_being_viewed = (commit_index == viewer->selected_commit &&
                            viewer->current_mode == NCURSES_MODE_COMMIT_VIEW);
 
     // Apply line highlight if selected
@@ -2657,15 +2680,16 @@ void render_commit_list_window(NCursesDiffViewer *viewer) {
 
     // Color commit hash based on push status: yellow for pushed, red for
     // unpushed
-    if (viewer->commits[i].is_pushed) {
+    if (viewer->commits[commit_index].is_pushed) {
       wattron(viewer->commit_list_win,
               COLOR_PAIR(4)); // Yellow for pushed commits
     } else {
       wattron(viewer->commit_list_win,
               COLOR_PAIR(2)); // Red for unpushed commits
     }
-    mvwprintw(viewer->commit_list_win, y, 2, "%s", viewer->commits[i].hash);
-    if (viewer->commits[i].is_pushed) {
+    mvwprintw(viewer->commit_list_win, y, 2, "%s",
+              viewer->commits[commit_index].hash);
+    if (viewer->commits[commit_index].is_pushed) {
       wattroff(viewer->commit_list_win, COLOR_PAIR(4));
     } else {
       wattroff(viewer->commit_list_win, COLOR_PAIR(2));
@@ -2674,7 +2698,7 @@ void render_commit_list_window(NCursesDiffViewer *viewer) {
     // Show author initials - use cyan for a subtle contrast
     wattron(viewer->commit_list_win, COLOR_PAIR(3)); // Cyan for author initials
     mvwprintw(viewer->commit_list_win, y, 10, "%s",
-              viewer->commits[i].author_initials);
+              viewer->commits[commit_index].author_initials);
     wattroff(viewer->commit_list_win, COLOR_PAIR(3));
 
     if (is_selected_commit) {
@@ -2684,12 +2708,13 @@ void render_commit_list_window(NCursesDiffViewer *viewer) {
     // Show commit title (always white, truncated to fit with "..")
     int max_title_len = viewer->file_panel_width - 15; // Leave space for border
     char truncated_title[256];
-    if ((int)strlen(viewer->commits[i].title) > max_title_len) {
-      strncpy(truncated_title, viewer->commits[i].title, max_title_len - 2);
+    if ((int)strlen(viewer->commits[commit_index].title) > max_title_len) {
+      strncpy(truncated_title, viewer->commits[commit_index].title,
+              max_title_len - 2);
       truncated_title[max_title_len - 2] = '\0';
       strcat(truncated_title, "..");
     } else {
-      strcpy(truncated_title, viewer->commits[i].title);
+      strcpy(truncated_title, viewer->commits[commit_index].title);
     }
 
     mvwprintw(viewer->commit_list_win, y, 13, "%s", truncated_title);
@@ -2792,8 +2817,8 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
 
           // Render the line with wrapping
           int rows_used = render_wrapped_line(
-              viewer->file_content_win, line->line, y, 1, width - 2, line_height,
-              color_pair, is_cursor_line);
+              viewer->file_content_win, line->line, y, 1, width - 2,
+              line_height, color_pair, is_cursor_line);
           display_count += rows_used;
         }
       } else {
@@ -2882,9 +2907,9 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
       unstaged_display_count += rows_used;
     } else {
       // Regular line rendering
-      int rows_used =
-          render_wrapped_line(viewer->file_content_win, line->line, y, 1, width - 2,
-                              line_height, color_pair, is_cursor_line);
+      int rows_used = render_wrapped_line(viewer->file_content_win, line->line,
+                                          y, 1, width - 2, line_height,
+                                          color_pair, is_cursor_line);
       unstaged_display_count += rows_used;
     }
   }
@@ -3880,6 +3905,16 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     case 'k':
       if (viewer->selected_commit > 0) {
         viewer->selected_commit--;
+        // Calculate the scroll boundaries
+        int max_commits_visible = viewer->commit_panel_height - 2;
+        int scroll_threshhold = 2;
+
+        if (viewer->selected_commit <
+            viewer->commit_scroll_offset + scroll_threshhold) {
+          if (viewer->commit_scroll_offset > 0) {
+            viewer->commit_scroll_offset--;
+          }
+        }
         // Auto-preview the selected commit
         if (viewer->commit_count > 0) {
           load_commit_for_viewing(
@@ -3892,6 +3927,17 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     case 'j':
       if (viewer->selected_commit < viewer->commit_count - 1) {
         viewer->selected_commit++;
+        int max_commits_visible = viewer->commit_panel_height - 2;
+        int scroll_threshhold = 2;
+
+        if (viewer->selected_commit >= viewer->commit_scroll_offset +
+                                           max_commits_visible -
+                                           scroll_threshhold) {
+          if (viewer->commit_scroll_offset <
+              viewer->commit_count - max_commits_visible) {
+            viewer->commit_scroll_offset++;
+          }
+        }
         // Auto-preview the selected commit
         if (viewer->commit_count > 0) {
           load_commit_for_viewing(
@@ -3984,6 +4030,19 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     case 'k':
       if (viewer->selected_stash > 0) {
         viewer->selected_stash--;
+
+        // Calculate scroll boundaries
+        int max_stashes_visible = viewer->stash_panel_height - 2;
+        int scroll_threshold = 2;
+
+        // Scroll up if cursor is getting too close to top
+        if (viewer->selected_stash <
+            viewer->stash_scroll_offset + scroll_threshold) {
+          if (viewer->stash_scroll_offset > 0) {
+            viewer->stash_scroll_offset--;
+          }
+        }
+
         // Auto-preview the selected stash
         if (viewer->stash_count > 0) {
           load_stash_for_viewing(viewer, viewer->selected_stash);
@@ -3995,6 +4054,21 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
     case 'j':
       if (viewer->selected_stash < viewer->stash_count - 1) {
         viewer->selected_stash++;
+
+        // Calculate scroll boundaries
+        int max_stashes_visible = viewer->stash_panel_height - 2;
+        int scroll_threshold = 2;
+
+        // Scroll down if cursor is getting too close to bottom
+        if (viewer->selected_stash >= viewer->stash_scroll_offset +
+                                          max_stashes_visible -
+                                          scroll_threshold) {
+          if (viewer->stash_scroll_offset <
+              viewer->stash_count - max_stashes_visible) {
+            viewer->stash_scroll_offset++;
+          }
+        }
+
         // Auto-preview the selected stash
         if (viewer->stash_count > 0) {
           load_stash_for_viewing(viewer, viewer->selected_stash);
@@ -5746,15 +5820,20 @@ void render_stash_list_window(NCursesDiffViewer *viewer) {
     // Show "No stashes" message
     mvwprintw(viewer->stash_list_win, 1, 2, "No stashes available");
   } else {
-    for (int i = 0; i < max_stashes_visible && i < viewer->stash_count; i++) {
+    for (int i = 0; i < max_stashes_visible; i++) {
       int y = i + 1;
+      int stash_index = i + viewer->stash_scroll_offset;
+
+      // Skip if no more stashes
+      if (stash_index >= viewer->stash_count)
+        continue;
 
       // Check if this stash line should be highlighted
-      int is_selected_stash = (i == viewer->selected_stash &&
+      int is_selected_stash = (stash_index == viewer->selected_stash &&
                                viewer->current_mode == NCURSES_MODE_STASH_LIST);
 
       // Check if this stash is currently being viewed
-      int is_being_viewed = (i == viewer->selected_stash &&
+      int is_being_viewed = (stash_index == viewer->selected_stash &&
                              viewer->current_mode == NCURSES_MODE_STASH_VIEW);
 
       // Apply line highlight if selected
@@ -5779,15 +5858,16 @@ void render_stash_list_window(NCursesDiffViewer *viewer) {
       }
 
       // Show stash info (truncated to fit panel)
-      int max_stash_len = viewer->file_panel_width - 4;
+      int max_stash_len = viewer->file_panel_width - 6;
       char truncated_stash[256];
-      if ((int)strlen(viewer->stashes[i].stash_info) > max_stash_len) {
-        strncpy(truncated_stash, viewer->stashes[i].stash_info,
+      if ((int)strlen(viewer->stashes[stash_index].stash_info) >
+          max_stash_len) {
+        strncpy(truncated_stash, viewer->stashes[stash_index].stash_info,
                 max_stash_len - 2);
         truncated_stash[max_stash_len - 2] = '\0';
         strcat(truncated_stash, "..");
       } else {
-        strcpy(truncated_stash, viewer->stashes[i].stash_info);
+        strcpy(truncated_stash, viewer->stashes[stash_index].stash_info);
       }
 
       // Show stash info with yellow time part and white message part
@@ -5820,39 +5900,39 @@ void render_stash_list_window(NCursesDiffViewer *viewer) {
 
           // Print time part in yellow
           wattron(viewer->stash_list_win, COLOR_PAIR(4));
-          mvwprintw(viewer->stash_list_win, y, 2, "%.*s", time_len,
+          mvwprintw(viewer->stash_list_win, y, 4, "%.*s", time_len,
                     truncated_stash);
 
           // Add extra space for single digit times
           if (is_single_digit) {
-            mvwprintw(viewer->stash_list_win, y, 2 + time_len, " ");
+            mvwprintw(viewer->stash_list_win, y, 4 + time_len, " ");
             time_len++;
           }
 
           // Print " On [branch]:" part in yellow
-          mvwprintw(viewer->stash_list_win, y, 2 + time_len, "%.*s",
+          mvwprintw(viewer->stash_list_win, y, 4 + time_len, "%.*s",
                     (int)(colon_pos - on_pos + 1), on_pos);
           wattroff(viewer->stash_list_win, COLOR_PAIR(4));
 
           // Print message part in normal color (white)
           mvwprintw(viewer->stash_list_win, y,
-                    2 + time_part_len + (is_single_digit ? 1 : 0), "%s",
+                    4 + time_part_len + (is_single_digit ? 1 : 0), "%s",
                     colon_pos + 1);
         } else {
           // Fallback: print entire yellow part if no " On " found
           wattron(viewer->stash_list_win, COLOR_PAIR(4));
-          mvwprintw(viewer->stash_list_win, y, 2, "%.*s", time_part_len,
+          mvwprintw(viewer->stash_list_win, y, 4, "%.*s", time_part_len,
                     truncated_stash);
           wattroff(viewer->stash_list_win, COLOR_PAIR(4));
 
           // Print message part in normal color (white)
-          mvwprintw(viewer->stash_list_win, y, 2 + time_part_len, "%s",
+          mvwprintw(viewer->stash_list_win, y, 4 + time_part_len, "%s",
                     colon_pos + 1);
         }
       } else {
         // Fallback: print entire string in yellow if no colon found
         wattron(viewer->stash_list_win, COLOR_PAIR(4));
-        mvwprintw(viewer->stash_list_win, y, 2, "%s", truncated_stash);
+        mvwprintw(viewer->stash_list_win, y, 4, "%s", truncated_stash);
         wattroff(viewer->stash_list_win, COLOR_PAIR(4));
       }
 
@@ -5914,14 +5994,14 @@ void render_branch_list_window(NCursesDiffViewer *viewer) {
       // Create status indicator
       if (viewer->branches[i].commits_ahead > 0 &&
           viewer->branches[i].commits_behind > 0) {
-        snprintf(status_indicator, sizeof(status_indicator), " %d↑%d↓", 
+        snprintf(status_indicator, sizeof(status_indicator), " %d↑%d↓",
                  viewer->branches[i].commits_ahead,
                  viewer->branches[i].commits_behind);
       } else if (viewer->branches[i].commits_ahead > 0) {
-        snprintf(status_indicator, sizeof(status_indicator), " %d↑", 
+        snprintf(status_indicator, sizeof(status_indicator), " %d↑",
                  viewer->branches[i].commits_ahead);
       } else if (viewer->branches[i].commits_behind > 0) {
-        snprintf(status_indicator, sizeof(status_indicator), " %d↓", 
+        snprintf(status_indicator, sizeof(status_indicator), " %d↓",
                  viewer->branches[i].commits_behind);
       }
 

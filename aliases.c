@@ -12,6 +12,7 @@
 AliasEntry *aliases = NULL;
 int alias_count = 0;
 int alias_capacity = 0;
+int loading_aliases = 0; // Flag to prevent saving during loading
 
 // Path to the aliases file
 char aliases_file_path[PATH_MAX];
@@ -65,10 +66,7 @@ void cleanup_aliases(void) {
  * Shutdown the alias system
  */
 void shutdown_aliases(void) {
-    // Save aliases to file
-    save_aliases();
-    
-    // Clean up
+    // Clean up (don't save here since we save immediately on changes)
     cleanup_aliases();
 }
 
@@ -81,6 +79,9 @@ int load_aliases(void) {
         return 0; // File doesn't exist or can't be opened
     }
     
+    // Set loading flag to prevent saving during loading
+    loading_aliases = 1;
+    
     char line[LSH_RL_BUFSIZE];
     char name[LSH_RL_BUFSIZE / 2];
     char command[LSH_RL_BUFSIZE / 2];
@@ -92,10 +93,30 @@ int load_aliases(void) {
         }
         
         // Parse alias definitions (name=command)
-        if (sscanf(line, "%s=%s", name, command) == 2) {
-            add_alias(name, command);
+        char *equals = strchr(line, '=');
+        if (equals) {
+            *equals = '\0';
+            char *line_name = line;
+            char *line_command = equals + 1;
+            
+            // Remove newline from command if present
+            char *newline = strchr(line_command, '\n');
+            if (newline) {
+                *newline = '\0';
+            }
+            
+            // Trim whitespace
+            while (*line_name == ' ' || *line_name == '\t') line_name++;
+            while (*line_command == ' ' || *line_command == '\t') line_command++;
+            
+            if (*line_name && *line_command) {
+                add_alias(line_name, line_command);
+            }
         }
     }
+    
+    // Clear loading flag
+    loading_aliases = 0;
     
     fclose(fp);
     return 1;
@@ -142,6 +163,10 @@ int add_alias(const char *name, const char *command) {
             // Update existing alias
             free(aliases[i].command);
             aliases[i].command = strdup(command);
+            // Save aliases immediately after updating (unless loading)
+            if (!loading_aliases) {
+                save_aliases();
+            }
             return 1;
         }
     }
@@ -161,6 +186,11 @@ int add_alias(const char *name, const char *command) {
     aliases[alias_count].name = strdup(name);
     aliases[alias_count].command = strdup(command);
     alias_count++;
+    
+    // Save aliases immediately after adding (unless loading)
+    if (!loading_aliases) {
+        save_aliases();
+    }
     
     return 1;
 }
@@ -185,6 +215,10 @@ int remove_alias(const char *name) {
             }
             
             alias_count--;
+            // Save aliases immediately after removing (unless loading)
+            if (!loading_aliases) {
+                save_aliases();
+            }
             return 1;
         }
     }
@@ -354,9 +388,6 @@ int lsh_alias(char **args) {
         }
     }
     
-    // Save aliases to file
-    save_aliases();
-    
     return 1;
 }
 
@@ -371,9 +402,6 @@ int lsh_unalias(char **args) {
     
     if (remove_alias(args[1])) {
         printf("Alias '%s' removed\n", args[1]);
-        
-        // Save aliases to file
-        save_aliases();
     } else {
         printf("Alias '%s' not found\n", args[1]);
     }

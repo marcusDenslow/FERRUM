@@ -5589,7 +5589,6 @@ int delete_git_branch(const char *branch_name, DeleteBranchOption option) {
 
   return success;
 }
-// this is a test
 
 int get_ncurses_git_stashes(NCursesDiffViewer *viewer) {
   if (!viewer)

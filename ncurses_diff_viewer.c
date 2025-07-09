@@ -4038,7 +4038,8 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
         // Scroll up if cursor is getting too close to top
         if (viewer->selected_stash <
             viewer->stash_scroll_offset + scroll_threshold) {
-          if (viewer->stash_scroll_offset > 0) {
+          if (viewer->stash_scroll_offset > 0 &&
+              viewer->stash_count > max_stashes_visible) {
             viewer->stash_scroll_offset--;
           }
         }
@@ -4064,7 +4065,8 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
                                           max_stashes_visible -
                                           scroll_threshold) {
           if (viewer->stash_scroll_offset <
-              viewer->stash_count - max_stashes_visible) {
+              viewer->stash_count - max_stashes_visible &&
+              viewer->stash_count > max_stashes_visible) {
             viewer->stash_scroll_offset++;
           }
         }
@@ -5870,7 +5872,7 @@ void render_stash_list_window(NCursesDiffViewer *viewer) {
         strcpy(truncated_stash, viewer->stashes[stash_index].stash_info);
       }
 
-      // Show stash info with yellow time part and white message part
+      // Turn off selection highlighting before rendering content
       if (is_selected_stash) {
         wattroff(viewer->stash_list_win, COLOR_PAIR(5));
       }
@@ -5936,8 +5938,9 @@ void render_stash_list_window(NCursesDiffViewer *viewer) {
         wattroff(viewer->stash_list_win, COLOR_PAIR(4));
       }
 
+      // Turn off selection highlighting if this was the selected stash
       if (is_selected_stash) {
-        wattron(viewer->stash_list_win, COLOR_PAIR(5));
+        wattroff(viewer->stash_list_win, COLOR_PAIR(5));
       }
     }
   }

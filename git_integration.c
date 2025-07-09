@@ -367,7 +367,7 @@ int get_git_stashes(char stashes[][512], int max_stashes) {
   }
 
   FILE *fp =
-      popen("git stash list --format=\"%cr: %gs\" 2>/dev/null | sed 's/ "
+      popen("git stash list --all --format=\"%cr: %gs\" 2>/dev/null | sed 's/ "
             "ago://' | sed 's/ minutes/m/' | sed 's/ minute/m/' | sed 's/ "
             "hours/h/' | sed 's/ hour/h/' | sed 's/ days/d/' | sed 's/ day/d/' "
             "| sed 's/ weeks/w/' | sed 's/ week/w/' | sed 's/WIP on /On /'",

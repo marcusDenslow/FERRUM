@@ -4065,7 +4065,7 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
                                           max_stashes_visible -
                                           scroll_threshold) {
           if (viewer->stash_scroll_offset <
-              viewer->stash_count - max_stashes_visible &&
+                  viewer->stash_count - max_stashes_visible &&
               viewer->stash_count > max_stashes_visible) {
             viewer->stash_scroll_offset++;
           }
@@ -5589,6 +5589,7 @@ int delete_git_branch(const char *branch_name, DeleteBranchOption option) {
 
   return success;
 }
+// this is a test
 
 int get_ncurses_git_stashes(NCursesDiffViewer *viewer) {
   if (!viewer)

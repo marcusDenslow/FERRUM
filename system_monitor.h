@@ -4,6 +4,7 @@
 #include <ctype.h>
 #include <dirent.h>
 #include <fcntl.h>
+#include <ncurses.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,6 +26,23 @@ typedef struct {
 } SystemStats;
 
 typedef struct {
+  WINDOW *main_win;
+  WINDOW *header_win;
+  WINDOW *stats_win;
+  WINDOW *process_win;
+  WINDOW *status_win;
+  WINDOW *search_win;
+  int terminal_height;
+  int terminal_width;
+  int selected_process;
+  int refresh_rate;
+  int process_scroll_offset;
+  int search_mode;
+  char search_buffer[256];
+  int search_cursor;
+} NCursesMonitor;
+
+typedef struct {
   int pid;
   char name[256];
   float cpu_percent;
@@ -32,6 +50,7 @@ typedef struct {
   char state;
 } ProcessInfo;
 
+int init_ncurses_monitor(NCursesMonitor *monitor);
 int builtin_monitor(char **args);
 void display_dashboard(SystemStats *stats, ProcessInfo *processes,
                        int proc_count);
@@ -45,5 +64,9 @@ int kbhit(void);
 void draw_progress_bar(int percentage, int width);
 void format_progress_bar(int percentage, int width, char *buffer);
 void format_bytes(unsigned long bytes, char *buffer);
+void cleanup_ncurses_monitor(NCursesMonitor *monitor);
+void display_ncurses_dashboard(NCursesMonitor *monitor, SystemStats *stats,
+                               ProcessInfo *processes, int proc_count);
+void handle_monitor_input(NCursesMonitor *monitor, int ch);
 
 #endif

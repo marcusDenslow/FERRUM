@@ -35,6 +35,7 @@ typedef enum {
   ARG_TYPE_BOTH,      // Both files and directories
   ARG_TYPE_FAVORITE_CITY,
   ARG_TYPE_THEME,
+  ARG_TYPE_COMMAND,
 } ArgumentType;
 
 /**
@@ -45,16 +46,17 @@ typedef struct {
   ArgumentType arg_type; // Expected argument type
   char *description;     // Optional description
   int strict_match;      // If 1, only show suggestions of the expected type
-                         // If 0, show suggestions of expected type but also allow other matches
+                    // If 0, show suggestions of expected type but also allow
+                    // other matches
 } CommandArgInfo;
 
 /**
  * Structure for returning multiple suggestions
  */
 typedef struct {
-  char **items;         // Array of suggestion strings
-  int count;            // Number of suggestions
-  int current_index;    // Current index for cycling through suggestions
+  char **items;      // Array of suggestion strings
+  int count;         // Number of suggestions
+  int current_index; // Current index for cycling through suggestions
 } SuggestionList;
 
 // Tab completion functions

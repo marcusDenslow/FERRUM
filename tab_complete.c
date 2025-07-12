@@ -21,7 +21,7 @@
 static CommandArgInfo command_arg_info[] = {
     // Built-in shell commands with strict matching for specific argument types
     {"cd", ARG_TYPE_DIRECTORY, "Change current directory", 0},
-    {"help", ARG_TYPE_ANY, "Display help", 0},
+    {"help", ARG_TYPE_COMMAND, "Display help", 0},
     {"exit", ARG_TYPE_ANY, "Exit the shell", 0},
     {"dir", ARG_TYPE_DIRECTORY, "List directory contents", 0},
     {"clear", ARG_TYPE_ANY, "Clear the screen", 0},
@@ -458,7 +458,7 @@ static SuggestionList *get_suggestions_by_type(ArgumentType arg_type,
       if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
         continue;
       }
-      
+
       // Skip hidden files/dirs unless the prefix starts with a dot
       if (entry->d_name[0] == '.' && name_prefix[0] != '.') {
         continue; // Skip hidden files
@@ -508,10 +508,11 @@ static SuggestionList *get_suggestions_by_type(ArgumentType arg_type,
         }
 
         // Skip "." and ".." entries always
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+        if (strcmp(entry->d_name, ".") == 0 ||
+            strcmp(entry->d_name, "..") == 0) {
           continue;
         }
-        
+
         // Skip hidden files/dirs unless the prefix starts with a dot
         if (entry->d_name[0] == '.' && name_prefix[0] != '.') {
           continue; // Skip hidden files
@@ -568,7 +569,8 @@ static SuggestionList *get_suggestions_by_type(ArgumentType arg_type,
             // since the user already typed the directory part
             char suggestion_path[PATH_MAX];
             if (is_dir) {
-              snprintf(suggestion_path, sizeof(suggestion_path), "%s/", entry->d_name);
+              snprintf(suggestion_path, sizeof(suggestion_path), "%s/",
+                       entry->d_name);
               suggestion = strdup(suggestion_path);
             } else {
               suggestion = strdup(entry->d_name);
@@ -787,6 +789,39 @@ static SuggestionList *get_suggestions_by_type(ArgumentType arg_type,
         free(themes[i]);
       }
       free(themes);
+    }
+    break;
+  }
+
+  case ARG_TYPE_COMMAND: {
+    // get all available commands
+    int builtin_count = lsh_num_builtins();
+
+    // count matching commands
+
+    for (int i = 0; i < builtin_count; i++) {
+      if (token[0] == '\0' ||
+          strncasecmp(builtin_str[i], token, strlen(token)) == 0) {
+        matched_count++;
+      }
+    }
+    // allocate items array
+
+    if (matched_count > 0) {
+      items = (char **)malloc(matched_count * sizeof(char *));
+      if (!items) {
+        return NULL;
+      }
+      // fill items array
+      int idx = 0;
+      for (int i = 0; i < builtin_count && idx < matched_count; i++) {
+        if (token[0] == '\0' ||
+            strncasecmp(builtin_str[i], token, strlen(token)) == 0) {
+          items[idx++] = strdup(builtin_str[i]);
+        }
+      }
+
+      matched_count = idx;
     }
     break;
   }

@@ -157,6 +157,187 @@ int lsh_cd(char **args) {
  * Displays help information
  */
 int lsh_help(char **args) {
+  if (args[1] != NULL) {
+    // Command-specific help
+    if (strcmp(args[1], "cd") == 0) {
+      printf("cd - Change directory\n");
+      printf("Usage: cd [directory]\n");
+      printf("  cd          - change to home directory\n");
+      printf("  cd <dir>    - change to specified directory\n");
+    } else if (strcmp(args[1], "cat") == 0) {
+      printf("cat - Display file contents\n");
+      printf("Usage: cat <file>\n");
+      printf("  Displays the contents of the specified file\n");
+    } else if (strcmp(args[1], "grep") == 0) {
+      printf("grep - Search for text patterns in files\n");
+      printf("Usage: grep <pattern> <file>\n");
+      printf("  Searches for the specified pattern in the given file\n");
+    } else if (strcmp(args[1], "gg") == 0) {
+      printf("gg - Git command shortcuts\n");
+      printf("Usage: gg <command>\n");
+      printf("Available commands:\n");
+      printf("  s   - status (enhanced git status)\n");
+      printf("  c   - commit\n");
+      printf("  p   - pull\n");
+      printf("  ps  - push\n");
+      printf("  a   - add .\n");
+      printf("  l   - log\n");
+      printf("  d   - diff\n");
+      printf("  dd  - ncurses diff viewer\n");
+      printf("  b   - branch\n");
+      printf("  ch  - checkout\n");
+      printf("  o   - open repository in browser\n");
+    } else if (strcmp(args[1], "weather") == 0) {
+      printf("weather - Shows weather information\n");
+      printf("Usage:\n");
+      printf("  weather        - shows weather for your current location\n");
+      printf("  weather <city> - shows weather for a specific city\n");
+      printf("Examples:\n");
+      printf("  weather\n");
+      printf("  weather London\n");
+      printf("  weather New York\n");
+    } else if (strcmp(args[1], "dir") == 0 || strcmp(args[1], "ls") == 0) {
+      printf("dir/ls - List directory contents\n");
+      printf("Usage: dir\n");
+      printf("  Lists files and directories in the current directory\n");
+      printf("  Shows file sizes, types, and modification dates in a table format\n");
+    } else if (strcmp(args[1], "mkdir") == 0) {
+      printf("mkdir - Create directory\n");
+      printf("Usage: mkdir <directory>\n");
+      printf("  Creates a new directory with the specified name\n");
+    } else if (strcmp(args[1], "rmdir") == 0) {
+      printf("rmdir - Remove directory\n");
+      printf("Usage: rmdir <directory>\n");
+      printf("  Removes an empty directory\n");
+    } else if (strcmp(args[1], "del") == 0) {
+      printf("del - Delete file\n");
+      printf("Usage: del <file>\n");
+      printf("  Deletes the specified file\n");
+    } else if (strcmp(args[1], "touch") == 0) {
+      printf("touch - Create file or update timestamp\n");
+      printf("Usage: touch <file>\n");
+      printf("  Creates a new empty file or updates the timestamp of an existing file\n");
+    } else if (strcmp(args[1], "pwd") == 0) {
+      printf("pwd - Print working directory\n");
+      printf("Usage: pwd\n");
+      printf("  Displays the current working directory path\n");
+    } else if (strcmp(args[1], "history") == 0) {
+      printf("history - Show command history\n");
+      printf("Usage: history\n");
+      printf("  Displays the list of previously executed commands with timestamps\n");
+    } else if (strcmp(args[1], "copy") == 0) {
+      printf("copy - Copy file\n");
+      printf("Usage: copy <source> <destination>\n");
+      printf("  Copies a file from source to destination\n");
+    } else if (strcmp(args[1], "move") == 0) {
+      printf("move - Move/rename file\n");
+      printf("Usage: move <source> <destination>\n");
+      printf("  Moves or renames a file from source to destination\n");
+    } else if (strcmp(args[1], "clear") == 0) {
+      printf("clear - Clear screen\n");
+      printf("Usage: clear\n");
+      printf("  Clears the terminal screen\n");
+    } else if (strcmp(args[1], "echo") == 0) {
+      printf("echo - Display text\n");
+      printf("Usage: echo [text...]\n");
+      printf("  Displays the specified text to the terminal\n");
+    } else if (strcmp(args[1], "alias") == 0) {
+      printf("alias - Create command alias\n");
+      printf("Usage: alias <name> <command>\n");
+      printf("  Creates a shortcut alias for a command\n");
+    } else if (strcmp(args[1], "bookmark") == 0) {
+      printf("bookmark - Bookmark current directory\n");
+      printf("Usage: bookmark <name>\n");
+      printf("  Saves the current directory with a bookmark name\n");
+    } else if (strcmp(args[1], "goto") == 0) {
+      printf("goto - Go to bookmarked directory\n");
+      printf("Usage: goto <name>\n");
+      printf("  Changes to a previously bookmarked directory\n");
+    } else if (strcmp(args[1], "theme") == 0) {
+      printf("theme - Change shell theme\n");
+      printf("Usage: theme <theme_name>\n");
+      printf("  Changes the visual appearance of the shell\n");
+    } else if (strcmp(args[1], "loc") == 0) {
+      printf("loc - Count lines of code\n");
+      printf("Usage: loc <file>\n");
+      printf("  Counts total lines, code lines, comments, and blank lines in a file\n");
+    } else if (strcmp(args[1], "monitor") == 0) {
+      printf("monitor - System monitor\n");
+      printf("Usage: monitor\n");
+      printf("  Displays real-time system information including CPU, memory, and disk usage\n");
+    } else if (strcmp(args[1], "stats") == 0) {
+      printf("stats - Command usage statistics\n");
+      printf("Usage: stats\n");
+      printf("  Shows statistics about your most frequently used commands\n");
+    } else if (strcmp(args[1], "help") == 0) {
+      printf("help - Display help information\n");
+      printf("Usage:\n");
+      printf("  help           - show all available commands\n");
+      printf("  help <command> - show help for a specific command\n");
+    } else if (strcmp(args[1], "exit") == 0) {
+      printf("exit - Exit the shell\n");
+      printf("Usage: exit\n");
+      printf("  Terminates the shell session\n");
+    } else if (strcmp(args[1], "ps") == 0) {
+      printf("ps - List running processes\n");
+      printf("Usage: ps\n");
+      printf("  Displays a list of all running processes on the system\n");
+    } else if (strcmp(args[1], "news") == 0) {
+      printf("news - Show latest repository updates\n");
+      printf("Usage: news\n");
+      printf("  Fetches and displays the latest commit information from the GitHub repository\n");
+    } else if (strcmp(args[1], "unalias") == 0) {
+      printf("unalias - Remove command alias\n");
+      printf("Usage: unalias <name>\n");
+      printf("  Removes a previously created command alias\n");
+    } else if (strcmp(args[1], "aliases") == 0) {
+      printf("aliases - List all aliases\n");
+      printf("Usage: aliases\n");
+      printf("  Displays all currently defined command aliases\n");
+    } else if (strcmp(args[1], "bookmarks") == 0) {
+      printf("bookmarks - List all bookmarks\n");
+      printf("Usage: bookmarks\n");
+      printf("  Displays all saved directory bookmarks\n");
+    } else if (strcmp(args[1], "unbookmark") == 0) {
+      printf("unbookmark - Remove bookmark\n");
+      printf("Usage: unbookmark <name>\n");
+      printf("  Removes a previously saved directory bookmark\n");
+    } else if (strcmp(args[1], "focus_timer") == 0) {
+      printf("focus_timer - Productivity timer\n");
+      printf("Usage: focus_timer [minutes]\n");
+      printf("  Starts a focus/pomodoro timer for productivity sessions\n");
+    } else if (strcmp(args[1], "grep-text") == 0) {
+      printf("grep-text - Alternative text search\n");
+      printf("Usage: grep-text <pattern> <file>\n");
+      printf("  Alternative implementation for searching text patterns in files\n");
+    } else if (strcmp(args[1], "ripgrep") == 0) {
+      printf("ripgrep - Fast text search\n");
+      printf("Usage: ripgrep <pattern> [path]\n");
+      printf("  Fast recursive text search using ripgrep-like functionality\n");
+    } else if (strcmp(args[1], "fzf") == 0) {
+      printf("fzf - Fuzzy file finder\n");
+      printf("Usage: fzf\n");
+      printf("  Interactive fuzzy file finder for quick file selection\n");
+    } else if (strcmp(args[1], "clip") == 0) {
+      printf("clip - Clipboard operations\n");
+      printf("Usage: clip\n");
+      printf("  Clipboard functionality (currently not implemented)\n");
+    } else if (strcmp(args[1], "git_status") == 0) {
+      printf("git_status - Git repository status\n");
+      printf("Usage: git_status\n");
+      printf("  Shows the current Git repository status\n");
+    } else if (strcmp(args[1], "paste") == 0) {
+      printf("paste - Paste clipboard content\n");
+      printf("Usage: paste\n");
+      printf("  Paste functionality (currently not implemented)\n");
+    } else {
+      printf("No help available for '%s'\n", args[1]);
+      printf("Type 'help' to see all available commands\n");
+    }
+    return 1;
+  }
+
+  // General help - show all commands
   printf("LSH Shell - A lightweight shell with modern features\n");
   printf("Type a command and press Enter to execute it.\n");
   printf("The following built-in commands are available:\n\n");

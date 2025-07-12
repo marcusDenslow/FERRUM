@@ -3,14 +3,102 @@
 #include "aliases.h"
 #include "common.h"
 #include <ncurses.h>
+#include <signal.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
+
+static NCursesMonitor *global_monitor = NULL;
 
 static struct termios old_termios;
 
+// signal handler for terminal size
+void handle_resize(int sig) {
+  (void)sig;
+  if (global_monitor) {
+    global_monitor->resize_flag = 1;
+  }
+  // Force ncurses to update its idea of terminal size
+  struct winsize ws;
+  if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0) {
+    resizeterm(ws.ws_row, ws.ws_col);
+  }
+}
+
+// function to recreate all windows with new terminal dimensions
+
+void recreate_windows(NCursesMonitor *monitor) {
+  // delete existings windows
+  if (monitor->header_win)
+    delwin(monitor->header_win);
+  if (monitor->stats_win)
+    delwin(monitor->stats_win);
+  if (monitor->process_win)
+    delwin(monitor->process_win);
+  if (monitor->status_win)
+    delwin(monitor->status_win);
+  if (monitor->search_win)
+    delwin(monitor->search_win);
+
+  // Force ncurses to recognize the new terminal size
+  endwin();
+  refresh();
+  clear();
+
+  // get new terminal dimensions
+  getmaxyx(stdscr, monitor->terminal_height, monitor->terminal_width);
+
+  // Ensure minimum terminal size
+  if (monitor->terminal_height < 15 || monitor->terminal_width < 60) {
+    // Terminal too small, but still create basic windows
+    monitor->header_win = newwin(1, monitor->terminal_width, 0, 0);
+    monitor->stats_win = newwin(1, monitor->terminal_width, 1, 0);
+    monitor->process_win = newwin(monitor->terminal_height - 4, monitor->terminal_width, 2, 0);
+    monitor->status_win = newwin(2, monitor->terminal_width, monitor->terminal_height - 2, 0);
+    monitor->search_win = newwin(1, monitor->terminal_width, monitor->terminal_height - 1, 0);
+  } else {
+    // Normal size layout
+    monitor->header_win = newwin(3, monitor->terminal_width, 0, 0);
+    monitor->stats_win = newwin(8, monitor->terminal_width, 3, 0);
+    monitor->process_win =
+        newwin(monitor->terminal_height - 13, monitor->terminal_width, 11, 0);
+    monitor->status_win =
+        newwin(2, monitor->terminal_width, monitor->terminal_height - 2, 0);
+    monitor->search_win =
+        newwin(1, monitor->terminal_width, monitor->terminal_height - 1, 0);
+  }
+
+  // Re-enable window settings
+  scrollok(monitor->process_win, TRUE);
+  keypad(monitor->process_win, TRUE);
+  keypad(stdscr, TRUE);
+  curs_set(0);
+
+  // ensure selected process is still visible after resize
+  int max_visible = getmaxy(monitor->process_win) - 3;
+  if (max_visible > 0) {
+    if (monitor->selected_process >=
+        monitor->process_scroll_offset + max_visible) {
+      monitor->process_scroll_offset =
+          monitor->selected_process - max_visible + 1;
+    }
+    if (monitor->process_scroll_offset < 0) {
+      monitor->process_scroll_offset = 0;
+    }
+  }
+
+  // Force complete screen redraw
+  clearok(stdscr, TRUE);
+  refresh();
+
+  // reset the resize flag
+  monitor->resize_flag = 0;
+}
+
 int builtin_monitor(char **args) {
   SystemStats stats;
-  ProcessInfo processes[500];  // Increased from 50 to 500 processes
+  ProcessInfo processes[500]; // Increased from 50 to 500 processes
   int proc_count;
   NCursesMonitor monitor;
   int refresh_rate = 1;
@@ -45,6 +133,10 @@ int builtin_monitor(char **args) {
   last_update = time(NULL);
 
   while (1) {
+    // check for terminal resize
+    if (monitor.resize_flag) {
+      recreate_windows(&monitor);
+    }
     time_t current_time = time(NULL);
 
     // Only update system stats at the specified refresh interval
@@ -58,8 +150,16 @@ int builtin_monitor(char **args) {
     display_ncurses_dashboard(&monitor, &stats, processes, proc_count);
 
     int ch = getch();
+    
+    // Check for resize after input
+    if (monitor.resize_flag) {
+      recreate_windows(&monitor);
+      continue; // Skip to next iteration to redraw everything
+    }
+    
     if (ch != ERR) {
-      // Check if we're in search mode first - if so, let search handle ALL input
+      // Check if we're in search mode first - if so, let search handle ALL
+      // input
       if (monitor.search_mode) {
         handle_monitor_input(&monitor, ch);
       } else {
@@ -92,6 +192,8 @@ int init_ncurses_monitor(NCursesMonitor *monitor) {
   monitor->search_mode = 0;
   monitor->search_buffer[0] = '\0';
   monitor->search_cursor = 0;
+  monitor->resize_flag = 0;
+  global_monitor = monitor;
 
   initscr();
   cbreak();
@@ -110,6 +212,8 @@ int init_ncurses_monitor(NCursesMonitor *monitor) {
     init_pair(5, COLOR_WHITE, COLOR_BLACK);
   }
 
+  // install signal handler for terminal resize
+  signal(SIGWINCH, handle_resize);
   // get terminal dimensions
 
   getmaxyx(stdscr, monitor->terminal_height, monitor->terminal_width);
@@ -147,7 +251,13 @@ void cleanup_ncurses_monitor(NCursesMonitor *monitor) {
     delwin(monitor->process_win);
   if (monitor->status_win)
     delwin(monitor->status_win);
+  if (monitor->search_win)
+    delwin(monitor->search_win);
 
+  // Restore default signal handler
+  signal(SIGWINCH, SIG_DFL);
+  global_monitor = NULL;
+  
   endwin();
 }
 
@@ -351,7 +461,8 @@ void display_ncurses_dashboard(NCursesMonitor *monitor, SystemStats *stats,
   int display_count = proc_count;
   ProcessInfo *temp_processes = NULL;
 
-  // Apply filter in real-time when search buffer has content (even during typing)
+  // Apply filter in real-time when search buffer has content (even during
+  // typing)
   if (strlen(monitor->search_buffer) > 0) {
     temp_processes = malloc(proc_count * sizeof(ProcessInfo));
     display_count = 0;
@@ -369,11 +480,19 @@ void display_ncurses_dashboard(NCursesMonitor *monitor, SystemStats *stats,
   if (has_colors())
     wattron(monitor->process_win, COLOR_PAIR(1));
 
-  // Show search status in title when filter is applied (real-time during search)
+  // Show search status in title when filter is applied (real-time during
+  // search)
   if (strlen(monitor->search_buffer) > 0) {
     if (monitor->search_mode) {
-      mvwprintw(monitor->process_win, 0, 2, " Searching: '%s' (%d matches) ",
+      // Use bright yellow background for active search mode
+      if (has_colors()) {
+        wattron(monitor->process_win, COLOR_PAIR(3) | A_REVERSE | A_BOLD);
+      }
+      mvwprintw(monitor->process_win, 0, 2, " SEARCHING: '%s' (%d matches) ",
                 monitor->search_buffer, display_count);
+      if (has_colors()) {
+        wattroff(monitor->process_win, COLOR_PAIR(3) | A_REVERSE | A_BOLD);
+      }
     } else {
       mvwprintw(monitor->process_win, 0, 2, " Processes (filtered: %d) ",
                 display_count);
@@ -447,10 +566,28 @@ void display_ncurses_dashboard(NCursesMonitor *monitor, SystemStats *stats,
     wattron(monitor->status_win, COLOR_PAIR(1));
 
   if (monitor->search_mode) {
+    // Use red background for search mode status to make it very obvious
+    if (has_colors()) {
+      wattron(monitor->status_win, COLOR_PAIR(4) | A_REVERSE | A_BOLD);
+    }
+    // Create search string with visible cursor
+    char search_display[260];
+    strncpy(search_display, monitor->search_buffer, monitor->search_cursor);
+    search_display[monitor->search_cursor] = '\0';
+    strcat(search_display, "_"); // Add cursor
+    strcat(search_display, monitor->search_buffer + monitor->search_cursor);
+
     mvwprintw(monitor->status_win, 0, 2,
-              "SEARCH: '%s' | %d matches | ESC=cancel Enter=apply",
-              monitor->search_buffer, display_count);
-    mvwprintw(monitor->status_win, 1, 2, "Type to filter processes...");
+              "*** SEARCH MODE *** '%s' | %d matches | ESC=cancel Enter=apply",
+              search_display, display_count);
+    if (has_colors()) {
+      wattroff(monitor->status_win, COLOR_PAIR(4) | A_REVERSE | A_BOLD);
+      wattron(monitor->status_win, COLOR_PAIR(3) | A_BOLD);
+    }
+    mvwprintw(monitor->status_win, 1, 2, ">>> Type to filter processes... <<<");
+    if (has_colors()) {
+      wattroff(monitor->status_win, COLOR_PAIR(3) | A_BOLD);
+    }
   } else {
     mvwprintw(monitor->status_win, 0, 2,
               "Press 'q' quit, 'r' refresh, '/' search, j/k arrows navigate, "
@@ -472,7 +609,6 @@ void display_ncurses_dashboard(NCursesMonitor *monitor, SystemStats *stats,
 
   refresh();
 }
-
 
 void display_dashboard(SystemStats *stats, ProcessInfo *processes,
                        int proc_count) {

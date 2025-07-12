@@ -1,6 +1,7 @@
 #ifndef SYSTEM_MONITOR_H
 #define SYSTEM_MONITOR_H
 
+#include <signal.h>
 #include <ctype.h>
 #include <dirent.h>
 #include <fcntl.h>
@@ -40,6 +41,7 @@ typedef struct {
   int search_mode;
   char search_buffer[256];
   int search_cursor;
+  volatile sig_atomic_t resize_flag;
 } NCursesMonitor;
 
 typedef struct {

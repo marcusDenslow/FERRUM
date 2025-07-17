@@ -1,11 +1,11 @@
 #ifndef SYSTEM_MONITOR_H
 #define SYSTEM_MONITOR_H
 
-#include <signal.h>
 #include <ctype.h>
 #include <dirent.h>
 #include <fcntl.h>
 #include <ncurses.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,6 +17,9 @@
 
 typedef struct {
   float cpu_percent;
+  float gpu_percent;
+  unsigned long gpu_memory_used;
+  unsigned long gpu_memory_total;
   unsigned long memory_used;
   unsigned long memory_total;
   unsigned long disk_read;

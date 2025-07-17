@@ -1,7 +1,7 @@
 #define _GNU_SOURCE
-#include "system_monitor.h"
 #include "aliases.h"
 #include "common.h"
+#include "system_monitor.h"
 #include <ncurses.h>
 #include <signal.h>
 #include <stdlib.h>
@@ -54,15 +54,18 @@ void recreate_windows(NCursesMonitor *monitor) {
     // Terminal too small, but still create basic windows
     monitor->header_win = newwin(1, monitor->terminal_width, 0, 0);
     monitor->stats_win = newwin(1, monitor->terminal_width, 1, 0);
-    monitor->process_win = newwin(monitor->terminal_height - 4, monitor->terminal_width, 2, 0);
-    monitor->status_win = newwin(2, monitor->terminal_width, monitor->terminal_height - 2, 0);
-    monitor->search_win = newwin(1, monitor->terminal_width, monitor->terminal_height - 1, 0);
+    monitor->process_win =
+        newwin(monitor->terminal_height - 4, monitor->terminal_width, 2, 0);
+    monitor->status_win =
+        newwin(2, monitor->terminal_width, monitor->terminal_height - 2, 0);
+    monitor->search_win =
+        newwin(1, monitor->terminal_width, monitor->terminal_height - 1, 0);
   } else {
     // Normal size layout
     monitor->header_win = newwin(3, monitor->terminal_width, 0, 0);
-    monitor->stats_win = newwin(8, monitor->terminal_width, 3, 0);
+    monitor->stats_win = newwin(6, monitor->terminal_width, 3, 0);
     monitor->process_win =
-        newwin(monitor->terminal_height - 13, monitor->terminal_width, 11, 0);
+        newwin(monitor->terminal_height - 11, monitor->terminal_width, 9, 0);
     monitor->status_win =
         newwin(2, monitor->terminal_width, monitor->terminal_height - 2, 0);
     monitor->search_win =
@@ -150,13 +153,13 @@ int builtin_monitor(char **args) {
     display_ncurses_dashboard(&monitor, &stats, processes, proc_count);
 
     int ch = getch();
-    
+
     // Check for resize after input
     if (monitor.resize_flag) {
       recreate_windows(&monitor);
       continue; // Skip to next iteration to redraw everything
     }
-    
+
     if (ch != ERR) {
       // Check if we're in search mode first - if so, let search handle ALL
       // input
@@ -257,7 +260,7 @@ void cleanup_ncurses_monitor(NCursesMonitor *monitor) {
   // Restore default signal handler
   signal(SIGWINCH, SIG_DFL);
   global_monitor = NULL;
-  
+
   endwin();
 }
 
@@ -362,6 +365,7 @@ void display_ncurses_dashboard(NCursesMonitor *monitor, SystemStats *stats,
   char mem_used_str[32], mem_total_str[32];
   char disk_read_str[32], disk_write_str[32];
   char net_rx_str[32], net_tx_str[32];
+  char gpu_used_str[32], gpu_total_str[32];
 
   // Format data
   float mem_percent = (float)stats->memory_used / stats->memory_total * 100;
@@ -371,6 +375,12 @@ void display_ncurses_dashboard(NCursesMonitor *monitor, SystemStats *stats,
   format_bytes(stats->disk_write, disk_write_str);
   format_bytes(stats->net_rx, net_rx_str);
   format_bytes(stats->net_tx, net_tx_str);
+  
+  // Format GPU memory if available
+  if (stats->gpu_memory_total > 0) {
+    format_bytes(stats->gpu_memory_used, gpu_used_str);
+    format_bytes(stats->gpu_memory_total, gpu_total_str);
+  }
 
   // Clear all windows
   werase(monitor->header_win);
@@ -399,62 +409,32 @@ void display_ncurses_dashboard(NCursesMonitor *monitor, SystemStats *stats,
   if (has_colors())
     wattroff(monitor->stats_win, COLOR_PAIR(1));
 
-  // CPU usage with progress bar
-  mvwprintw(monitor->stats_win, 1, 2, "CPU Usage:");
-  if (has_colors())
-    wattron(monitor->stats_win, COLOR_PAIR(2));
-  mvwprintw(monitor->stats_win, 1, 15, "%5.1f%%", stats->cpu_percent);
-  if (has_colors())
-    wattroff(monitor->stats_win, COLOR_PAIR(2));
+  // horizontal layout with wrapping
 
-  // Draw CPU progress bar
-  int bar_width = 30;
-  int filled = (stats->cpu_percent * bar_width) / 100;
-  mvwprintw(monitor->stats_win, 1, 25, "[");
-  for (int i = 0; i < bar_width; i++) {
-    if (i < filled) {
-      if (has_colors() && stats->cpu_percent > 80)
-        wattron(monitor->stats_win, COLOR_PAIR(4));
-      else if (has_colors() && stats->cpu_percent > 60)
-        wattron(monitor->stats_win, COLOR_PAIR(3));
-      else if (has_colors())
-        wattron(monitor->stats_win, COLOR_PAIR(1));
-      mvwaddch(monitor->stats_win, 1, 26 + i, '#');
-      if (has_colors())
-        wattroff(monitor->stats_win,
-                 COLOR_PAIR(1) | COLOR_PAIR(3) | COLOR_PAIR(4));
-    } else {
-      mvwaddch(monitor->stats_win, 1, 26 + i, ' ');
-    }
+  int col1_width = monitor->terminal_width / 2 - 2;
+  int col2_start = col1_width + 1;
+
+  mvwprintw(monitor->stats_win, 1, 2, "CPU: %5.1f%%", stats->cpu_percent);
+  if (stats->gpu_percent > 0 || stats->gpu_memory_total > 0) {
+    mvwprintw(monitor->stats_win, 1, col2_start, "GPU: %5.1f%%",
+              stats->gpu_percent);
   }
-  mvwprintw(monitor->stats_win, 1, 56, "]");
 
-  // Memory usage
-  mvwprintw(monitor->stats_win, 2, 2, "Memory:");
-  if (has_colors())
-    wattron(monitor->stats_win, COLOR_PAIR(2));
-  mvwprintw(monitor->stats_win, 2, 15, "%5.1f%%", mem_percent);
-  mvwprintw(monitor->stats_win, 3, 15, "%s / %s", mem_used_str, mem_total_str);
-  if (has_colors())
-    wattroff(monitor->stats_win, COLOR_PAIR(2));
+  // second row: Memory and GPU memory
 
-  // Disk I/O
-  mvwprintw(monitor->stats_win, 4, 2, "Disk I/O:");
-  if (has_colors())
-    wattron(monitor->stats_win, COLOR_PAIR(2));
-  mvwprintw(monitor->stats_win, 4, 15, "Read: %s", disk_read_str);
-  mvwprintw(monitor->stats_win, 5, 15, "Write: %s", disk_write_str);
-  if (has_colors())
-    wattroff(monitor->stats_win, COLOR_PAIR(2));
-
-  // Network I/O
-  mvwprintw(monitor->stats_win, 6, 2, "Network:");
-  if (has_colors())
-    wattron(monitor->stats_win, COLOR_PAIR(2));
-  mvwprintw(monitor->stats_win, 6, 15, "RX: %s", net_rx_str);
-  mvwprintw(monitor->stats_win, 7, 15, "TX: %s", net_tx_str);
-  if (has_colors())
-    wattroff(monitor->stats_win, COLOR_PAIR(2));
+  mvwprintw(monitor->stats_win, 2, 2, "MEM: %5.1f%% (%s/%s)", mem_percent,
+            mem_used_str, mem_total_str);
+  if (stats->gpu_memory_total > 0) {
+    float gpu_mem_percent = (float)stats->gpu_memory_used / stats->gpu_memory_total * 100;
+    mvwprintw(monitor->stats_win, 2, col2_start, "GPU MEM: %5.1f%% (%s/%s)",
+              gpu_mem_percent, gpu_used_str, gpu_total_str);
+  }
+  
+  // Third row: Disk I/O
+  mvwprintw(monitor->stats_win, 3, 2, "DISK: R:%s W:%s", disk_read_str, disk_write_str);
+  
+  // Fourth row: Network I/O
+  mvwprintw(monitor->stats_win, 4, 2, "NET: RX:%s TX:%s", net_rx_str, net_tx_str);
 
   // Filter processes based on search in real-time
   ProcessInfo *display_processes = processes;
@@ -725,6 +705,28 @@ void get_system_stats(SystemStats *stats) {
     prev_total = total;
     prev_idle = idle;
     fclose(fp);
+  }
+
+  // gpu usage
+
+  stats->gpu_percent = 0.0;
+  stats->gpu_memory_used = 0;
+  stats->gpu_memory_total = 0;
+
+  FILE *gpu_file =
+      popen("nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total "
+            "--format=csv,noheader,nounits 2>/dev/null",
+            "r");
+
+  if (gpu_file) {
+    char line[256];
+    if (fgets(line, sizeof(line), gpu_file)) {
+      sscanf(line, "%f, %lu, %lu", &stats->gpu_percent, &stats->gpu_memory_used,
+             &stats->gpu_memory_total);
+      stats->gpu_memory_used *= 1024 * 1024; // Convert MB to bytes
+      stats->gpu_memory_total *= 1024 * 1024; // Convert MB to bytes
+    }
+    pclose(gpu_file);
   }
 
   // Memory Usage - Read from /proc/meminfo for accuracy

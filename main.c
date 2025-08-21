@@ -2,7 +2,6 @@
  * main.c
  * Entry point for the LSH shell program
  */
-// this is a comment
 
 #include "common.h"
 #include "shell.h"

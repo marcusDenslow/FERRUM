@@ -2,6 +2,8 @@
  * ncurses_diff_viewer.c
  * NCurses-based interactive diff viewer implementation
  */
+// this is a change
+// this is another change
 
 #include "ncurses_diff_viewer.h"
 #include "git_integration.h"

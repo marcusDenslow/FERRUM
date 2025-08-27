@@ -1,6 +1,6 @@
 /**
  * aliases.c
- * Implementation of shell alias functionality this is a test
+ * Implementation of shell alias functionality
  */
 
 #include "aliases.h"

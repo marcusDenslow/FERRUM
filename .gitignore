@@ -1,1 +1,45 @@
+# Build artifacts
+build/
+*.o
+*.exe
+shell
+shell.exe
+
+# System files
+.DS_Store
+Thumbs.db
+
+# IDE/Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.vim/
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+
+# Claude Code local settings
 **/.claude/settings.local.json
+
+# Core dumps and debugging
+core
+*.core
+vgcore.*
+
+# Static analysis
+*.gcov
+*.gcda
+*.gcno
+
+# Archives
+*.tar.gz
+*.zip
+*.tar.bz2
+
+# Personal files
+notes.txt
+todo.txt

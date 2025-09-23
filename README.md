@@ -114,11 +114,6 @@ Contributions, suggestions, and bug reports are welcome!
 
 Please follow the style and structure of existing code.
 
-## License
-
-*(Add license information here, if available)*
-
----
 
 **FERRUM**: Your productivity shell for the modern terminal.  
 [GitHub Repository](https://github.com/marcusDenslow/FERRUM)

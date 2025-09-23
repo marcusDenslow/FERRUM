@@ -82,6 +82,9 @@ char **get_matching_history_entries(const char *prefix);
 // Free matching entries
 void free_matching_entries(char **entries);
 
+// get the most recent command that starts with the given prefix
+char *get_most_recent_history_match(const char *prefix);
+
 // Expose global variables for stats command
 extern CommandFrequency *command_frequencies;
 extern int frequency_count;

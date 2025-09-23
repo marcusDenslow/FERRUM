@@ -16,6 +16,8 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <stdio.h>
+#include <strings.h>
 #include <sys/stat.h>
 #include <termios.h>
 #include <unistd.h>
@@ -36,6 +38,10 @@ static int menu_start_line = 0;
 static int max_menu_lines = 0;
 static int cycling_mode = 0;
 static char cycle_prefix[LSH_RL_BUFSIZE] = {0};
+
+// history suggestion state
+static char *history_suggestion = NULL;
+static int has_history_suggestion = 0;
 
 // Define colors for suggestions
 #define SUGGESTION_COLOR "\033[2;37m" // Dim white color for suggestions
@@ -270,7 +276,14 @@ void update_suggestions(const char *buffer, int position) {
     suggestion_count = 0;
   }
 
+  // Free previous history suggestion
+  if (history_suggestion) {
+    free(history_suggestion);
+    history_suggestion = NULL;
+  }
+
   has_suggestion = 0;
+  has_history_suggestion = 0;
 
   // Parse command line
   prefix_start = 0;
@@ -295,6 +308,19 @@ void update_suggestions(const char *buffer, int position) {
   if (prefix_start < position) {
     strncpy(current_token, buffer + prefix_start, position - prefix_start);
     current_token[position - prefix_start] = '\0';
+  }
+
+  // get history suggestion for the entire command line typed so far
+  if (position > 0) {
+    // Use the entire buffer typed so far as the search prefix
+    char search_prefix[LSH_RL_BUFSIZE];
+    strncpy(search_prefix, buffer, position);
+    search_prefix[position] = '\0';
+
+    history_suggestion = get_most_recent_history_match(search_prefix);
+    if (history_suggestion) {
+      has_history_suggestion = 1;
+    }
   }
 
   // Get suggestions from the tab completion engine
@@ -351,7 +377,11 @@ void update_suggestions(const char *buffer, int position) {
  */
 void display_inline_suggestion(const char *prompt_buffer, const char *buffer,
                                int position) {
-  if (has_suggestion && suggestion_count > 0) {
+  // Prioritize history suggestions when available, tab suggestions as fallback
+  int show_history = has_history_suggestion;
+  int show_tab = has_suggestion && suggestion_count > 0 && !show_history;
+
+  if (show_history || show_tab) {
     // Determine what part should be in normal text and what part in suggestion
     // color
     char current_text[LSH_RL_BUFSIZE] = "";
@@ -360,56 +390,62 @@ void display_inline_suggestion(const char *prompt_buffer, const char *buffer,
     strncpy(current_text, buffer, position);
     current_text[position] = '\0';
 
-    // Extract just the suggestion part (after what user typed)
-    int current_len = 0;
-
-    if (prefix_start > 0) {
-      char current_arg[LSH_RL_BUFSIZE] = "";
-      strncpy(current_arg, &buffer[prefix_start], position - prefix_start);
-      current_arg[position - prefix_start] = '\0';
-      current_len = strlen(current_arg);
-
-      if (current_len > 0) {
-        // Handle nested paths with subdirectories
-        char *last_slash = strrchr(current_arg, '/');
-        if (last_slash) {
-          // We're in a subdirectory path
-          char *filename_part = last_slash + 1;
-          int filename_len = strlen(filename_part);
-
-          // When dealing with a path like "cd shelltest/ha", we need to match
-          // "ha" against the entry in the suggestions array (which would be
-          // e.g. "halla")
-
-          // Check if the filename part is a prefix of the suggestions entry
-          if (strncasecmp(suggestions[suggestion_index], filename_part,
-                          filename_len) == 0) {
-            // Copy the suggestion text starting from where the user input ends
-            strncpy(suggestion_text,
-                    suggestions[suggestion_index] + filename_len,
-                    sizeof(suggestion_text) - 1);
-          }
-        } else {
-          // Regular path (no subdirectories)
-          // Find where the current argument ends in the suggestion
-          char *suggestion_part = suggestions[suggestion_index];
-          if (strncasecmp(suggestion_part, current_arg, current_len) == 0) {
-            strncpy(suggestion_text, suggestion_part + current_len,
-                    sizeof(suggestion_text) - 1);
-          }
-        }
-      } else {
-        // Use the entire suggestion
-        strncpy(suggestion_text, suggestions[suggestion_index],
+    if (show_history) {
+      // Show history suggestion
+      if (strlen(buffer) < strlen(history_suggestion) &&
+          strncasecmp(history_suggestion, buffer, strlen(buffer)) == 0) {
+        strncpy(suggestion_text, history_suggestion + strlen(buffer),
                 sizeof(suggestion_text) - 1);
       }
-    } else {
-      // Completing a command
-      if (strlen(buffer) <= strlen(suggestions[suggestion_index]) &&
-          strncasecmp(suggestions[suggestion_index], buffer, strlen(buffer)) ==
-              0) {
-        strncpy(suggestion_text, suggestions[suggestion_index] + strlen(buffer),
-                sizeof(suggestion_text) - 1);
+    } else if (show_tab) {
+      // Show tab completion suggestion
+      // Extract just the suggestion part (after what user typed)
+      int current_len = 0;
+
+      if (prefix_start > 0) {
+        char current_arg[LSH_RL_BUFSIZE] = "";
+        strncpy(current_arg, &buffer[prefix_start], position - prefix_start);
+        current_arg[position - prefix_start] = '\0';
+        current_len = strlen(current_arg);
+
+        if (current_len > 0) {
+          // Handle nested paths with subdirectories
+          char *last_slash = strrchr(current_arg, '/');
+          if (last_slash) {
+            // We're in a subdirectory path
+            char *filename_part = last_slash + 1;
+            int filename_len = strlen(filename_part);
+
+            // Check if the filename part is a prefix of the suggestions entry
+            if (strncasecmp(suggestions[suggestion_index], filename_part,
+                            filename_len) == 0) {
+              // Copy the suggestion text starting from where the user input ends
+              strncpy(suggestion_text,
+                      suggestions[suggestion_index] + filename_len,
+                      sizeof(suggestion_text) - 1);
+            }
+          } else {
+            // Regular path (no subdirectories)
+            // Find where the current argument ends in the suggestion
+            char *suggestion_part = suggestions[suggestion_index];
+            if (strncasecmp(suggestion_part, current_arg, current_len) == 0) {
+              strncpy(suggestion_text, suggestion_part + current_len,
+                      sizeof(suggestion_text) - 1);
+            }
+          }
+        } else {
+          // Use the entire suggestion
+          strncpy(suggestion_text, suggestions[suggestion_index],
+                  sizeof(suggestion_text) - 1);
+        }
+      } else {
+        // Completing a command
+        if (strlen(buffer) <= strlen(suggestions[suggestion_index]) &&
+            strncasecmp(suggestions[suggestion_index], buffer, strlen(buffer)) ==
+                0) {
+          strncpy(suggestion_text, suggestions[suggestion_index] + strlen(buffer),
+                  sizeof(suggestion_text) - 1);
+        }
       }
     }
 
@@ -1142,7 +1178,27 @@ char *lsh_read_line(void) {
       }
     } else if (c == KEY_RIGHT && !menu_mode) {
       // Accept inline suggestion with right arrow
-      if (has_suggestion && suggestion_count > 0) {
+      if (has_history_suggestion) {
+        // Accept history suggestion
+        strncpy(buffer, history_suggestion, bufsize - 1);
+        buffer[bufsize - 1] = '\0';
+        position = strlen(buffer);
+
+        // Redraw the line with accepted suggestion
+        printf("\r\033[K%s%s", prompt_buffer, buffer);
+        fflush(stdout);
+
+        // Clear history suggestion after accepting
+        if (history_suggestion) {
+          free(history_suggestion);
+          history_suggestion = NULL;
+        }
+        has_history_suggestion = 0;
+
+        // Update suggestions after accepting history
+        update_suggestions(buffer, position);
+        display_inline_suggestion(prompt_buffer, buffer, position);
+      } else if (has_suggestion && suggestion_count > 0) {
         // Update buffer with the inline suggestion
         if (prefix_start > 0) {
           // We're completing an argument
@@ -1301,7 +1357,14 @@ char *lsh_read_line(void) {
     suggestions = NULL;
     suggestion_count = 0;
   }
+
+  if (history_suggestion) {
+    free(history_suggestion);
+    history_suggestion = NULL;
+  }
+
   has_suggestion = 0;
+  has_history_suggestion = 0;
 
   return buffer;
 }

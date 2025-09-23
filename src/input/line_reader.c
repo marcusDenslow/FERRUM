@@ -473,6 +473,7 @@ void clear_menu() {
     fflush(stdout);
 
     menu_start_line = 0;
+    max_menu_lines = 0; // Reset after clearing is complete
   }
 }
 // this is a test
@@ -488,7 +489,9 @@ void display_menu(const char *prompt_buffer, const char *buffer, int position) {
   }
 
   // First, clear any existing menu
-  clear_menu();
+  if (max_menu_lines > 0) {
+    clear_menu();
+  }
 
   // Save current cursor position (should be at end of input)
   printf("\033[s");

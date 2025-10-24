@@ -22,8 +22,8 @@ Thumbs.db
 *.temp
 *.log
 
-# Claude Code local settings
-**/.claude/settings.local.json
+# Claude Code
+.claude/
 
 # Core dumps and debugging
 core
@@ -43,3 +43,16 @@ vgcore.*
 # Personal files
 notes.txt
 todo.txt
+
+# User runtime/config files (created by shell at runtime)
+.lsh_aliases
+.lsh_bookmarks
+.lsh_favorite_cities
+.lsh_theme
+.lsh_history
+.lsh_frequency
+.lsh/
+
+# Documentation and test files
+docs/
+tests/

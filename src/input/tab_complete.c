@@ -1,7 +1,3 @@
-/**
- * tab_complete.c
- * Linux implementation of tab completion
- */
 
 #include "tab_complete.h"
 #include "aliases.h"
@@ -95,25 +91,15 @@ static CommandArgInfo command_arg_info[] = {
 // Global state
 static CommandContext current_context;
 
-/**
- * Initialize tab completion system
- */
 void init_tab_completion(void) {
   // Initialize context to defaults
   memset(&current_context, 0, sizeof(CommandContext));
 }
 
-/**
- * Shutdown tab completion system
- */
 void shutdown_tab_completion(void) {
   // Nothing to clean up for now
 }
 
-/**
- * Get the type of argument expected for a command and if strict matching is
- * required
- */
 static ArgumentType get_argument_type(const char *cmd, int *strict_match) {
   if (!cmd || !*cmd) {
     if (strict_match)
@@ -134,9 +120,6 @@ static ArgumentType get_argument_type(const char *cmd, int *strict_match) {
   return ARG_TYPE_ANY;
 }
 
-/**
- * Parse the command line to determine context
- */
 static void parse_command_context(const char *buffer) {
   // Reset the context
   memset(&current_context, 0, sizeof(CommandContext));
@@ -189,9 +172,6 @@ static void parse_command_context(const char *buffer) {
   }
 }
 
-/**
- * Find all files/directories that match the beginning of path
- */
 static char *find_path_completions(const char *path) {
   if (!path || !*path)
     return NULL;
@@ -294,9 +274,6 @@ static char *find_path_completions(const char *path) {
   return completion;
 }
 
-/**
- * Get the completion for a command
- */
 static char *complete_command(const char *prefix) {
   if (!prefix || !*prefix)
     return NULL;
@@ -374,10 +351,6 @@ static char *complete_command(const char *prefix) {
   return result;
 }
 
-/**
- * Get all available suggestions for a specific argument type
- * Returns a SuggestionList or NULL if no matches found
- */
 static SuggestionList *get_suggestions_by_type(ArgumentType arg_type,
                                                const char *token) {
   if (!token)
@@ -855,10 +828,6 @@ case_label_file_dir:
   return suggestions;
 }
 
-/**
- * Try to complete the token as a specific argument type
- * Returns the first match or NULL if no matches found
- */
 static char *complete_argument_by_type(ArgumentType arg_type,
                                        const char *token) {
   if (!token)
@@ -880,9 +849,6 @@ static char *complete_argument_by_type(ArgumentType arg_type,
   return NULL;
 }
 
-/**
- * Free a suggestion list and all its items
- */
 void free_suggestion_list(SuggestionList *list) {
   if (!list)
     return;
@@ -899,9 +865,6 @@ void free_suggestion_list(SuggestionList *list) {
   free(list);
 }
 
-/**
- * Get a list of suggestions for the current context
- */
 SuggestionList *get_suggestion_list(const char *buffer, const char *prefix) {
   if (!buffer)
     return NULL;
@@ -994,9 +957,6 @@ SuggestionList *get_suggestion_list(const char *buffer, const char *prefix) {
   return suggestions;
 }
 
-/**
- * Get completion for the current context
- */
 char *get_tab_completion(const char *buffer) {
   if (!buffer)
     return NULL;

@@ -1,7 +1,3 @@
-/**
- * bookmarks.h
- * Functions for managing directory bookmarks
- */
 
 #ifndef BOOKMARKS_H
 #define BOOKMARKS_H

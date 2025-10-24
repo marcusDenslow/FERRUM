@@ -1,7 +1,3 @@
-/**
- * themes.c
- * Implementation of theme system for shell appearance
- */
 
 #include "themes.h"
 #include <stdio.h>
@@ -195,9 +191,6 @@ static ShellTheme catppuccin_mocha_theme = {
 // Path to the theme configuration file
 char theme_config_path[PATH_MAX];
 
-/**
- * Initialize the theme system
- */
 void init_theme_system(void) {
   // Determine theme config file location in user's home directory
   char *home_dir = getenv("HOME");
@@ -230,12 +223,6 @@ void init_theme_system(void) {
   }
 }
 
-/**
- * Load a specific theme by name
- *
- * @param theme_name Name of the theme to load
- * @return 1 if successful, 0 if theme not found
- */
 int load_theme(const char *theme_name) {
   if (strcmp(theme_name, "default") == 0) {
     memcpy(&current_theme, &default_theme, sizeof(ShellTheme));
@@ -253,10 +240,6 @@ int load_theme(const char *theme_name) {
   return 0;
 }
 
-/**
- * Apply the current theme settings
- * Called whenever theme-dependent UI elements need to be updated
- */
 void apply_current_theme(void) {
   // When called, the shell can update any on-screen elements that depend on
   // theme colors. This function would be called when changing themes or at startup.
@@ -289,16 +272,8 @@ void apply_current_theme(void) {
   }
 }
 
-/**
- * Get pointer to the current theme
- *
- * @return Pointer to the current theme structure
- */
 const ShellTheme *get_current_theme(void) { return &current_theme; }
 
-/**
- * List all available themes
- */
 void list_available_themes(void) {
   printf("Available themes:\n");
   printf("  default    - Standard shell colors\n");
@@ -317,9 +292,6 @@ void list_available_themes(void) {
   }
 }
 
-/**
- * Initialize themes at shell startup
- */
 void init_themes(void) {
   // Call the theme system initialization
   init_theme_system();
@@ -328,9 +300,6 @@ void init_themes(void) {
   apply_current_theme();
 }
 
-/**
- * Shutdown theme system
- */
 void shutdown_themes(void) {
   // Reset terminal color to default
   printf(ANSI_COLOR_RESET);
@@ -338,12 +307,6 @@ void shutdown_themes(void) {
   // Currently, no other cleanup is needed for the theme system
 }
 
-/**
- * Command handler for the "theme" command
- *
- * @param args Command arguments
- * @return 1 to continue shell execution, 0 to exit shell
- */
 int lsh_theme(char **args) {
   if (args[1] == NULL) {
     // No arguments, show usage info and current theme

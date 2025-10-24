@@ -1,8 +1,3 @@
-/**
- * weather.c
- * Implementation of weather information fetching and display for Linux
- * Uses wttr.in service to display weather with its rich UI
- */
 
 #include "weather.h"
 #include "favorite_cities.h"
@@ -13,10 +8,6 @@
 // this is a test
 // this is another test
 
-/**
- * Command handler for the "weather" command
- * Executes curl to get weather from wttr.in with full UI
- */
 int lsh_weather(char **args) {
   char command[256];
   char location[128] = ""; // Default empty location

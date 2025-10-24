@@ -1,7 +1,3 @@
-/**
- * ripgrep.c
- * Interactive wrapper for the ripgrep (rg) command-line search tool
- */
 
 #include "ripgrep.h"
 #include "common.h"
@@ -15,11 +11,6 @@
 #include <unistd.h>  // For access function
 #include <termios.h> // For terminal control
 
-/**
- * Check if ripgrep (rg) is installed on the system
- *
- * @return 1 if installed, 0 if not
- */
 int is_rg_installed(void) {
   // Try to run rg --version to check if it's installed
   FILE *fp = popen("rg --version 2>/dev/null", "r");
@@ -37,9 +28,6 @@ int is_rg_installed(void) {
   return has_output;
 }
 
-/**
- * Display instructions for installing ripgrep
- */
 void show_rg_install_instructions(void) {
   printf("\nripgrep (rg) is not installed on this system. To use this feature, "
          "install ripgrep:\n\n");
@@ -55,25 +43,12 @@ void show_rg_install_instructions(void) {
   printf("After installation, restart your shell.\n");
 }
 
-/**
- * Check if a specific editor is available
- *
- * @param editor Name of the editor executable
- * @return 1 if available, 0 if not
- */
 int is_editor_available_for_rg(const char *editor) {
   char command[256];
   snprintf(command, sizeof(command), "%s --version >/dev/null 2>&1", editor);
   return (system(command) == 0);
 }
 
-/**
- * Open a file at a specific line in the best available editor
- *
- * @param file_path Path to the file to open
- * @param line_number Line number to position cursor at
- * @return 1 if successful, 0 if failed
- */
 int rg_open_in_editor(const char *file_path, int line_number) {
   char command[2048] = {0};
   int success = 0;
@@ -122,16 +97,6 @@ int rg_open_in_editor(const char *file_path, int line_number) {
   }
 }
 
-/**
- * Parse a ripgrep result line to extract file path and line number
- *
- * @param result_line The result line from ripgrep (format:
- * file:line:column:text)
- * @param file_path Buffer to store extracted file path
- * @param file_path_size Size of file_path buffer
- * @param line_number Pointer to store extracted line number
- * @return 1 if parsing successful, 0 if failed
- */
 static int parse_rg_result(const char *result_line, char *file_path,
                            size_t file_path_size, int *line_number) {
   // Ripgrep output format is: file:line:column:text
@@ -162,12 +127,6 @@ static int parse_rg_result(const char *result_line, char *file_path,
   return 1;
 }
 
-/**
- * Run ripgrep with interactive filtering
- *
- * @param args Command arguments or NULL for interactive mode
- * @return Selected filename/line or NULL if canceled
- */
 char *run_interactive_ripgrep(char **args) {
   // Check if ripgrep is installed
   if (!is_rg_installed()) {
@@ -268,10 +227,6 @@ char *run_interactive_ripgrep(char **args) {
   return selected;
 }
 
-/**
- * Run ripgrep with interactive editing capabilities for a custom Neovim-like
- * experience
- */
 void run_ripgrep_interactive_session(void) {
   // Check if ripgrep and fzf are installed
   if (!is_rg_installed()) {
@@ -505,12 +460,6 @@ void run_ripgrep_interactive_session(void) {
   system("clear");
 }
 
-/**
- * Command handler for the ripgrep command
- *
- * @param args Command arguments
- * @return 1 to continue shell execution, 0 to exit shell
- */
 int lsh_ripgrep(char **args) {
   // Check if ripgrep is installed
   if (!is_rg_installed()) {

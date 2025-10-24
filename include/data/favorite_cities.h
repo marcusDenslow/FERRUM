@@ -1,7 +1,3 @@
-/**
- * favorite_cities.h
- * Functions for managing favorite cities for weather lookups
- */
 
 #ifndef FAVORITE_CITIES_H
 #define FAVORITE_CITIES_H

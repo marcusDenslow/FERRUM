@@ -1,7 +1,3 @@
-/**
- * git_integration.c
- * Implementation of Git repository detection and information
- */
 
 #include "git_integration.h"
 #include <stdio.h>
@@ -9,16 +5,10 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-/**
- * Initialize Git integration
- */
 void init_git_integration(void) {
   // No initialization needed for Linux
 }
 
-/**
- * Check if the current directory is in a Git repository and get branch info
- */
 int get_git_branch(char *branch_name, size_t buffer_size, int *is_dirty) {
   char git_dir[PATH_MAX] = "";
   char cmd[PATH_MAX] = "";
@@ -75,9 +65,6 @@ int get_git_branch(char *branch_name, size_t buffer_size, int *is_dirty) {
   return status;
 }
 
-/**
- * Get the name of the Git repository
- */
 int get_git_repo_name(char *repo_name, size_t buffer_size) {
   if (!repo_name || buffer_size == 0) {
     return 0;
@@ -115,9 +102,6 @@ int get_git_repo_name(char *repo_name, size_t buffer_size) {
   return 0;
 }
 
-/**
- * Get Git status for the current repository
- */
 char *get_git_status(void) {
   char branch_name[100] = "";
   int is_dirty = 0;
@@ -249,9 +233,6 @@ int get_repo_url(char *url, size_t url_size) {
   return 0;
 }
 
-/**
- * Check if the current branch has diverged from its remote tracking branch
- */
 int check_branch_divergence(int *commits_ahead, int *commits_behind) {
   if (!commits_ahead || !commits_behind) {
     return 0;
@@ -394,9 +375,6 @@ int get_git_stashes(char stashes[][512], int max_stashes) {
   return count;
 }
 
-/**
- * Apply a git stash by index (keeps stash in list)
- */
 int apply_git_stash(int stash_index) {
   if (stash_index < 0) {
     return 0;
@@ -410,9 +388,6 @@ int apply_git_stash(int stash_index) {
   return (result == 0) ? 1 : 0;
 }
 
-/**
- * Pop a git stash by index (applies and removes stash from list)
- */
 int pop_git_stash(int stash_index) {
   if (stash_index < 0) {
     return 0;
@@ -426,9 +401,6 @@ int pop_git_stash(int stash_index) {
   return (result == 0) ? 1 : 0;
 }
 
-/**
- * Drop a git stash by index (removes stash without applying)
- */
 int drop_git_stash(int stash_index) {
   if (stash_index < 0) {
     return 0;
@@ -442,9 +414,6 @@ int drop_git_stash(int stash_index) {
   return (result == 0) ? 1 : 0;
 }
 
-/**
- * Get detailed commit information including diff
- */
 int get_commit_details(const char *commit_hash, char *commit_info,
                        size_t info_size) {
   if (!commit_hash || !commit_info || info_size == 0) {
@@ -513,9 +482,6 @@ int get_commit_details(const char *commit_hash, char *commit_info,
   return 1;
 }
 
-/**
- * Get stash diff information
- */
 int get_stash_diff(int stash_index, char *stash_diff, size_t diff_size) {
   if (stash_index < 0 || !stash_diff || diff_size == 0) {
     return 0;

@@ -1,7 +1,3 @@
-/**
- * aliases.h 
- * Definitions for shell alias functionality
- */
 
 #ifndef ALIASES_H
 #define ALIASES_H

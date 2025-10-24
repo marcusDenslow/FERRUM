@@ -1,7 +1,3 @@
-/**
- * grep.c
- * Custom implementation of text searching for Linux using Boyer-Moore algorithm
- */
 
 #include "grep.h"
 #include "builtins.h"
@@ -327,9 +323,6 @@ int search_directory(const char *dir_path, const char *pattern, bool show_line_n
     return total_matches;
 }
 
-/**
- * Custom grep implementation using Boyer-Moore algorithm
- */
 int lsh_actual_grep(char **args) {
     if (args[1] == NULL) {
         printf("Usage: grep [options] pattern [file/directory]\n");
@@ -441,12 +434,6 @@ int lsh_actual_grep(char **args) {
     return 1;
 }
 
-/**
- * Run grep with interactive interface
- * 
- * Shows a split view with files on left, matches on right, and
- * updates search results with each keystroke
- */
 void run_interactive_grep_session(void) {
     // Save original terminal settings to restore later
     struct termios old_tio, new_tio;
@@ -1127,9 +1114,6 @@ void run_interactive_grep_session(void) {
     printf(ANSI_CLEAR_SCREEN ANSI_CURSOR_HOME);
 }
 
-/**
- * Wrapper for grep
- */
 int lsh_grep(char **args) {
     // If no arguments provided, run interactive grep
     if (args[1] == NULL) {

@@ -1,7 +1,3 @@
-/**
- * favorite_cities.c
- * Implementation of favorite cities management for weather lookup
- */
 
 #include "favorite_cities.h"
 #include "builtins.h"
@@ -15,9 +11,6 @@ int favorite_city_capacity = 0;
 // Path to the favorite cities file
 char favorite_cities_file_path[PATH_MAX];
 
-/**
- * Initialize the favorite cities system
- */
 void init_favorite_cities(void) {
   // Set initial capacity
   favorite_city_capacity = 10;
@@ -53,9 +46,6 @@ void init_favorite_cities(void) {
   }
 }
 
-/**
- * Clean up the favorite cities system
- */
 void cleanup_favorite_cities(void) {
   if (!favorite_cities)
     return;
@@ -66,9 +56,6 @@ void cleanup_favorite_cities(void) {
   favorite_city_capacity = 0;
 }
 
-/**
- * Shutdown favorite cities system - save and cleanup
- */
 void shutdown_favorite_cities(void) {
   // Save to file first
   save_favorite_cities();
@@ -77,9 +64,6 @@ void shutdown_favorite_cities(void) {
   cleanup_favorite_cities();
 }
 
-/**
- * Load favorite cities from file
- */
 int load_favorite_cities(void) {
   FILE *file = fopen(favorite_cities_file_path, "r");
   if (!file) {
@@ -115,9 +99,6 @@ int load_favorite_cities(void) {
   return 1;
 }
 
-/**
- * Save favorite cities to file
- */
 int save_favorite_cities(void) {
   FILE *file = fopen(favorite_cities_file_path, "w");
   if (!file) {
@@ -140,9 +121,6 @@ int save_favorite_cities(void) {
   return 1;
 }
 
-/**
- * Add a new favorite city
- */
 int add_favorite_city(const char *name) {
   if (!name)
     return 0;
@@ -177,9 +155,6 @@ int add_favorite_city(const char *name) {
   return 1;
 }
 
-/**
- * Remove a favorite city
- */
 int remove_favorite_city(const char *name) {
   if (!name)
     return 0;
@@ -199,9 +174,6 @@ int remove_favorite_city(const char *name) {
   return 0; // City not found
 }
 
-/**
- * Find a favorite city by name
- */
 CityEntry *find_favorite_city(const char *name) {
   if (!name)
     return NULL;
@@ -215,9 +187,6 @@ CityEntry *find_favorite_city(const char *name) {
   return NULL;
 }
 
-/**
- * Get favorite city names for tab completion
- */
 char **get_favorite_city_names(int *count) {
   if (favorite_city_count == 0) {
     *count = 0;
@@ -238,13 +207,6 @@ char **get_favorite_city_names(int *count) {
   return names;
 }
 
-/**
- * Command handler for the "cities" command
- * Usage:
- *   cities add <city>
- *   cities remove <city>
- *   cities list
- */
 int lsh_cities(char **args) {
   if (args[1] == NULL) {
     // No subcommand - show usage

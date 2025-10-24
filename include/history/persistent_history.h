@@ -1,7 +1,3 @@
-/**
- * persistent_history.h
- * Functions for persistent command history and frequency tracking
- */
 
 #ifndef PERSISTENT_HISTORY_H
 #define PERSISTENT_HISTORY_H

@@ -1,7 +1,3 @@
-/**
- * fzf_native halla
- * Wrapper for the native fzf command-line fuzzy finder
- */
 // this is an addition
 
 #include "fzf_native.h"
@@ -13,11 +9,6 @@
 #include <string.h>
 #include <sys/stat.h> // For stat
 
-/**
- * Check if native fzf is installed on the system
- *
- * @return 1 if installed, 0 if not
- */
 int is_fzf_installed(void) {
   // Try to run fzf --version to check if it's installed
   FILE *fp = popen("fzf --version 2>/dev/null", "r");
@@ -35,9 +26,6 @@ int is_fzf_installed(void) {
   return has_output;
 }
 
-/**
- * Display instructions for installing fzf
- */
 void show_fzf_install_instructions(void) {
   printf("\nfzf is not installed on this system. To use this feature, install "
          "fzf:\n\n");
@@ -54,13 +42,6 @@ void show_fzf_install_instructions(void) {
   printf("After installation, restart your shell.\n");
 }
 
-/**
- * Run fzf with files from the current directory
- *
- * @param preview Enable preview window if 1
- * @param args Additional arguments for fzf
- * @return Selected filename or NULL if canceled
- */
 char *run_native_fzf_files(int preview, char **args) {
   // Check if fzf is installed
   if (!is_fzf_installed()) {
@@ -151,13 +132,6 @@ char *run_native_fzf_files(int preview, char **args) {
   return selected;
 }
 
-/**
- * Run fzf with all files and directories from the current directory
- *
- * @param recursive Search recursively if 1
- * @param args Additional arguments for fzf
- * @return Selected path or NULL if canceled
- */
 char *run_native_fzf_all(int recursive, char **args) {
   // Check if fzf is installed
   if (!is_fzf_installed()) {
@@ -254,11 +228,6 @@ char *run_native_fzf_all(int recursive, char **args) {
   return selected;
 }
 
-/**
- * Run fzf with command history
- *
- * @return Selected command or NULL if canceled
- */
 char *run_native_fzf_history(void) {
   // Check if fzf is installed
   if (!is_fzf_installed()) {
@@ -355,25 +324,12 @@ char *run_native_fzf_history(void) {
   return selected;
 }
 
-/**
- * Check if a specific editor is available
- *
- * @param editor Name of the editor executable
- * @return 1 if available, 0 if not
- */
 int is_editor_available(const char *editor) {
   char command[256];
   snprintf(command, sizeof(command), "%s --version >/dev/null 2>&1", editor);
   return (system(command) == 0);
 }
 
-/**
- * Open a file in the best available editor in the current terminal
- *
- * @param file_path Path to the file to open
- * @param line_number Optional line number to jump to (0 to ignore)
- * @return 1 if successful, 0 if failed
- */
 int open_in_best_editor(const char *file_path, int line_number) {
   char command[2048] = {0};
   int success = 0;
@@ -432,12 +388,6 @@ int open_in_best_editor(const char *file_path, int line_number) {
   }
 }
 
-/**
- * Command handler for the fzf command
- *
- * @param args Command arguments
- * @return 1 to continue shell execution, 0 to exit shell
- */
 int lsh_fzf_native(char **args) {
   // Check if fzf is installed
   if (!is_fzf_installed()) {

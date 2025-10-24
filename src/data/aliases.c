@@ -1,7 +1,3 @@
-/**
- * aliases.c
- * Implementation of shell alias functionality this is a test..
- */
 
 #include "aliases.h"
 #include "builtins.h"
@@ -17,9 +13,6 @@ int loading_aliases = 0; // Flag to prevent saving during loading
 // Path to the aliases file
 char aliases_file_path[PATH_MAX];
 
-/**
- * Initialize the alias system
- */
 void init_aliases(void) {
   // Set initial capacity
   alias_capacity = 10;
@@ -43,9 +36,6 @@ void init_aliases(void) {
   load_aliases();
 }
 
-/**
- * Clean up the alias system
- */
 void cleanup_aliases(void) {
   if (!aliases)
     return;
@@ -63,17 +53,11 @@ void cleanup_aliases(void) {
   alias_capacity = 0;
 }
 
-/**
- * Shutdown the alias system
- */
 void shutdown_aliases(void) {
   // Clean up (don't save here since we save immediately on changes)
   cleanup_aliases();
 }
 
-/**
- * Load aliases from file
- */
 int load_aliases(void) {
   FILE *fp = fopen(aliases_file_path, "r");
   if (!fp) {
@@ -125,9 +109,6 @@ int load_aliases(void) {
   return 1;
 }
 
-/**
- * Save aliases to file
- */
 int save_aliases(void) {
   FILE *fp = fopen(aliases_file_path, "w");
   if (!fp) {
@@ -152,9 +133,6 @@ int save_aliases(void) {
   return 1;
 }
 
-/**
- * Add a new alias
- */
 int add_alias(const char *name, const char *command) {
   if (!name || !command) {
     return 0;
@@ -199,9 +177,6 @@ int add_alias(const char *name, const char *command) {
   return 1;
 }
 
-/**
- * Remove an alias
- */
 int remove_alias(const char *name) {
   if (!name) {
     return 0;
@@ -230,9 +205,6 @@ int remove_alias(const char *name) {
   return 0; // Alias not found
 }
 
-/**
- * Find an alias by name
- */
 AliasEntry *find_alias(const char *name) {
   for (int i = 0; i < alias_count; i++) {
     if (strcmp(aliases[i].name, name) == 0) {
@@ -242,9 +214,6 @@ AliasEntry *find_alias(const char *name) {
   return NULL;
 }
 
-/**
- * Expand a command line by replacing aliases
- */
 char *expand_aliases(const char *command) {
   if (!command) {
     return NULL;
@@ -293,9 +262,6 @@ char *expand_aliases(const char *command) {
   return result;
 }
 
-/**
- * Command handler for the "alias" command
- */
 int lsh_alias(char **args) {
   // No arguments - list all aliases
   if (args[1] == NULL) {
@@ -396,9 +362,6 @@ int lsh_alias(char **args) {
   return 1;
 }
 
-/**
- * Command handler for the "unalias" command
- */
 int lsh_unalias(char **args) {
   if (args[1] == NULL) {
     printf("unalias: missing argument\n");
@@ -414,9 +377,6 @@ int lsh_unalias(char **args) {
   return 1;
 }
 
-/**
- * Command handler to show all aliases
- */
 int lsh_aliases(char **args) {
   for (int i = 0; i < alias_count; i++) {
     printf("alias %s='%s'\n", aliases[i].name, aliases[i].command);
@@ -424,9 +384,6 @@ int lsh_aliases(char **args) {
   return 1;
 }
 
-/**
- * Get alias names for tab completion
- */
 char **get_alias_names(int *count) {
   if (alias_count == 0 || !count) {
     *count = 0;
@@ -447,9 +404,6 @@ char **get_alias_names(int *count) {
   return names;
 }
 
-/**
- * Expand alias in args array
- */
 char **expand_alias(char **args) {
   if (!args || !args[0]) {
     return NULL;

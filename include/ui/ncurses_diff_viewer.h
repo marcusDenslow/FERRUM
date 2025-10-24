@@ -1,7 +1,3 @@
-/**
- * ncurses_diff_viewer.h
- * NCurses-based interactive diff viewer for git changes
- */
 
 #ifndef NCURSES_DIFF_VIEWER_H
 #define NCURSES_DIFF_VIEWER_H
@@ -212,113 +208,50 @@ typedef struct {
 
 } NCursesDiffViewer;
 
-/**
- * Initialize the ncurses diff viewer
- */
 int init_ncurses_diff_viewer(NCursesDiffViewer *viewer);
 
-/**
- * Get list of changed files from git
- */
 int get_ncurses_changed_files(NCursesDiffViewer *viewer);
 
-/**
- * Load full file content with diff highlighting
- */
 int load_full_file_with_diff(NCursesDiffViewer *viewer, const char *filename);
 
-/**
- * Render the file list window
- */
 void render_file_list_window(NCursesDiffViewer *viewer);
 
-/**
- * Render the file content window
- */
 void render_file_content_window(NCursesDiffViewer *viewer);
 
-/**
- * Handle keyboard input for navigation
- */
 int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key);
 
-/**
- * Run the ncurses diff viewer
- */
 int run_ncurses_diff_viewer(void);
 
-/**
- * Clean up ncurses diff viewer resources
- */
 void cleanup_ncurses_diff_viewer(NCursesDiffViewer *viewer);
 
-/**
- * Create temporary file with current working version
- */
 int create_temp_file_with_changes(const char *filename, char *temp_path);
 
-/**
- * Create temporary file with git HEAD version
- */
 int create_temp_file_git_version(const char *filename, char *temp_path);
 
-/**
- * Get commit history
- */
 int get_commit_history(NCursesDiffViewer *viewer);
 
-/**
- * Toggle file marking for commit
- */
 void toggle_file_mark(NCursesDiffViewer *viewer, int file_index);
 
-/**
- * Mark all files for commit
- */
 void mark_all_files(NCursesDiffViewer *viewer);
 
-/**
- * Commit marked files with title and message
- */
 int commit_marked_files(NCursesDiffViewer *viewer, const char *commit_title,
                         const char *commit_message);
 
-/**
- * Push specific commit
- */
 int push_commit(NCursesDiffViewer *viewer, int commit_index);
 
-/**
- * Pull commits from remote
- */
 int pull_commits(NCursesDiffViewer *viewer);
 
-/**
- * Render the commit list window
- */
 void render_commit_list_window(NCursesDiffViewer *viewer);
 
-/**
- * Get commit title and message input from user
- */
 int get_commit_title_input(char *title, int max_len, char *message,
                            int max_message_len);
 
-/**
- * Draw a box with rounded corners
- */
 void draw_rounded_box(WINDOW *win);
 
-/**
- * Render the status bar
- */
 void render_status_bar(NCursesDiffViewer *viewer);
 
 void render_branch_list_window(NCursesDiffViewer *viewer);
 
-/**
- * Update sync status and check for new files
- */
 void update_sync_status(NCursesDiffViewer *viewer);
 
 int get_ncurses_git_stashes(NCursesDiffViewer *viewer);
@@ -362,76 +295,34 @@ int get_stash_name_input(char *stash_name, int max_len);
 
 void render_stash_list_window(NCursesDiffViewer *viewer);
 
-/**
- * Load commit details for viewing
- */
 int load_commit_for_viewing(NCursesDiffViewer *viewer, const char *commit_hash);
 
-/**
- * Load stash details for viewing
- */
 int load_stash_for_viewing(NCursesDiffViewer *viewer, int stash_index);
 
-/**
- * Load commits for a specific branch for the hover preview
- */
 int load_branch_commits(NCursesDiffViewer *viewer, const char *branch_name);
 
-/**
- * Parse branch commits into navigable lines for branch view mode
- */
 int parse_branch_commits_to_lines(NCursesDiffViewer *viewer);
 
-/**
- * Start background fetch process
- */
 void start_background_fetch(NCursesDiffViewer *viewer);
 
-/**
- * Check if background fetch is complete and update UI accordingly
- */
 void check_background_fetch(NCursesDiffViewer *viewer);
 
-/**
- * Move cursor up/down while skipping empty lines
- */
 void move_cursor_smart(NCursesDiffViewer *viewer, int direction);
 
-/**
- * Move cursor up/down in unstaged pane with proper scrolling
- */
 void move_cursor_smart_unstaged(NCursesDiffViewer *viewer, int direction);
 
-/**
- * Move cursor up/down in staged pane with proper scrolling
- */
 void move_cursor_smart_staged(NCursesDiffViewer *viewer, int direction);
 
-/**
- * Helper function to wrap a long line into multiple display lines
- */
 int wrap_line_to_width(const char *input_line, char wrapped_lines[][1024],
                        int max_lines, int width);
 
-/**
- * Render a single line with proper wrapping and coloring
- */
 int render_wrapped_line(WINDOW *win, const char *line, int start_y, int start_x,
                         int width, int max_rows, int color_pair, int reverse);
 
-/**
- * Calculate how many display lines a wrapped line will take
- */
 int calculate_wrapped_line_height(const char *line, int width);
 
-/**
- * Load file preview showing the top of the file content
- */
 int load_file_preview(NCursesDiffViewer *viewer, const char *filename);
 
-/**
- * Update preview based on current mode and selection
- */
 void update_preview_for_current_selection(NCursesDiffViewer *viewer);
 
 int get_single_input(const char *title, const char *prompt, char *input,
@@ -462,109 +353,46 @@ int commit_staged_changes_only(NCursesDiffViewer *viewer,
 
 void rebuild_staged_view_from_git(NCursesDiffViewer *viewer);
 
-/**
- * Initialize fuzzy search state
- */
 void init_fuzzy_search(NCursesDiffViewer *viewer);
 
-/**
- * Cleanup fuzzy search windows
- */
 void cleanup_fuzzy_search(NCursesDiffViewer *viewer);
 
-/**
- * Enter fuzzy search mode
- */
 void enter_fuzzy_search_mode(NCursesDiffViewer *viewer);
 
-/**
- * Exit fuzzy search mode
- */
 void exit_fuzzy_search_mode(NCursesDiffViewer *viewer);
 
-/**
- * Update fuzzy search filter based on current query
- */
 void update_fuzzy_filter(NCursesDiffViewer *viewer);
 
-/**
- * Render fuzzy search UI
- */
 void render_fuzzy_search(NCursesDiffViewer *viewer);
 
-/**
- * Render fuzzy search input field only
- */
 void render_fuzzy_input(NCursesDiffViewer *viewer);
 
-/**
- * Render fuzzy search file list content only
- */
 void render_fuzzy_list_content(NCursesDiffViewer *viewer);
 
-/**
- * Create fuzzy search windows with borders (one-time setup)
- */
 void create_fuzzy_windows_with_borders(NCursesDiffViewer *viewer);
 
-/**
- * Handle fuzzy search input
- */
 int handle_fuzzy_search_input(NCursesDiffViewer *viewer, int key);
 
-/**
- * Select file from fuzzy search results
- */
 void select_fuzzy_file(NCursesDiffViewer *viewer);
 
-/**
- * Initialize grep search state
- */
 void init_grep_search(NCursesDiffViewer *viewer);
 
-/**
- * Cleanup grep search windows
- */
 void cleanup_grep_search(NCursesDiffViewer *viewer);
 
-/**
- * Enter grep search mode for current view mode
- */
 void enter_grep_search_mode(NCursesDiffViewer *viewer);
 
-/**
- * Exit grep search mode
- */
 void exit_grep_search_mode(NCursesDiffViewer *viewer);
 
-/**
- * Update grep search filter based on current query and mode
- */
 void update_grep_filter(NCursesDiffViewer *viewer);
 
-/**
- * Render grep search UI
- */
 void render_grep_search(NCursesDiffViewer *viewer);
 
-/**
- * Handle grep search input
- */
 int handle_grep_search_input(NCursesDiffViewer *viewer, int key);
 
-/**
- * Select item from grep search results
- */
 void select_grep_item(NCursesDiffViewer *viewer);
 
-/**
- * Calculate grep match score for text content
- */
 int calculate_grep_score(const char *pattern, const char *text);
 
-/**
- * Extract branch name from stash info
- */
 void extract_branch_from_stash(const char *stash_info, char *branch_name,
                                int max_len);
 

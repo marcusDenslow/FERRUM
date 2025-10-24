@@ -1,7 +1,3 @@
-/**
- * countdown_timer.c
- * Implementation of a focus timer that integrates with the shell status bar
- */
 
 #include "countdown_timer.h"
 #include "common.h"
@@ -28,9 +24,6 @@ static struct {
                               // programs
 } timer_state = {FALSE, 0, "", "", 0, FALSE, FALSE};
 
-/**
- * Update timer display text based on remaining time
- */
 static void update_timer_display(void) {
   if (!timer_state.is_active) {
     strcpy(timer_state.display_text, "");
@@ -66,9 +59,6 @@ static void update_timer_display(void) {
   }
 }
 
-/**
- * Timer thread function
- */
 static void *timer_thread_func(void *param) {
   while (!timer_state.should_exit) {
     // Update timer display
@@ -94,9 +84,6 @@ static void *timer_thread_func(void *param) {
   return NULL;
 }
 
-/**
- * Start a new countdown timer
- */
 int start_countdown_timer(int seconds, const char *name) {
   // Stop any existing timer
   if (timer_state.is_active) {
@@ -136,9 +123,6 @@ int start_countdown_timer(int seconds, const char *name) {
   return 1;
 }
 
-/**
- * Stop the current countdown timer
- */
 void stop_countdown_timer() {
   if (!timer_state.is_active) {
     return;
@@ -165,14 +149,8 @@ void stop_countdown_timer() {
   timer_state.session_name[0] = '\0';
 }
 
-/**
- * Check if a timer is currently active
- */
 BOOL is_timer_active() { return timer_state.is_active; }
 
-/**
- * Get the current timer display text
- */
 const char *get_timer_display() {
   if (timer_state.is_temporarily_hidden || !timer_state.is_active) {
     return "";
@@ -180,19 +158,10 @@ const char *get_timer_display() {
   return timer_state.display_text;
 }
 
-/**
- * Temporarily hide the timer display
- */
 void hide_timer_display(void) { timer_state.is_temporarily_hidden = TRUE; }
 
-/**
- * Restore the timer display after it was hidden
- */
 void show_timer_display(void) { timer_state.is_temporarily_hidden = FALSE; }
 
-/**
- * Parse time string in format "XhYmZs" to seconds
- */
 static int parse_time_string(const char *time_str) {
   if (!time_str || !*time_str) {
     return 0;
@@ -252,9 +221,6 @@ static int parse_time_string(const char *time_str) {
   return total_seconds;
 }
 
-/**
- * Command handler for the focus timer command
- */
 int lsh_focus_timer(char **args) {
   if (!args[1]) {
     // No arguments - show help

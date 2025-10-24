@@ -1,7 +1,3 @@
-/**
- * diff_viewer.c
- * Interactive diff viewer implementation
- */
 // thisis a test
 
 #include "diff_viewer.h"
@@ -13,9 +9,6 @@
 #include <termios.h>
 #include <unistd.h>
 
-/**
- * Initialize the diff viewer
- */
 int init_diff_viewer(DiffViewer *viewer) {
   if (!viewer)
     return 0;
@@ -32,9 +25,6 @@ int init_diff_viewer(DiffViewer *viewer) {
   return 1;
 }
 
-/**
- * Get terminal size
- */
 void get_terminal_size(int *width, int *height) {
   struct winsize w;
   ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
@@ -42,9 +32,6 @@ void get_terminal_size(int *width, int *height) {
   *height = w.ws_row;
 }
 
-/**
- * Get list of changed files from git
- */
 int get_changed_files(DiffViewer *viewer) {
   if (!viewer)
     return 0;
@@ -87,9 +74,6 @@ int get_changed_files(DiffViewer *viewer) {
   return viewer->file_count;
 }
 
-/**
- * Check if a file is a new untracked file
- */
 int is_new_file(const char *filename) {
   char cmd[1024];
   snprintf(cmd, sizeof(cmd), "git ls-files --error-unmatch \"%s\" 2>/dev/null",
@@ -106,9 +90,6 @@ int is_new_file(const char *filename) {
   return !is_tracked; // Return 1 if not tracked (new file)
 }
 
-/**
- * Load content of a new file and show all lines as additions
- */
 int load_new_file_content(DiffViewer *viewer, const char *filename) {
   if (!viewer || !filename)
     return 0;
@@ -152,9 +133,6 @@ int load_new_file_content(DiffViewer *viewer, const char *filename) {
   return viewer->diff_line_count;
 }
 
-/**
- * Load diff for a specific file
- */
 int load_file_diff(DiffViewer *viewer, const char *filename) {
   if (!viewer || !filename)
     return 0;
@@ -238,9 +216,6 @@ int load_file_diff(DiffViewer *viewer, const char *filename) {
   return viewer->diff_line_count;
 }
 
-/**
- * Render the diff viewer interface
- */
 void render_diff_viewer(DiffViewer *viewer) {
   if (!viewer)
     return;
@@ -373,9 +348,6 @@ void render_diff_viewer(DiffViewer *viewer) {
   fflush(stdout);
 }
 
-/**
- * Handle keyboard input for navigation
- */
 int handle_diff_input(DiffViewer *viewer, char key) {
   if (!viewer)
     return 0;
@@ -441,9 +413,6 @@ int handle_diff_input(DiffViewer *viewer, char key) {
   return 1; // Continue
 }
 
-/**
- * Set terminal to raw mode for interactive input
- */
 void set_raw_mode(struct termios *orig_termios) {
   tcgetattr(STDIN_FILENO, orig_termios);
 
@@ -455,16 +424,10 @@ void set_raw_mode(struct termios *orig_termios) {
   tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
 }
 
-/**
- * Restore terminal to original mode
- */
 void restore_terminal_mode(struct termios *orig_termios) {
   tcsetattr(STDIN_FILENO, TCSAFLUSH, orig_termios);
 }
 
-/**
- * Run the interactive diff viewer
- */
 int run_diff_viewer(void) {
   DiffViewer viewer;
   struct termios orig_termios;
@@ -511,9 +474,6 @@ int run_diff_viewer(void) {
   return 0;
 }
 
-/**
- * Clean up diff viewer resources
- */
 void cleanup_diff_viewer(DiffViewer *viewer) {
   // Nothing to clean up for now, but good to have for future expansion
   (void)viewer;

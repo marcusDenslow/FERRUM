@@ -1,7 +1,3 @@
-/**
- * structured_data.h
- * Definitions for structured data representation and manipulation
- */
 
 #ifndef STRUCTURED_DATA_H
 #define STRUCTURED_DATA_H

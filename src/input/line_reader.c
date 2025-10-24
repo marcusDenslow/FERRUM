@@ -1,7 +1,3 @@
-/**
- * line_reader.c
- * Implementation of line reading and parsing with context-aware suggestions
- */
 
 #include "line_reader.h"
 #include "aliases.h"
@@ -49,12 +45,6 @@ static int has_history_suggestion = 0;
 #define NORMAL_COLOR "\033[0;36m"    // Normal color for menu items
 #define RESET_COLOR "\033[0m"
 
-/**
- * Check if a command is valid
- *
- * @param cmd The command to check
- * @return 1 if valid, 0 if not
- */
 int is_valid_command(const char *cmd) {
   if (!cmd || cmd[0] == '\0') {
     return 0; // Empty command is not valid
@@ -177,11 +167,6 @@ int is_valid_command(const char *cmd) {
   return 0; // Command not found
 }
 
-/**
- * Read a key from the terminal
- *
- * Handles special keys and escape sequences
- */
 int read_key(void) {
   unsigned char c;
   int nread;
@@ -261,9 +246,6 @@ int read_key(void) {
   return c;
 }
 
-/**
- * Update suggestions based on current input
- */
 void update_suggestions(const char *buffer, int position) {
   // Free previous suggestions if any
   if (suggestions) {
@@ -372,9 +354,6 @@ void update_suggestions(const char *buffer, int position) {
   }
 }
 
-/**
- * Display a single inline suggestion (when not in menu mode)
- */
 void display_inline_suggestion(const char *prompt_buffer, const char *buffer,
                                int position) {
   // Prioritize history suggestions when available, tab suggestions as fallback
@@ -482,9 +461,6 @@ void display_inline_suggestion(const char *prompt_buffer, const char *buffer,
   }
 }
 
-/**
- * Function to clear the menu
- */
 void clear_menu() {
   if (max_menu_lines > 0) {
     // Save current cursor position
@@ -514,9 +490,6 @@ void clear_menu() {
 }
 // this is a test
 
-/**
- * Function to display menu of suggestions
- */
 
 void display_menu(const char *prompt_buffer, const char *buffer, int position) {
   if (!has_suggestion || suggestion_count == 0) {
@@ -612,9 +585,6 @@ void display_menu(const char *prompt_buffer, const char *buffer, int position) {
   fflush(stdout);
 }
 
-/**
- * Function to refresh the display - based on menu mode
- */
 
 void refresh_display(const char *prompt_buffer, const char *buffer,
                      int position) {
@@ -630,11 +600,6 @@ void refresh_display(const char *prompt_buffer, const char *buffer,
   }
 }
 
-/**
- * Read a line of input from the user
- *
- * @return The line read from stdin
- */
 char *lsh_read_line(void) {
   int bufsize = LSH_RL_BUFSIZE;
   int position = 0;
@@ -1369,12 +1334,6 @@ char *lsh_read_line(void) {
   return buffer;
 }
 
-/**
- * Split a line into tokens
- *
- * @param line The line to split
- * @return NULL-terminated array of tokens
- */
 char **lsh_split_line(char *line) {
   int bufsize = LSH_TOK_BUFSIZE;
   int position = 0;
@@ -1406,12 +1365,6 @@ char **lsh_split_line(char *line) {
   return tokens;
 }
 
-/**
- * Parse a token from a string, handling quoted strings
- *
- * @param str_ptr Pointer to the string to parse, will be updated
- * @return The parsed token, or NULL if no more tokens
- */
 char *parse_token(char **str_ptr) {
   char *str = *str_ptr;
   char *token_start;
@@ -1460,12 +1413,6 @@ char *parse_token(char **str_ptr) {
   return strdup(token_start);
 }
 
-/**
- * Split a line with pipes into separate command arrays
- *
- * @param line The line to split
- * @return NULL-terminated array of NULL-terminated token arrays
- */
 char ***lsh_split_piped_line(char *line) {
   int cmd_bufsize = LSH_TOK_BUFSIZE;
   int cmd_position = 0;

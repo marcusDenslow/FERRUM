@@ -1,16 +1,9 @@
 // this is another test
-/**
- * filters.c
- * Implementation of filter commands (where, sort-by, etc.)
- */
 
 #include "filters.h"
 #include <string.h>
 #include <strings.h> // For strcasecmp and strncasecmp
 
-/**
- * Filter a table based on a condition (e.g., where size > 10kb)
- */
 TableData *lsh_where(TableData *input, char **args) {
   if (!input || !args || !args[0]) {
     fprintf(stderr, "lsh: where: missing arguments\n");
@@ -64,9 +57,6 @@ TableData *lsh_where(TableData *input, char **args) {
   return filter_table(input, field, op, value);
 }
 
-/**
- * Sort a table based on a column (e.g., sort-by size desc)
- */
 TableData *lsh_sort_by(TableData *input, char **args) {
   if (!input || !args || !args[0]) {
     fprintf(stderr, "lsh: sort-by: missing arguments\n");
@@ -179,10 +169,6 @@ TableData *lsh_sort_by(TableData *input, char **args) {
   return result;
 }
 
-/**
- * Select specific columns from a table
- * Supports both space-separated and comma-separated field names
- */
 TableData *lsh_select(TableData *input, char **args) {
   if (!input || !args || !args[0]) {
     fprintf(stderr, "lsh: select: missing arguments\n");
@@ -355,9 +341,6 @@ TableData *lsh_select(TableData *input, char **args) {
   return result;
 }
 
-/**
- * Case-insensitive substring search (strcasestr equivalent for Windows)
- */
 char *my_strcasestr(const char *haystack, const char *needle) {
   if (!haystack || !needle)
     return NULL;
@@ -379,9 +362,6 @@ char *my_strcasestr(const char *haystack, const char *needle) {
   return NULL;
 }
 
-/**
- * Filter rows where a column contains a substring
- */
 TableData *lsh_contains(TableData *input, char **args) {
   if (!input || !args || !args[0] || !args[1]) {
     fprintf(stderr, "lsh: contains: missing arguments\n");
@@ -454,9 +434,6 @@ TableData *lsh_contains(TableData *input, char **args) {
   return result;
 }
 
-/**
- * Limit the number of rows displayed
- */
 TableData *lsh_limit(TableData *input, char **args) {
   if (!input || !args || !args[0]) {
     fprintf(stderr, "lsh: limit: missing arguments\n");

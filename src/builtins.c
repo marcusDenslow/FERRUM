@@ -1,7 +1,3 @@
-/**
- * builtins.c
- * Implementation of all built-in shell commands
- */
 
 #include "builtins.h"
 #include "common.h"
@@ -59,9 +55,6 @@ int (*builtin_func[])(char **) = {
     &lsh_stats,       &builtin_monitor,
 };
 
-/**
- * Set the console text color
- */
 void set_color(int color) {
   switch (color) {
   case 0:
@@ -93,19 +86,10 @@ void set_color(int color) {
   }
 }
 
-/**
- * Reset console color to default
- */
 void reset_color() { printf(ANSI_COLOR_RESET); }
 
-/**
- * Get the number of built-in commands
- */
 int lsh_num_builtins() { return sizeof(builtin_str) / sizeof(char *); }
 
-/**
- * Add a command to the history
- */
 void lsh_add_to_history(const char *command) {
   // Don't add empty commands or duplicates of the last command
   if (!command || *command == '\0' ||
@@ -129,10 +113,6 @@ void lsh_add_to_history(const char *command) {
   history_index = (history_index + 1) % HISTORY_SIZE;
 }
 
-/**
- * Built-in command: cd
- * Changes the current directory
- */
 int lsh_cd(char **args) {
   if (args[1] == NULL) {
     // No argument provided, change to home directory
@@ -152,10 +132,6 @@ int lsh_cd(char **args) {
   return 1;
 }
 
-/**
- * Built-in command: help
- * Displays help information
- */
 int lsh_help(char **args) {
   if (args[1] != NULL) {
     // Command-specific help
@@ -380,16 +356,8 @@ int lsh_help(char **args) {
   return 1;
 }
 
-/**
- * Built-in command: exit
- * Exits the shell
- */
 int lsh_exit(char **args) { return 0; }
 
-/**
- * Built-in command: dir
- * Lists files in the current directory
- */
 int lsh_dir(char **args) {
   DIR *dir;
   struct dirent *entry;
@@ -517,20 +485,12 @@ int lsh_dir(char **args) {
   return 1;
 }
 
-/**
- * Built-in command: clear
- * Clears the screen
- */
 int lsh_clear(char **args) {
   printf(ANSI_CLEAR_SCREEN);
   printf(ANSI_CURSOR_HOME);
   return 1;
 }
 
-/**
- * Built-in command: mkdir
- * Creates a new directory
- */
 int lsh_mkdir(char **args) {
   if (args[1] == NULL) {
     fprintf(stderr, "lsh: expected argument to \"mkdir\"\n");
@@ -542,10 +502,6 @@ int lsh_mkdir(char **args) {
   return 1;
 }
 
-/**
- * Built-in command: rmdir
- * Removes a directory
- */
 int lsh_rmdir(char **args) {
   if (args[1] == NULL) {
     fprintf(stderr, "lsh: expected argument to \"rmdir\"\n");
@@ -557,10 +513,6 @@ int lsh_rmdir(char **args) {
   return 1;
 }
 
-/**
- * Built-in command: del
- * Deletes a file
- */
 int lsh_del(char **args) {
   if (args[1] == NULL) {
     fprintf(stderr, "lsh: expected argument to \"del\"\n");
@@ -572,10 +524,6 @@ int lsh_del(char **args) {
   return 1;
 }
 
-/**
- * Built-in command: touch
- * Creates a new file or updates timestamp of existing file
- */
 int lsh_touch(char **args) {
   if (args[1] == NULL) {
     fprintf(stderr, "lsh: expected argument to \"touch\"\n");
@@ -590,10 +538,6 @@ int lsh_touch(char **args) {
   return 1;
 }
 
-/**
- * Built-in command: pwd
- * Prints the current working directory
- */
 int lsh_pwd(char **args) {
   char cwd[PATH_MAX];
   if (getcwd(cwd, sizeof(cwd)) != NULL) {
@@ -604,10 +548,6 @@ int lsh_pwd(char **args) {
   return 1;
 }
 
-/**
- * Built-in command: cat
- * Displays the contents of a file
- */
 int lsh_cat(char **args) {
   if (args[1] == NULL) {
     fprintf(stderr, "lsh: expected argument to \"cat\"\n");
@@ -629,10 +569,6 @@ int lsh_cat(char **args) {
   return 1;
 }
 
-/**
- * Built-in command: history
- * Displays command history
- */
 int lsh_history(char **args) {
   char time_str[20];
   struct tm *tm_info;
@@ -651,10 +587,6 @@ int lsh_history(char **args) {
   return 1;
 }
 
-/**
- * Built-in command: copy
- * Copies a file
- */
 int lsh_copy(char **args) {
   if (args[1] == NULL || args[2] == NULL) {
     fprintf(stderr,
@@ -687,10 +619,6 @@ int lsh_copy(char **args) {
   return 1;
 }
 
-/**
- * Built-in command: move
- * Moves a file
- */
 int lsh_move(char **args) {
   if (args[1] == NULL || args[2] == NULL) {
     fprintf(stderr,
@@ -707,19 +635,11 @@ int lsh_move(char **args) {
   return 1;
 }
 
-/**
- * Built-in command: paste
- * Placeholder for paste functionality
- */
 int lsh_paste(char **args) {
   printf("Paste functionality not implemented yet\n");
   return 1;
 }
 
-/**
- * Built-in command: ps
- * Lists running processes
- */
 int lsh_ps(char **args) {
   FILE *fp = popen("ps -ef", "r");
   if (fp == NULL) {
@@ -782,10 +702,6 @@ char *unescape_json_string(const char *str) {
   return result;
 }
 
-/**
- * Built-in command: news
- * Displays information about the last push to the shelltest GitHub repository
- */
 int lsh_news(char **args) {
   printf("Fetching latest updates from shelltestLinux repository...\n\n");
 
@@ -958,19 +874,11 @@ int lsh_news(char **args) {
   return 1;
 }
 
-/**
- * Built-in command: clip
- * Placeholder for clipboard functionality
- */
 int lsh_clip(char **args) {
   printf("Clipboard functionality not implemented yet\n");
   return 1;
 }
 
-/**
- * Built-in command: echo
- * Echoes arguments to stdout
- */
 int lsh_echo(char **args) {
   if (args[1] == NULL) {
     printf("\n");
@@ -987,10 +895,6 @@ int lsh_echo(char **args) {
   return 1;
 }
 
-/**
- * Built-in command: loc
- * Counts lines of code
- */
 int lsh_loc(char **args) {
   if (args[1] == NULL) {
     fprintf(stderr, "lsh: expected file or directory argument to \"loc\"\n");
@@ -1058,9 +962,6 @@ int lsh_loc(char **args) {
   return 1;
 }
 
-/**
- * Helper function to extract a string value from a JSON response
- */
 char *extract_json_string(const char *json, const char *key) {
   char search_key[100];
   sprintf(search_key, "\"%s\":", key);
@@ -1105,10 +1006,6 @@ char *extract_json_string(const char *json, const char *key) {
   return result;
 }
 
-/**
- * Built-in command: git_status
- * Displays the Git status of the current repo
- */
 int lsh_git_status(char **args) {
   // Show current Git status
   char *git_status = get_git_status();
@@ -1121,10 +1018,6 @@ int lsh_git_status(char **args) {
   return 1;
 }
 
-/**
- * Built-in command: gg
- * Quick access to Git commands
- */
 int lsh_gg(char **args) {
   if (args[1] == NULL) {
     printf("Usage: gg <command>\n");

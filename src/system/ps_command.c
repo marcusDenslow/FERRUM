@@ -1,8 +1,3 @@
-/**
- * ps_command.c
- * Implementation of the 'ps' command for listing running processes
- * Simple implementation for Linux
- */
 
 #include "builtins.h"
 #include "common.h"
@@ -11,13 +6,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-/**
- * Function to generate structured data for running processes 
- * This enables piping and filtering of process information
- * 
- * @param args Command arguments
- * @return TableData structure with process information
- */
 TableData* lsh_ps_structured(char **args) {
     // Define our table headers
     char *headers[] = {"PID", "Name", "Memory", "Threads"};
@@ -93,10 +81,6 @@ TableData* lsh_ps_structured(char **args) {
     return table;
 }
 
-/**
- * Implementation of the ps command to display process information
- * Uses structured data to show processes in a formatted table
- */
 int lsh_ps_fancy(char **args) {
     // Create structured data table for processes
     TableData *table = lsh_ps_structured(args);

@@ -1,7 +1,3 @@
-/**
- * persistent_history.c
- * Implementation of persistent command history and frequency tracking
- */
 
 #include "persistent_history.h"
 #include <ctype.h>
@@ -29,9 +25,6 @@ static int frequency_capacity = 0;
 static char history_file_path[PATH_MAX];
 static char frequency_file_path[PATH_MAX];
 
-/**
- * Initialize the persistent history system
- */
 void init_persistent_history(void) {
   // Allocate initial history capacity
   history_capacity = PERSISTENT_HISTORY_SIZE;
@@ -85,10 +78,6 @@ void init_persistent_history(void) {
   load_frequencies_from_file();
 }
 
-/**
- * Get the most recent command that starts with the given prefix
- * returns NULL if no match found
- */
 char *get_most_recent_history_match(const char *prefix) {
   if (!prefix || !history_entries || strlen(prefix) == 0) {
     return NULL;
@@ -122,9 +111,6 @@ char *get_most_recent_history_match(const char *prefix) {
   return NULL;
 }
 
-/**
- * Clean up persistent history resources
- */
 void cleanup_persistent_history(void) {
   if (history_entries) {
     for (int i = 0; i < history_size; i++) {
@@ -148,18 +134,12 @@ void cleanup_persistent_history(void) {
   frequency_capacity = 0;
 }
 
-/**
- * Shutdown persistent history
- */
 void shutdown_persistent_history(void) {
   save_history_to_file();
   save_frequencies_to_file();
   cleanup_persistent_history();
 }
 
-/**
- * Add a command to the persistent history
- */
 void add_to_history(const char *command) {
   if (!command || !*command || !history_entries) {
     return; // Skip empty commands
@@ -192,9 +172,6 @@ void add_to_history(const char *command) {
   history_position = -1;
 }
 
-/**
- * Update command frequency statistics
- */
 void update_command_frequency(const char *command) {
   if (!command || !*command || !command_frequencies) {
     return;
@@ -228,9 +205,6 @@ void update_command_frequency(const char *command) {
   frequency_count++;
 }
 
-/**
- * Save history to file
- */
 void save_history_to_file(void) {
   if (!history_entries || history_size == 0) {
     return;
@@ -257,9 +231,6 @@ void save_history_to_file(void) {
   fclose(fp);
 }
 
-/**
- * Load history from file
- */
 void load_history_from_file(void) {
   FILE *fp = fopen(history_file_path, "r");
   if (!fp) {
@@ -296,9 +267,6 @@ void load_history_from_file(void) {
   fclose(fp);
 }
 
-/**
- * Save command frequencies to file
- */
 void save_frequencies_to_file(void) {
   if (!command_frequencies || frequency_count == 0) {
     return;
@@ -325,9 +293,6 @@ void save_frequencies_to_file(void) {
   fclose(fp);
 }
 
-/**
- * Load command frequencies from file
- */
 void load_frequencies_from_file(void) {
   FILE *fp = fopen(frequency_file_path, "r");
   if (!fp) {
@@ -364,9 +329,6 @@ void load_frequencies_from_file(void) {
   fclose(fp);
 }
 
-/**
- * Get the history entry at the specified index
- */
 PersistentHistoryEntry *get_history_entry(int index) {
   if (index < 0 || index >= history_size) {
     return NULL;
@@ -374,14 +336,8 @@ PersistentHistoryEntry *get_history_entry(int index) {
   return &history_entries[index];
 }
 
-/**
- * Get the total number of history entries
- */
 int get_history_count(void) { return history_size; }
 
-/**
- * Find the best matching command based on frequency
- */
 char *find_best_frequency_match(const char *prefix) {
   if (!prefix || !*prefix || !command_frequencies) {
     return NULL;
@@ -408,9 +364,6 @@ char *find_best_frequency_match(const char *prefix) {
   return NULL;
 }
 
-/**
- * Debug function to print frequency data
- */
 void debug_print_frequencies(void) {
   printf("Command Frequencies:\n");
   for (int i = 0; i < frequency_count; i++) {
@@ -419,9 +372,6 @@ void debug_print_frequencies(void) {
   }
 }
 
-/**
- * Case-insensitive substring search
- */
 char *_stristr(const char *haystack, const char *needle) {
   if (!haystack || !needle)
     return NULL;
@@ -456,9 +406,6 @@ char *_stristr(const char *haystack, const char *needle) {
   return original;
 }
 
-/**
- * Get previous history entry for up-arrow key navigation
- */
 char *get_previous_history_entry(int *position) {
   if (!history_entries || history_size == 0) {
     return NULL;
@@ -478,9 +425,6 @@ char *get_previous_history_entry(int *position) {
   return history_entries[*position].command;
 }
 
-/**
- * Get next history entry for down-arrow key navigation
- */
 char *get_next_history_entry(int *position) {
   if (!history_entries || history_size == 0 || *position < 0) {
     return NULL;
@@ -498,9 +442,6 @@ char *get_next_history_entry(int *position) {
   }
 }
 
-/**
- * Get matching history entries for tab completion
- */
 char **get_matching_history_entries(const char *prefix) {
   if (!prefix || !history_entries) {
     return NULL;
@@ -536,9 +477,6 @@ char **get_matching_history_entries(const char *prefix) {
   return result;
 }
 
-/**
- * Free matching entries array
- */
 void free_matching_entries(char **entries) {
   if (!entries) {
     return;

@@ -1,16 +1,8 @@
-/**
- * structured_data.c
- * Implementation of structured data operations
- * this is a comment
- */
 
 #include "structured_data.h"
 #include "builtins.h" // For set_color and reset_color functions
 #include <strings.h>
 
-/**
- * Create a new table with the given headers
- */
 TableData *create_table(char **headers, int header_count) {
   TableData *table = (TableData *)malloc(sizeof(TableData));
   if (!table) {
@@ -49,9 +41,6 @@ TableData *create_table(char **headers, int header_count) {
   return table;
 }
 
-/**
- * Add a row to a table
- */
 void add_table_row(TableData *table, DataValue *row) {
   if (!table || !row)
     return;
@@ -72,9 +61,6 @@ void add_table_row(TableData *table, DataValue *row) {
   table->row_count++;
 }
 
-/**
- * Free all memory associated with a table
- */
 void free_table(TableData *table) {
   if (!table)
     return;
@@ -98,9 +84,6 @@ void free_table(TableData *table) {
   free(table);
 }
 
-/**
- * Create a copy of a DataValue
- */
 DataValue copy_data_value(const DataValue *src) {
   DataValue dest;
   dest.type = src->type;
@@ -123,9 +106,6 @@ DataValue copy_data_value(const DataValue *src) {
   return dest;
 }
 
-/**
- * Free a DataValue
- */
 void free_data_value(DataValue *value) {
   if (!value)
     return;
@@ -137,9 +117,6 @@ void free_data_value(DataValue *value) {
   }
 }
 
-/**
- * Parse human-readable sizes (e.g., "10kb", "2.5MB") into bytes
- */
 long parse_size(const char *size_str) {
   char *unit;
   double size = strtod(size_str, &unit);
@@ -180,9 +157,6 @@ long parse_size(const char *size_str) {
   return (long)size; // Default to just the number if no unit matches
 }
 
-/**
- * Extract size in bytes from a formatted size string (e.g., "10.5 KB")
- */
 long extract_size_bytes(const char *size_str) {
   double size_val = 0;
   char unit[8] = "";
@@ -204,9 +178,6 @@ long extract_size_bytes(const char *size_str) {
   return parse_size(size_str);
 }
 
-/**
- * Filter a table based on a condition
- */
 TableData *filter_table(TableData *input, char *field, char *op, char *value) {
   if (!input || !field || !op || !value) {
     return NULL;
@@ -332,10 +303,6 @@ TableData *filter_table(TableData *input, char *field, char *op, char *value) {
   return result;
 }
 
-/**
- * Print a table to the console with nice formatting using Unicode box
- * characters Linux version using ANSI escape sequences for colors
- */
 void print_table(TableData *table) {
   if (!table || table->row_count == 0) {
     printf("(empty table)\n");

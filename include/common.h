@@ -1,7 +1,3 @@
-/**
- * common.h
- * Common includes, defines and macros used throughout the shell
- */
 
 #ifndef COMMON_H
 #define COMMON_H

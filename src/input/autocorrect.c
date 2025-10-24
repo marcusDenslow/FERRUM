@@ -1,17 +1,7 @@
-/**
- * testing
- * autocorrect.c
- * Implementation of command auto-correction functionality
- */
 
 #include "autocorrect.h"
 #include "builtins.h"
 
-/**
- * Calculate Levenshtein distance between two strings
- * Used to determine similarity between mistyped command and potential
- * corrections
- */
 int levenshtein_distance(const char *s1, const char *s2) {
   int len1 = strlen(s1);
   int len2 = strlen(s2);
@@ -61,9 +51,6 @@ int levenshtein_distance(const char *s1, const char *s2) {
   return result;
 }
 
-/**
- * Helper function to find minimum of three integers
- */
 int min3(int a, int b, int c) {
   int min = a;
   if (b < min)
@@ -73,31 +60,16 @@ int min3(int a, int b, int c) {
   return min;
 }
 
-/**
- * Initialize the autocorrect system
- */
 void init_autocorrect(void) {
   // No initialization required currently
 }
 
-/**
- * Shutdown the autocorrect system
- */
 void shutdown_autocorrect(void) {
   // No cleanup required currently
 }
 
-/**
- * Check a command for possible corrections and suggest alternative
- */
 
-/**
- * Check a command for possible corrections and suggest alternative
- */
 
-/**
- * Check a command for possible corrections and suggest alternative
- */
 char **check_for_corrections(char **args) {
   if (!args || !args[0]) {
     return NULL;
@@ -160,9 +132,6 @@ char **check_for_corrections(char **args) {
   return NULL;
 }
 
-/**
- * Count the number of arguments in a NULL-terminated array
- */
 int count_args(char **args) {
   int count = 0;
   while (args[count] != NULL) {

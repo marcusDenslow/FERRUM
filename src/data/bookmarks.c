@@ -1,8 +1,3 @@
-/**
- * this is a test
- * bookmarks.c
- * Implementation of directory bookmarks functionality
- */
 
 #include "bookmarks.h"
 #include <fcntl.h>
@@ -16,9 +11,6 @@ int bookmark_capacity = 0;
 // Path to the bookmarks file
 char bookmarks_file_path[PATH_MAX];
 
-/**
- * Initialize the bookmark system
- */
 void init_bookmarks(void) {
   // Set initial capacity
   bookmark_capacity = 10;
@@ -43,9 +35,6 @@ void init_bookmarks(void) {
   load_bookmarks();
 }
 
-/**
- * Clean up the bookmark system
- */
 void cleanup_bookmarks(void) {
   if (!bookmarks)
     return;
@@ -63,9 +52,6 @@ void cleanup_bookmarks(void) {
   bookmark_capacity = 0;
 }
 
-/**
- * Shutdown the bookmark system
- */
 void shutdown_bookmarks(void) {
   // Save bookmarks to file
   save_bookmarks();
@@ -74,9 +60,6 @@ void shutdown_bookmarks(void) {
   cleanup_bookmarks();
 }
 
-/**
- * Load bookmarks from file
- */
 int load_bookmarks(void) {
   FILE *fp = fopen(bookmarks_file_path, "r");
   if (!fp) {
@@ -122,9 +105,6 @@ int load_bookmarks(void) {
   return 1;
 }
 
-/**
- * Save bookmarks to file
- */
 int save_bookmarks(void) {
   FILE *fp = fopen(bookmarks_file_path, "w");
   if (!fp) {
@@ -149,9 +129,6 @@ int save_bookmarks(void) {
   return 1;
 }
 
-/**
- * Add a new bookmark
- */
 int add_bookmark(const char *name, const char *path) {
   if (!name || !path) {
     return 0;
@@ -187,9 +164,6 @@ int add_bookmark(const char *name, const char *path) {
   return 1;
 }
 
-/**
- * Remove a bookmark
- */
 int remove_bookmark(const char *name) {
   if (!name) {
     return 0;
@@ -214,9 +188,6 @@ int remove_bookmark(const char *name) {
   return 0; // Bookmark not found
 }
 
-/**
- * Find a bookmark by name
- */
 BookmarkEntry *find_bookmark(const char *name) {
   for (int i = 0; i < bookmark_count; i++) {
     if (strcmp(bookmarks[i].name, name) == 0) {
@@ -226,9 +197,6 @@ BookmarkEntry *find_bookmark(const char *name) {
   return NULL;
 }
 
-/**
- * Command handler for the "bookmark" command
- */
 int lsh_bookmark(char **args) {
   char cwd[PATH_MAX];
 
@@ -258,9 +226,6 @@ int lsh_bookmark(char **args) {
   return 1;
 }
 
-/**
- * Command handler for the "bookmarks" command
- */
 int lsh_bookmarks(char **args) {
   if (bookmark_count == 0) {
     printf("No bookmarks defined.\n");
@@ -323,9 +288,6 @@ int lsh_bookmarks(char **args) {
   return 1;
 }
 
-/**
- * Command handler for the "goto" command
- */
 int lsh_goto(char **args) {
   if (args[1] == NULL) {
     printf("Usage: goto <bookmark_name>\n");
@@ -346,9 +308,6 @@ int lsh_goto(char **args) {
   return 1;
 }
 
-/**
- * Command handler for the "unbookmark" command
- */
 int lsh_unbookmark(char **args) {
   if (args[1] == NULL) {
     printf("Usage: unbookmark <bookmark_name>\n");
@@ -365,9 +324,6 @@ int lsh_unbookmark(char **args) {
   return 1;
 }
 
-/**
- * Get bookmark names for tab completion
- */
 char **get_bookmark_names(int *count) {
   if (bookmark_count == 0 || !count) {
     *count = 0;
@@ -388,9 +344,6 @@ char **get_bookmark_names(int *count) {
   return names;
 }
 
-/**
- * Find a matching bookmark by partial name
- */
 char *find_matching_bookmark(const char *partial_name) {
   if (!partial_name || strlen(partial_name) == 0) {
     return NULL;

@@ -1,7 +1,3 @@
-/**
- * builtins.h
- * Declarations for all built-in shell commands
- */
 
 #ifndef BUILTINS_H
 #define BUILTINS_H
@@ -90,13 +86,6 @@ int lsh_num_builtins(void);
 extern char *builtin_str[];
 extern int (*builtin_func[])(char **);
 
-/**
- * Extract a string value from a JSON object
- *
- * @param json The JSON string to parse
- * @param key The key to find
- * @return Allocated string containing the value (caller must free)
- */
 char *extract_json_string(const char *json, const char *key);
 
 #endif // BUILTINS_H

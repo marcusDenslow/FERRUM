@@ -1,20 +1,9 @@
-/**
- * timer.c
- * Implements a command to measure execution time of other commands
- */
 
 #include "builtins.h"
 #include "common.h"
 #include "shell.h"
 #include <time.h>
 
-/**
- * Format a time interval in milliseconds to a readable string
- *
- * @param ms Time in milliseconds
- * @param buffer Buffer to store formatted time
- * @param buffer_size Size of the buffer
- */
 void format_time(double ms, char *buffer, size_t buffer_size) {
   if (ms < 1.0) {
     // Microseconds
@@ -33,13 +22,6 @@ void format_time(double ms, char *buffer, size_t buffer_size) {
   }
 }
 
-/**
- * Implementation of the timer command
- * Usage: timer COMMAND [ARGS...]
- *
- * @param args Command arguments
- * @return 1 to continue, 0 to exit
- */
 int lsh_timer(char **args) {
   if (!args[1]) {
     printf("timer: usage: timer COMMAND [ARGS...]\n");
@@ -87,11 +69,4 @@ int lsh_timer(char **args) {
   return result;
 }
 
-/**
- * Implementation of the time command (alias for timer)
- * Usage: time COMMAND [ARGS...]
- *
- * @param args Command arguments
- * @return 1 to continue, 0 to exit
- */
 int lsh_time(char **args) { return lsh_timer(args); }

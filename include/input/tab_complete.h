@@ -1,16 +1,9 @@
-/**
- * tab_complete.h
- * Functions for tab completion and path suggestions
- */
 
 #ifndef TAB_COMPLETE_H
 #define TAB_COMPLETE_H
 
 #include "common.h"
 
-/**
- * Command context structure
- */
 typedef struct {
   int is_after_pipe;         // Flag if cursor is right after a pipe
   int is_filter_command;     // Flag if current command is a filter command
@@ -38,9 +31,6 @@ typedef enum {
   ARG_TYPE_COMMAND,
 } ArgumentType;
 
-/**
- * Structure for command argument type information
- */
 typedef struct {
   char *command;         // Command name
   ArgumentType arg_type; // Expected argument type
@@ -50,9 +40,6 @@ typedef struct {
                     // other matches
 } CommandArgInfo;
 
-/**
- * Structure for returning multiple suggestions
- */
 typedef struct {
   char **items;      // Array of suggestion strings
   int count;         // Number of suggestions

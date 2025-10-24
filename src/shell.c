@@ -1,7 +1,3 @@
-/**
- * shell.c
- * Implementation of core shell functionality
- */
 
 #include "shell.h"
 #include "aliases.h" // Added for alias support
@@ -33,9 +29,6 @@ static int g_status_attributes = 12; // Red
 static int g_status_bar_enabled = 0; // Flag to track if status bar is enabled
 static struct termios g_orig_termios; // Original terminal settings
 
-/**
- * Initialize terminal for raw mode
- */
 int init_terminal(struct termios *orig_termios) {
     int fd = STDIN_FILENO;
     
@@ -70,9 +63,6 @@ int init_terminal(struct termios *orig_termios) {
     return fd;
 }
 
-/**
- * Restore terminal to original settings
- */
 void restore_terminal(int fd, struct termios *orig_termios) {
     // Restore cursor and terminal settings
     printf("\033[?25h"); // Ensure cursor is visible
@@ -83,9 +73,6 @@ void restore_terminal(int fd, struct termios *orig_termios) {
     }
 }
 
-/**
- * Get console dimensions
- */
 int get_console_dimensions(int fd, int *width, int *height) {
     struct winsize ws;
     
@@ -100,9 +87,6 @@ int get_console_dimensions(int fd, int *width, int *height) {
     return 1;
 }
 
-/**
- * Temporarily hide the status bar before command execution
- */
 void hide_status_bar(int fd) {
     // Skip if status bar is not enabled
     if (!g_status_bar_enabled)
@@ -125,10 +109,6 @@ void hide_status_bar(int fd) {
     fflush(stdout);
 }
 
-/**
- * This function scrolls the console buffer up one line to make room for the
- * status bar when we're at the bottom of the screen.
- */
 void ensure_status_bar_space(int fd) {
     int width, height;
     if (!get_console_dimensions(fd, &width, &height)) {
@@ -151,9 +131,6 @@ void ensure_status_bar_space(int fd) {
     fflush(stdout);
 }
 
-/**
- * Initialize the status bar at the bottom of the screen
- */
 int init_status_bar(int fd) {
     int width, height;
     if (!get_console_dimensions(fd, &width, &height)) {
@@ -174,9 +151,6 @@ int init_status_bar(int fd) {
     return 1;
 }
 
-/**
- * Check for console window resize and update status bar position
- */
 void check_console_resize(int fd) {
     if (!g_status_bar_enabled)
         return;
@@ -196,9 +170,6 @@ void check_console_resize(int fd) {
     }
 }
 
-/**
- * Update the status bar with Git information
- */
 void update_status_bar(int fd, const char *git_info) {
     if (!g_status_bar_enabled)
         return;
@@ -264,9 +235,6 @@ void update_status_bar(int fd, const char *git_info) {
     fflush(stdout);
 }
 
-/**
- * Get the name of the parent and current directories from a path
- */
 
 void get_path_display(const char *cwd, char *parent_dir_name,
                      char *current_dir_name, size_t buf_size) {
@@ -330,9 +298,6 @@ void get_path_display(const char *cwd, char *parent_dir_name,
     }
 }
 
-/**
- * Create a TableData structure from an ls command
- */
 TableData* create_ls_table(char **args) {
     DIR *dir;
     struct dirent *entry;
@@ -444,9 +409,6 @@ TableData* create_ls_table(char **args) {
     return table;
 }
 
-/**
- * Parse input line into an array of commands (for pipelines)
- */
 char*** lsh_split_commands(char *line) {
     char **cmd_groups = NULL;
     char *cmd_group, *saveptr0;
@@ -644,9 +606,6 @@ char*** lsh_split_commands(char *line) {
     return commands;
 }
 
-/**
- * Launch an external program
- */
 int lsh_launch(char **args) {
     pid_t pid, wpid;
     int status;
@@ -673,9 +632,6 @@ int lsh_launch(char **args) {
     return 1;
 }
 
-/**
- * Execute a command
- */
 int lsh_execute(char **args) {
     if (args[0] == NULL) {
         // An empty command was entered
@@ -704,9 +660,6 @@ int lsh_execute(char **args) {
     return lsh_launch(args);
 }
 
-/**
- * Execute a pipeline of commands
- */
 int lsh_execute_piped(char ***commands) {
     // Count the number of commands in the pipeline
     int cmd_count = 0;
@@ -833,9 +786,6 @@ int lsh_execute_piped(char ***commands) {
     return 1;
 }
 
-/**
- * Free memory for a command array from lsh_split_commands
- */
 void free_commands(char ***commands) {
     for (int i = 0; commands[i] != NULL; i++) {
         for (int j = 0; commands[i][j] != NULL; j++) {
@@ -846,9 +796,6 @@ void free_commands(char ***commands) {
     free(commands);
 }
 
-/**
- * Display a welcome banner
- */
 void display_welcome_banner(void) {
     printf(ANSI_COLOR_CYAN);
     printf("╔════════════════════════════════════════════════════════════╗\n");
@@ -859,9 +806,6 @@ void display_welcome_banner(void) {
     printf(ANSI_COLOR_RESET);
 }
 
-/**
- * Main shell loop
- */
 void lsh_loop(void) {
     char *line;
     char **args;

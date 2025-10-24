@@ -1,7 +1,3 @@
-/**
- * ncurses_diff_viewer.c
- * NCurses-based interactive diff viewer implementation
- */
 // this is a change
 // this is another change
 
@@ -26,9 +22,6 @@ void handle_sigwinch(int sig) {
   terminal_resized = 1;
 }
 
-/**
- * Handle terminal resize by recreating all windows
- */
 void handle_terminal_resize(NCursesDiffViewer *viewer) {
   if (!viewer)
     return;
@@ -98,9 +91,6 @@ void handle_terminal_resize(NCursesDiffViewer *viewer) {
   terminal_resized = 0;
 }
 
-/**
- * Initialize the ncurses diff viewer
- */
 int init_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
   if (!viewer)
     return 0;
@@ -240,9 +230,6 @@ int init_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
   return 1;
 }
 
-/**
- * Get list of changed files from git
- */
 int get_ncurses_changed_files(NCursesDiffViewer *viewer) {
   if (!viewer)
     return 0;
@@ -285,9 +272,6 @@ int get_ncurses_changed_files(NCursesDiffViewer *viewer) {
   return viewer->file_count;
 }
 
-/**
- * Create temporary file with current working version
- */
 int create_temp_file_with_changes(const char *filename, char *temp_path) {
   snprintf(temp_path, 256, "/tmp/shell_diff_current_%d", getpid());
 
@@ -298,9 +282,6 @@ int create_temp_file_with_changes(const char *filename, char *temp_path) {
   return (system(cmd) == 0);
 }
 
-/**
- * Create temporary file with git HEAD version
- */
 int create_temp_file_git_version(const char *filename, char *temp_path) {
   snprintf(temp_path, 256, "/tmp/shell_diff_git_%d", getpid());
 
@@ -311,9 +292,6 @@ int create_temp_file_git_version(const char *filename, char *temp_path) {
   return (system(cmd) == 0);
 }
 
-/**
- * Check if a file is a new untracked file
- */
 int is_ncurses_new_file(const char *filename) {
   char cmd[1024];
   snprintf(cmd, sizeof(cmd), "git ls-files --error-unmatch \"%s\" 2>/dev/null",
@@ -330,9 +308,6 @@ int is_ncurses_new_file(const char *filename) {
   return !is_tracked; // Return 1 if not tracked (new file)
 }
 
-/**
- * Load file with staging information
- */
 
 int load_file_with_staging_info(NCursesDiffViewer *viewer,
                                 const char *filename) {
@@ -484,9 +459,6 @@ int load_file_with_staging_info(NCursesDiffViewer *viewer,
   return viewer->file_line_count;
 }
 
-/**
- * Stage/unstage a single line by line index
- */
 
 // this is a change
 // this is another change
@@ -547,9 +519,6 @@ int stage_hunk_by_line(NCursesDiffViewer *viewer, int line_index) {
   return 1;
 }
 
-/**
- * Rebuild staged view with proper git patch format for individual lines
- */
 void rebuild_staged_view(NCursesDiffViewer *viewer) {
   if (!viewer)
     return;
@@ -682,9 +651,6 @@ void rebuild_staged_view(NCursesDiffViewer *viewer) {
   }
 }
 
-/**
- * Rebuild staged view from what's actually staged in git
- */
 void rebuild_staged_view_from_git(NCursesDiffViewer *viewer) {
   if (!viewer)
     return;
@@ -794,9 +760,6 @@ void rebuild_staged_view_from_git(NCursesDiffViewer *viewer) {
   pclose(diff_fp);
 }
 
-/**
- * Apply staged changes using git
- */
 
 int apply_staged_changes(NCursesDiffViewer *viewer) {
   if (!viewer || viewer->staged_line_count == 0)
@@ -844,9 +807,6 @@ int apply_staged_changes(NCursesDiffViewer *viewer) {
   return (result == 0);
 }
 
-/**
- * Unstage a specific line from the staged pane
- */
 
 int unstage_line_from_git(NCursesDiffViewer *viewer, int staged_line_index) {
   if (!viewer || staged_line_index < 0 ||
@@ -884,9 +844,6 @@ int unstage_line_from_git(NCursesDiffViewer *viewer, int staged_line_index) {
   return 0;
 }
 
-/**
- * Reset staged changes
- */
 
 int reset_staged_changes(NCursesDiffViewer *viewer) {
   if (!viewer)
@@ -902,9 +859,6 @@ int reset_staged_changes(NCursesDiffViewer *viewer) {
   return 1;
 }
 
-/**
- * Draw a box with rounded corners
- */
 void draw_rounded_box(WINDOW *win) {
   if (!win)
     return;
@@ -931,9 +885,6 @@ void draw_rounded_box(WINDOW *win) {
   mvwaddch(win, height - 1, width - 1, ACS_LRCORNER);
 }
 
-/**
- * Get commit history
- */
 int get_commit_history(NCursesDiffViewer *viewer) {
   if (!viewer)
     return 0;
@@ -1056,9 +1007,6 @@ int get_commit_history(NCursesDiffViewer *viewer) {
   return viewer->commit_count;
 }
 
-/**
- * Toggle file marking for commit
- */
 void toggle_file_mark(NCursesDiffViewer *viewer, int file_index) {
   if (!viewer || file_index < 0 || file_index >= viewer->file_count)
     return;
@@ -1067,9 +1015,6 @@ void toggle_file_mark(NCursesDiffViewer *viewer, int file_index) {
       !viewer->files[file_index].marked_for_commit;
 }
 
-/**
- * Mark all files for commit (or unmark if all are already marked)
- */
 void mark_all_files(NCursesDiffViewer *viewer) {
   if (!viewer)
     return;
@@ -1089,10 +1034,6 @@ void mark_all_files(NCursesDiffViewer *viewer) {
   }
 }
 
-/**
- * Show confirmation dialog for diverged branch
- * Returns 1 for force push, 0 for cancel
- */
 int show_diverged_branch_dialog(int commits_ahead, int commits_behind) {
   // Save current screen
   WINDOW *saved_screen = dupwin(stdscr);
@@ -1157,10 +1098,6 @@ int show_diverged_branch_dialog(int commits_ahead, int commits_behind) {
   return result;
 }
 
-/**
- * Show confirmation dialog requiring user to type "yes"
- * Returns 1 if confirmed, 0 if cancelled
- */
 int show_reset_confirmation_dialog(void) {
   // Save current screen
   WINDOW *saved_screen = dupwin(stdscr);
@@ -1253,9 +1190,6 @@ int show_reset_confirmation_dialog(void) {
   return 0;
 }
 
-/**
- * Get commit title and message input from user
- */
 
 int get_commit_title_input(char *title, int max_len, char *message,
                            int max_message_len) {
@@ -1560,9 +1494,6 @@ int get_commit_title_input(char *title, int max_len, char *message,
   return strlen(title) > 0 ? 1 : 0;
 }
 
-/**
- * Commit marked files with title and message
- */
 int commit_marked_files(NCursesDiffViewer *viewer, const char *commit_title,
                         const char *commit_message) {
   if (!viewer || !commit_title || strlen(commit_title) == 0)
@@ -1634,9 +1565,6 @@ int commit_marked_files(NCursesDiffViewer *viewer, const char *commit_title,
   return 0;
 }
 
-/**
- * Reset commit (soft) - undo commit but keep changes
- */
 int reset_commit_soft(NCursesDiffViewer *viewer, int commit_index) {
   if (!viewer || commit_index < 0 || commit_index >= viewer->commit_count)
     return 0;
@@ -1668,9 +1596,6 @@ int reset_commit_soft(NCursesDiffViewer *viewer, int commit_index) {
   return 0;
 }
 
-/**
- * Reset commit (hard) - undo commit and discard changes
- */
 int reset_commit_hard(NCursesDiffViewer *viewer, int commit_index) {
   if (!viewer || commit_index < 0 || commit_index >= viewer->commit_count)
     return 0;
@@ -1712,9 +1637,6 @@ int reset_commit_hard(NCursesDiffViewer *viewer, int commit_index) {
   return 0;
 }
 
-/**
- * Amend the most recent commit
- */
 int amend_commit(NCursesDiffViewer *viewer) {
   if (!viewer || viewer->commit_count == 0)
     return 0;
@@ -2205,9 +2127,6 @@ int execute_git_with_auth(const char *base_cmd, const char *username,
   return result;
 }
 
-/**
- * Push specific commit
- */
 int push_commit(NCursesDiffViewer *viewer, int commit_index) {
   if (!viewer || commit_index < 0 || commit_index >= viewer->commit_count)
     return 0;
@@ -2427,9 +2346,6 @@ int push_commit(NCursesDiffViewer *viewer, int commit_index) {
   return 0;
 }
 
-/**
- * Pull commits from remote
- */
 int pull_commits(NCursesDiffViewer *viewer) {
   if (!viewer)
     return 0;
@@ -2471,9 +2387,6 @@ int pull_commits(NCursesDiffViewer *viewer) {
   return 0;
 }
 
-/**
- * Render the file list window
- */
 void render_file_list_window(NCursesDiffViewer *viewer) {
   if (!viewer || !viewer->file_list_win)
     return;
@@ -2614,9 +2527,6 @@ void render_file_list_window(NCursesDiffViewer *viewer) {
   wrefresh(viewer->file_list_win);
 }
 
-/**
- * Render the commit list window
- */
 
 void render_commit_list_window(NCursesDiffViewer *viewer) {
   if (!viewer || !viewer->commit_list_win)
@@ -2730,9 +2640,6 @@ void render_commit_list_window(NCursesDiffViewer *viewer) {
   wrefresh(viewer->commit_list_win);
 }
 
-/**
- * Render the file content window with split staging view
- */
 void render_file_content_window(NCursesDiffViewer *viewer) {
   if (!viewer || !viewer->file_content_win)
     return;
@@ -2966,9 +2873,6 @@ void render_file_content_window(NCursesDiffViewer *viewer) {
   wrefresh(viewer->file_content_win);
 }
 
-/**
- * Render the status bar
- */
 void render_status_bar(NCursesDiffViewer *viewer) {
   if (!viewer || !viewer->status_bar_win)
     return;
@@ -3148,9 +3052,6 @@ void render_status_bar(NCursesDiffViewer *viewer) {
   refresh();
 }
 
-/**
- * Update sync status and check for new files
- */
 void update_sync_status(NCursesDiffViewer *viewer) {
   if (!viewer)
     return;
@@ -3464,9 +3365,6 @@ int commit_staged_changes_only(NCursesDiffViewer *viewer,
   return 0;
 }
 
-/**
- * Handle keyboard input for navigation
- */
 int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
   if (!viewer)
     return 0;
@@ -4749,9 +4647,6 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
   return 1; // Continue
 }
 
-/**
- * Run the ncurses diff viewer
- */
 int run_ncurses_diff_viewer(void) {
   NCursesDiffViewer viewer;
 
@@ -4882,13 +4777,7 @@ int run_ncurses_diff_viewer(void) {
   return 0;
 }
 
-/**
- * Get list of git stashes
- */
 
-/**
- * Get list of git branches
- */
 
 int get_ncurses_git_branches(NCursesDiffViewer *viewer) {
   if (!viewer)
@@ -4999,9 +4888,6 @@ int get_ncurses_git_branches(NCursesDiffViewer *viewer) {
   return 1;
 }
 
-/**
- * Get branch name input from user for new branch creation
- */
 int get_branch_name_input(char *branch_name, int max_len) {
   if (!branch_name || max_len <= 0)
     return 0;
@@ -5086,9 +4972,6 @@ cleanup:
   return result;
 }
 
-/**
- * Create a new git branch
- */
 int create_git_branch(const char *branch_name) {
   if (!branch_name || strlen(branch_name) == 0)
     return 0;
@@ -5112,9 +4995,6 @@ int create_git_branch(const char *branch_name) {
   return (system(cmd) == 0);
 }
 
-/**
- * Get new branch name input from user for branch renaming
- */
 int get_rename_branch_input(const char *current_name, char *new_name,
                             int max_len) {
   if (!current_name || !new_name || max_len <= 0)
@@ -5205,9 +5085,6 @@ cleanup_rename:
   return result;
 }
 
-/**
- * Rename a git branch
- */
 int rename_git_branch(const char *old_name, const char *new_name) {
   if (!old_name || !new_name || strlen(old_name) == 0 || strlen(new_name) == 0)
     return 0;
@@ -5219,9 +5096,6 @@ int rename_git_branch(const char *old_name, const char *new_name) {
   return (system(cmd) == 0);
 }
 
-/**
- * Show delete branch confirmation dialog
- */
 int show_delete_branch_dialog(const char *branch_name) {
   if (!branch_name)
     return DELETE_CANCEL;
@@ -5302,9 +5176,6 @@ int show_delete_branch_dialog(const char *branch_name) {
   }
 }
 
-/**
- * Show universal error popup
- */
 void show_error_popup(const char *error_message) {
   if (!error_message)
     return;
@@ -5341,9 +5212,6 @@ void show_error_popup(const char *error_message) {
   refresh();
 }
 
-/**
- * Get available git remotes
- */
 int get_git_remotes(char remotes[][256], int max_remotes) {
   FILE *fp = popen("git remote 2>/dev/null", "r");
   if (!fp)
@@ -5370,9 +5238,6 @@ int get_git_remotes(char remotes[][256], int max_remotes) {
   return count;
 }
 
-/**
- * Show upstream selection dialog
- */
 int show_upstream_selection_dialog(const char *branch_name,
                                    char *upstream_result, int max_len) {
   if (!branch_name || !upstream_result)
@@ -5498,9 +5363,6 @@ int show_upstream_selection_dialog(const char *branch_name,
   return 0;
 }
 
-/**
- * Get current git branch name
- */
 int get_current_branch_name(char *branch_name, int max_len) {
   if (!branch_name)
     return 0;
@@ -5523,9 +5385,6 @@ int get_current_branch_name(char *branch_name, int max_len) {
   return 0;
 }
 
-/**
- * Check if a branch has an upstream
- */
 int branch_has_upstream(const char *branch_name) {
   if (!branch_name)
     return 0;
@@ -5537,9 +5396,6 @@ int branch_has_upstream(const char *branch_name) {
   return (system(cmd) == 0);
 }
 
-/**
- * Delete git branch based on option
- */
 int delete_git_branch(const char *branch_name, DeleteBranchOption option) {
   if (!branch_name || option == DELETE_CANCEL)
     return 0;
@@ -5607,9 +5463,6 @@ int get_ncurses_git_stashes(NCursesDiffViewer *viewer) {
   return viewer->stash_count;
 }
 
-/**
- * Get stash name input from user
- */
 int get_stash_name_input(char *stash_name, int max_len) {
   if (!stash_name)
     return 0;
@@ -5761,9 +5614,6 @@ int get_stash_name_input(char *stash_name, int max_len) {
   return strlen(stash_name) > 0 ? 1 : 0;
 }
 
-/**
- * Create a new git stash
- */
 int create_ncurses_git_stash(NCursesDiffViewer *viewer) {
   if (!viewer)
     return 0;
@@ -5797,9 +5647,6 @@ int create_ncurses_git_stash(NCursesDiffViewer *viewer) {
   return result;
 }
 
-/**
- * Render the stash list window
- */
 void render_stash_list_window(NCursesDiffViewer *viewer) {
   if (!viewer || !viewer->stash_list_win)
     return;
@@ -6169,9 +6016,6 @@ void render_branch_list_window(NCursesDiffViewer *viewer) {
   wrefresh(viewer->branch_list_win);
 }
 
-/**
- * Parse and load content lines from text with diff highlighting
- */
 int parse_content_lines(NCursesDiffViewer *viewer, const char *content) {
   if (!viewer || !content) {
     return 0;
@@ -6250,9 +6094,6 @@ int parse_content_lines(NCursesDiffViewer *viewer, const char *content) {
   return viewer->file_line_count;
 }
 
-/**
- * Load commit details for viewing
- */
 int load_commit_for_viewing(NCursesDiffViewer *viewer,
                             const char *commit_hash) {
   if (!viewer || !commit_hash) {
@@ -6274,9 +6115,6 @@ int load_commit_for_viewing(NCursesDiffViewer *viewer,
   return 0;
 }
 
-/**
- * Load stash details for viewing
- */
 int load_stash_for_viewing(NCursesDiffViewer *viewer, int stash_index) {
   if (!viewer || stash_index < 0) {
     return 0;
@@ -6297,9 +6135,6 @@ int load_stash_for_viewing(NCursesDiffViewer *viewer, int stash_index) {
   return 0;
 }
 
-/**
- * Load commits for a specific branch for the hover preview
- */
 int load_branch_commits(NCursesDiffViewer *viewer, const char *branch_name) {
   if (!viewer || !branch_name) {
     return 0;
@@ -6322,9 +6157,6 @@ int load_branch_commits(NCursesDiffViewer *viewer, const char *branch_name) {
   return viewer->branch_commit_count;
 }
 
-/**
- * Parse branch commits into navigable lines for branch view mode
- */
 int parse_branch_commits_to_lines(NCursesDiffViewer *viewer) {
   if (!viewer || viewer->branch_commit_count == 0) {
     return 0;
@@ -6394,9 +6226,6 @@ int parse_branch_commits_to_lines(NCursesDiffViewer *viewer) {
   return viewer->file_line_count;
 }
 
-/**
- * Start background fetch process
- */
 void start_background_fetch(NCursesDiffViewer *viewer) {
   if (!viewer || viewer->fetch_in_progress ||
       viewer->critical_operation_in_progress) {
@@ -6417,9 +6246,6 @@ void start_background_fetch(NCursesDiffViewer *viewer) {
   }
 }
 
-/**
- * Check if background fetch is complete and update UI accordingly
- */
 void check_background_fetch(NCursesDiffViewer *viewer) {
   if (!viewer || !viewer->fetch_in_progress) {
     return;
@@ -6497,9 +6323,6 @@ void check_background_fetch(NCursesDiffViewer *viewer) {
   }
 }
 
-/**
- * Update preview based on current mode and selection
- */
 void update_preview_for_current_selection(NCursesDiffViewer *viewer) {
   if (!viewer)
     return;
@@ -6565,9 +6388,6 @@ void update_preview_for_current_selection(NCursesDiffViewer *viewer) {
   }
 }
 
-/**
- * Load file preview showing the top of the file content
- */
 int load_file_preview(NCursesDiffViewer *viewer, const char *filename) {
   if (!viewer || !filename)
     return 0;
@@ -6620,10 +6440,6 @@ int load_file_preview(NCursesDiffViewer *viewer, const char *filename) {
   return 1;
 }
 
-/**
- * Helper function to wrap a long line into multiple display lines
- * Returns the number of wrapped lines created
- */
 int wrap_line_to_width(const char *input_line, char wrapped_lines[][1024],
                        int max_lines, int width) {
   int input_len = strlen(input_line);
@@ -6655,10 +6471,6 @@ int wrap_line_to_width(const char *input_line, char wrapped_lines[][1024],
   return line_count;
 }
 
-/**
- * Render a single line with proper wrapping and coloring
- * Returns the number of display rows used
- */
 int render_wrapped_line(WINDOW *win, const char *line, int start_y, int start_x,
                         int width, int max_rows, int color_pair, int reverse) {
   char wrapped_lines[10]
@@ -6689,9 +6501,6 @@ int render_wrapped_line(WINDOW *win, const char *line, int start_y, int start_x,
   return rows_used;
 }
 
-/**
- * Calculate how many display lines a wrapped line will take
- */
 int calculate_wrapped_line_height(const char *line, int width) {
   int line_len = strlen(line);
   if (line_len <= width) {
@@ -6700,10 +6509,6 @@ int calculate_wrapped_line_height(const char *line, int width) {
   return (line_len + width - 1) / width; // Ceiling division
 }
 
-/**
- * Move cursor up/down while skipping empty lines
- * direction: -1 for up, 1 for down
- */
 void move_cursor_smart(NCursesDiffViewer *viewer, int direction) {
   if (!viewer || viewer->file_line_count == 0) {
     return;
@@ -6783,10 +6588,6 @@ void move_cursor_smart(NCursesDiffViewer *viewer, int direction) {
   }
 }
 
-/**
- * Move cursor up/down in unstaged pane with proper scrolling
- * direction: -1 for up, 1 for down
- */
 void move_cursor_smart_unstaged(NCursesDiffViewer *viewer, int direction) {
   if (!viewer || viewer->file_line_count == 0) {
     return;
@@ -6895,10 +6696,6 @@ void move_cursor_smart_unstaged(NCursesDiffViewer *viewer, int direction) {
   }
 }
 
-/**
- * Move cursor up/down in staged pane with proper scrolling
- * direction: -1 for up, 1 for down
- */
 void move_cursor_smart_staged(NCursesDiffViewer *viewer, int direction) {
   if (!viewer || viewer->staged_line_count == 0) {
     return;
@@ -6985,9 +6782,6 @@ void move_cursor_smart_staged(NCursesDiffViewer *viewer, int direction) {
   }
 }
 
-/**
- * Clean up ncurses diff viewer resources
- */
 void cleanup_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
   if (viewer) {
     // Clean up any background fetch process
@@ -7024,9 +6818,6 @@ void cleanup_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
   endwin();
 }
 
-/**
- * Initialize fuzzy search state
- */
 void init_fuzzy_search(NCursesDiffViewer *viewer) {
   if (!viewer)
     return;
@@ -7050,9 +6841,6 @@ void init_fuzzy_search(NCursesDiffViewer *viewer) {
   viewer->fuzzy_last_filtered_count = -1;
 }
 
-/**
- * Cleanup fuzzy search windows
- */
 void cleanup_fuzzy_search(NCursesDiffViewer *viewer) {
   if (!viewer)
     return;
@@ -7067,10 +6855,6 @@ void cleanup_fuzzy_search(NCursesDiffViewer *viewer) {
   }
 }
 
-/**
- * Calculate fuzzy match score - higher score is better match
- * Returns 0 if no match, positive score if match
- */
 int calculate_fuzzy_score(const char *pattern, const char *filename) {
   if (!pattern || !filename)
     return 0;
@@ -7149,9 +6933,6 @@ int calculate_fuzzy_score(const char *pattern, const char *filename) {
   return score;
 }
 
-/**
- * Compare function for sorting scored files (higher scores first)
- */
 int compare_scored_files(const void *a, const void *b) {
   const struct {
     int file_index;
@@ -7165,9 +6946,6 @@ int compare_scored_files(const void *a, const void *b) {
          file_a->score; // Descending order (higher scores first)
 }
 
-/**
- * Update fuzzy search filter based on current query
- */
 void update_fuzzy_filter(NCursesDiffViewer *viewer) {
   if (!viewer)
     return;
@@ -7196,9 +6974,6 @@ void update_fuzzy_filter(NCursesDiffViewer *viewer) {
   }
 }
 
-/**
- * Enter fuzzy search mode
- */
 void enter_fuzzy_search_mode(NCursesDiffViewer *viewer) {
   if (!viewer || viewer->current_mode != NCURSES_MODE_FILE_LIST)
     return;
@@ -7234,9 +7009,6 @@ void enter_fuzzy_search_mode(NCursesDiffViewer *viewer) {
   viewer->fuzzy_needs_full_redraw = 1;
 }
 
-/**
- * Exit fuzzy search mode
- */
 void exit_fuzzy_search_mode(NCursesDiffViewer *viewer) {
   if (!viewer)
     return;
@@ -7249,9 +7021,6 @@ void exit_fuzzy_search_mode(NCursesDiffViewer *viewer) {
   refresh();
 }
 
-/**
- * Render fuzzy search input field only
- */
 void render_fuzzy_input(NCursesDiffViewer *viewer) {
   if (!viewer->fuzzy_input_win)
     return;
@@ -7275,9 +7044,6 @@ void render_fuzzy_input(NCursesDiffViewer *viewer) {
   wrefresh(viewer->fuzzy_input_win);
 }
 
-/**
- * Render fuzzy search file list content only (no borders)
- */
 void render_fuzzy_list_content(NCursesDiffViewer *viewer) {
   if (!viewer->fuzzy_list_win)
     return;
@@ -7329,9 +7095,6 @@ void render_fuzzy_list_content(NCursesDiffViewer *viewer) {
   wrefresh(viewer->fuzzy_list_win);
 }
 
-/**
- * Create fuzzy search windows with borders (one-time setup)
- */
 void create_fuzzy_windows_with_borders(NCursesDiffViewer *viewer) {
   if (!viewer->fuzzy_input_win || !viewer->fuzzy_list_win)
     return;
@@ -7348,9 +7111,6 @@ void create_fuzzy_windows_with_borders(NCursesDiffViewer *viewer) {
   wrefresh(viewer->fuzzy_list_win);
 }
 
-/**
- * Main fuzzy search render function with granular updates
- */
 void render_fuzzy_search(NCursesDiffViewer *viewer) {
   if (!viewer || !viewer->fuzzy_search_active)
     return;
@@ -7393,9 +7153,6 @@ void render_fuzzy_search(NCursesDiffViewer *viewer) {
   viewer->fuzzy_last_filtered_count = viewer->fuzzy_filtered_count;
 }
 
-/**
- * Handle fuzzy search input
- */
 int handle_fuzzy_search_input(NCursesDiffViewer *viewer, int key) {
   if (!viewer || !viewer->fuzzy_search_active)
     return 0;
@@ -7458,9 +7215,6 @@ int handle_fuzzy_search_input(NCursesDiffViewer *viewer, int key) {
   }
 }
 
-/**
- * Select file from fuzzy search results
- */
 void select_fuzzy_file(NCursesDiffViewer *viewer) {
   if (!viewer || viewer->fuzzy_filtered_count == 0)
     return;
@@ -7506,9 +7260,6 @@ void select_fuzzy_file(NCursesDiffViewer *viewer) {
   }
 }
 
-/**
- * Initialize grep search state
- */
 void init_grep_search(NCursesDiffViewer *viewer) {
   if (!viewer)
     return;
@@ -7533,9 +7284,6 @@ void init_grep_search(NCursesDiffViewer *viewer) {
   viewer->grep_last_filtered_count = -1;
 }
 
-/**
- * Cleanup grep search windows
- */
 void cleanup_grep_search(NCursesDiffViewer *viewer) {
   if (!viewer)
     return;
@@ -7550,9 +7298,6 @@ void cleanup_grep_search(NCursesDiffViewer *viewer) {
   }
 }
 
-/**
- * Extract branch name from stash info
- */
 void extract_branch_from_stash(const char *stash_info, char *branch_name,
                                int max_len) {
   if (!stash_info || !branch_name || max_len <= 0)
@@ -7583,9 +7328,6 @@ void extract_branch_from_stash(const char *stash_info, char *branch_name,
   }
 }
 
-/**
- * Calculate grep match score for text content
- */
 int calculate_grep_score(const char *pattern, const char *text) {
   if (!pattern || !text)
     return 0;
@@ -7648,9 +7390,6 @@ int calculate_grep_score(const char *pattern, const char *text) {
   return score;
 }
 
-/**
- * Compare function for sorting grep scored items
- */
 int compare_grep_scored_items(const void *a, const void *b) {
   const struct {
     int item_index;
@@ -7663,9 +7402,6 @@ int compare_grep_scored_items(const void *a, const void *b) {
   return item_b->score - item_a->score; // Descending order
 }
 
-/**
- * Update grep search filter based on current query and mode
- */
 void update_grep_filter(NCursesDiffViewer *viewer) {
   if (!viewer)
     return;
@@ -7758,9 +7494,6 @@ void update_grep_filter(NCursesDiffViewer *viewer) {
   }
 }
 
-/**
- * Enter grep search mode for current view mode
- */
 void enter_grep_search_mode(NCursesDiffViewer *viewer) {
   if (!viewer)
     return;
@@ -7795,9 +7528,6 @@ void enter_grep_search_mode(NCursesDiffViewer *viewer) {
   viewer->grep_needs_full_redraw = 1;
 }
 
-/**
- * Exit grep search mode
- */
 void exit_grep_search_mode(NCursesDiffViewer *viewer) {
   if (!viewer)
     return;
@@ -7810,9 +7540,6 @@ void exit_grep_search_mode(NCursesDiffViewer *viewer) {
   refresh();
 }
 
-/**
- * Render grep search input field only
- */
 void render_grep_input(NCursesDiffViewer *viewer) {
   if (!viewer->grep_input_win)
     return;
@@ -7836,9 +7563,6 @@ void render_grep_input(NCursesDiffViewer *viewer) {
   wrefresh(viewer->grep_input_win);
 }
 
-/**
- * Render grep search list content only (no borders)
- */
 void render_grep_list_content(NCursesDiffViewer *viewer) {
   if (!viewer->grep_list_win)
     return;
@@ -7980,9 +7704,6 @@ void render_grep_list_content(NCursesDiffViewer *viewer) {
   wrefresh(viewer->grep_list_win);
 }
 
-/**
- * Create grep search windows with borders (one-time setup)
- */
 void create_grep_windows_with_borders(NCursesDiffViewer *viewer) {
   if (!viewer->grep_input_win || !viewer->grep_list_win)
     return;
@@ -8015,9 +7736,6 @@ void create_grep_windows_with_borders(NCursesDiffViewer *viewer) {
   wrefresh(viewer->grep_list_win);
 }
 
-/**
- * Main grep search render function with granular updates
- */
 void render_grep_search(NCursesDiffViewer *viewer) {
   if (!viewer || !viewer->grep_search_active)
     return;
@@ -8060,9 +7778,6 @@ void render_grep_search(NCursesDiffViewer *viewer) {
   viewer->grep_last_filtered_count = viewer->grep_filtered_count;
 }
 
-/**
- * Handle grep search input
- */
 int handle_grep_search_input(NCursesDiffViewer *viewer, int key) {
   if (!viewer || !viewer->grep_search_active)
     return 0;
@@ -8125,9 +7840,6 @@ int handle_grep_search_input(NCursesDiffViewer *viewer, int key) {
   }
 }
 
-/**
- * Select item from grep search results
- */
 void select_grep_item(NCursesDiffViewer *viewer) {
   if (!viewer || viewer->grep_filtered_count == 0)
     return;

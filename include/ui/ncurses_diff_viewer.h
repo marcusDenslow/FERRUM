@@ -8,7 +8,7 @@
 #define MAX_FILES 100
 #define MAX_FILENAME_LEN 256
 #define MAX_FULL_FILE_LINES 2000
-#define MAX_COMMITS 50
+#define MAX_COMMITS 1000
 #define MAX_COMMIT_TITLE_LEN 256
 #define MAX_AUTHOR_INITIALS 3
 #define MAX_STASHES 100
@@ -92,8 +92,9 @@ typedef struct {
   int file_line_count;
   int file_scroll_offset;
   int file_cursor_line;
-  NCursesCommit commits[MAX_COMMITS];
+  NCursesCommit *commits;
   int commit_count;
+  int commit_capacity;
   int selected_commit;
   int commit_scroll_offset;
   NCursesStash stashes[MAX_STASHES];

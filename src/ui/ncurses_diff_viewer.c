@@ -97,10 +97,15 @@ int init_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
 
   memset(viewer, 0, sizeof(NCursesDiffViewer));
 
-  // Initialize fuzzy search
+  viewer->commit_capacity = MAX_COMMITS;
+  viewer->commits = malloc(viewer->commit_capacity * sizeof(NCursesCommit));
+  if (!viewer->commits) {
+    fprintf(stderr, "Failed to allocate memory for commits\n");
+    return 0;
+  }
+
   init_fuzzy_search(viewer);
 
-  // Initialize grep search
   init_grep_search(viewer);
 
   viewer->commit_scroll_offset = 0;
@@ -308,7 +313,6 @@ int is_ncurses_new_file(const char *filename) {
   return !is_tracked; // Return 1 if not tracked (new file)
 }
 
-
 int load_file_with_staging_info(NCursesDiffViewer *viewer,
                                 const char *filename) {
   if (!viewer || !filename)
@@ -458,7 +462,6 @@ int load_file_with_staging_info(NCursesDiffViewer *viewer,
 
   return viewer->file_line_count;
 }
-
 
 // this is a change
 // this is another change
@@ -760,7 +763,6 @@ void rebuild_staged_view_from_git(NCursesDiffViewer *viewer) {
   pclose(diff_fp);
 }
 
-
 int apply_staged_changes(NCursesDiffViewer *viewer) {
   if (!viewer || viewer->staged_line_count == 0)
     return 0;
@@ -807,7 +809,6 @@ int apply_staged_changes(NCursesDiffViewer *viewer) {
   return (result == 0);
 }
 
-
 int unstage_line_from_git(NCursesDiffViewer *viewer, int staged_line_index) {
   if (!viewer || staged_line_index < 0 ||
       staged_line_index >= viewer->staged_line_count)
@@ -843,7 +844,6 @@ int unstage_line_from_git(NCursesDiffViewer *viewer, int staged_line_index) {
 
   return 0;
 }
-
 
 int reset_staged_changes(NCursesDiffViewer *viewer) {
   if (!viewer)
@@ -889,8 +889,7 @@ int get_commit_history(NCursesDiffViewer *viewer) {
   if (!viewer)
     return 0;
 
-  FILE *fp =
-      popen("git log --oneline -20 --format=\"%h|%an|%s\" 2>/dev/null", "r");
+  FILE *fp = popen("git log --oneline --format=\"%h|%an|%s\" 2>/dev/null", "r");
   if (!fp)
     return 0;
 
@@ -898,14 +897,19 @@ int get_commit_history(NCursesDiffViewer *viewer) {
   char line[512];
 
   // Get list of unpushed commits first
-  char unpushed_hashes[MAX_COMMITS][16];
+  char **unpushed_hashes = malloc(1000 * sizeof(char *));
   int unpushed_count = 0;
+  int unpushed_capacity = 1000;
+
+  for (int i = 0; i < unpushed_capacity; i++) {
+    unpushed_hashes[i] = malloc(16);
+  }
 
   FILE *unpushed_fp =
       popen("git log origin/HEAD..HEAD --format=\"%h\" 2>/dev/null", "r");
   if (unpushed_fp) {
     while (fgets(line, sizeof(line), unpushed_fp) != NULL &&
-           unpushed_count < MAX_COMMITS) {
+           unpushed_count < unpushed_capacity) {
       char *newline = strchr(line, '\n');
       if (newline)
         *newline = '\0';
@@ -924,7 +928,7 @@ int get_commit_history(NCursesDiffViewer *viewer) {
         popen("git log origin/main..HEAD --format=\"%h\" 2>/dev/null", "r");
     if (unpushed_fp) {
       while (fgets(line, sizeof(line), unpushed_fp) != NULL &&
-             unpushed_count < MAX_COMMITS) {
+             unpushed_count < unpushed_capacity) {
         char *newline = strchr(line, '\n');
         if (newline)
           *newline = '\0';
@@ -943,7 +947,7 @@ int get_commit_history(NCursesDiffViewer *viewer) {
         popen("git log origin/master..HEAD --format=\"%h\" 2>/dev/null", "r");
     if (unpushed_fp) {
       while (fgets(line, sizeof(line), unpushed_fp) != NULL &&
-             unpushed_count < MAX_COMMITS) {
+             unpushed_count < unpushed_capacity) {
         char *newline = strchr(line, '\n');
         if (newline)
           *newline = '\0';
@@ -957,8 +961,17 @@ int get_commit_history(NCursesDiffViewer *viewer) {
     }
   }
 
-  while (fgets(line, sizeof(line), fp) != NULL &&
-         viewer->commit_count < MAX_COMMITS) {
+  while (fgets(line, sizeof(line), fp) != NULL) {
+    if (viewer->commit_count >= viewer->commit_capacity) {
+      viewer->commit_capacity *= 2;
+      NCursesCommit *new_commits = realloc(
+          viewer->commits, viewer->commit_capacity * sizeof(NCursesCommit));
+      if (!new_commits) {
+        fprintf(stderr, "Failed to reallocate commits array\n");
+        break;
+      }
+      viewer->commits = new_commits;
+    }
     // Remove newline
     char *newline = strchr(line, '\n');
     if (newline)
@@ -1004,6 +1017,12 @@ int get_commit_history(NCursesDiffViewer *viewer) {
   }
 
   pclose(fp);
+
+  for (int i = 0; i < unpushed_capacity; i++) {
+    free(unpushed_hashes[i]);
+  }
+  free(unpushed_hashes);
+
   return viewer->commit_count;
 }
 
@@ -1189,7 +1208,6 @@ int show_reset_confirmation_dialog(void) {
 
   return 0;
 }
-
 
 int get_commit_title_input(char *title, int max_len, char *message,
                            int max_message_len) {
@@ -2527,7 +2545,6 @@ void render_file_list_window(NCursesDiffViewer *viewer) {
   wrefresh(viewer->file_list_win);
 }
 
-
 void render_commit_list_window(NCursesDiffViewer *viewer) {
   if (!viewer || !viewer->commit_list_win)
     return;
@@ -2535,9 +2552,15 @@ void render_commit_list_window(NCursesDiffViewer *viewer) {
   // CRITICAL: Clear the entire window first
   werase(viewer->commit_list_win);
 
-  // Draw rounded border and title
   draw_rounded_box(viewer->commit_list_win);
-  mvwprintw(viewer->commit_list_win, 0, 2, " 4. Commits ");
+  char commit_title[64];
+  if (viewer->commit_count > 0) {
+    snprintf(commit_title, sizeof(commit_title), " 4. Commits (%d/%d) ",
+             viewer->selected_commit + 1, viewer->commit_count);
+  } else {
+    snprintf(commit_title, sizeof(commit_title), " 4. Commits (0) ");
+  }
+  mvwprintw(viewer->commit_list_win, 0, 2, "%s", commit_title);
 
   int max_commits_visible = viewer->commit_panel_height - 2;
 
@@ -4777,8 +4800,6 @@ int run_ncurses_diff_viewer(void) {
   return 0;
 }
 
-
-
 int get_ncurses_git_branches(NCursesDiffViewer *viewer) {
   if (!viewer)
     return 0;
@@ -5654,9 +5675,15 @@ void render_stash_list_window(NCursesDiffViewer *viewer) {
   // Clear the entire window first
   werase(viewer->stash_list_win);
 
-  // Draw rounded border and title
   draw_rounded_box(viewer->stash_list_win);
-  mvwprintw(viewer->stash_list_win, 0, 2, " 5. Stashes ");
+  char stash_title[64];
+  if (viewer->stash_count > 0) {
+    snprintf(stash_title, sizeof(stash_title), " 5. Stashes (%d/%d) ",
+             viewer->selected_stash + 1, viewer->stash_count);
+  } else {
+    snprintf(stash_title, sizeof(stash_title), " 5. Stashes (0) ");
+  }
+  mvwprintw(viewer->stash_list_win, 0, 2, "%s", stash_title);
 
   int max_stashes_visible = viewer->stash_panel_height - 2;
 
@@ -5804,7 +5831,14 @@ void render_branch_list_window(NCursesDiffViewer *viewer) {
   werase(viewer->branch_list_win);
 
   draw_rounded_box(viewer->branch_list_win);
-  mvwprintw(viewer->branch_list_win, 0, 2, " 3. Branches ");
+  char branch_title[64];
+  if (viewer->branch_count > 0) {
+    snprintf(branch_title, sizeof(branch_title), " 3. Branches (%d/%d) ",
+             viewer->selected_branch + 1, viewer->branch_count);
+  } else {
+    snprintf(branch_title, sizeof(branch_title), " 3. Branches (0) ");
+  }
+  mvwprintw(viewer->branch_list_win, 0, 2, "%s", branch_title);
 
   int max_branches_visible = viewer->branch_panel_height - 2;
 
@@ -6809,8 +6843,12 @@ void cleanup_ncurses_diff_viewer(NCursesDiffViewer *viewer) {
       delwin(viewer->status_bar_win);
     }
 
-    // Clean up fuzzy search windows
     cleanup_fuzzy_search(viewer);
+
+    if (viewer->commits) {
+      free(viewer->commits);
+      viewer->commits = NULL;
+    }
 
     // Clean up grep search windows
     cleanup_grep_search(viewer);

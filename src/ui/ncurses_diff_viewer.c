@@ -1,5 +1,6 @@
 #include "ncurses_diff_viewer.h"
 #include "git_integration.h"
+#include <bits/types/cookie_io_functions_t.h>
 #include <ctype.h>
 #include <locale.h>
 #include <ncurses.h>
@@ -7308,6 +7309,7 @@ void init_grep_search(NCursesDiffViewer *viewer) {
   viewer->grep_scroll_offset = 0;
   viewer->grep_input_win = NULL;
   viewer->grep_list_win = NULL;
+  viewer->grep_preview_win = NULL;
 
   // Initialize state tracking
   viewer->grep_needs_full_redraw = 0;
@@ -7331,6 +7333,93 @@ void cleanup_grep_search(NCursesDiffViewer *viewer) {
     delwin(viewer->grep_list_win);
     viewer->grep_list_win = NULL;
   }
+
+  if (viewer->grep_preview_win) {
+    delwin(viewer->grep_preview_win);
+    viewer->grep_preview_win = NULL;
+  }
+}
+
+void render_grep_preview_window(NCursesDiffViewer *viewer,
+                                int selected_item_index) {
+  if (!viewer->grep_preview_win)
+    return;
+
+  werase(viewer->grep_preview_win);
+  box(viewer->grep_preview_win, 0, 0);
+
+  // draw title
+  wattron(viewer->grep_preview_win, A_BOLD | COLOR_PAIR(3));
+  mvwprintw(viewer->grep_preview_win, 0, 2, "Commit Preview");
+  wattroff(viewer->grep_preview_win, A_BOLD | COLOR_PAIR(3));
+
+  if (selected_item_index < 0 ||
+      selected_item_index >= viewer->grep_filtered_count) {
+    wrefresh(viewer->grep_preview_win);
+    return;
+  }
+
+  if (viewer->grep_search_mode != NCURSES_MODE_COMMIT_LIST) {
+    wrefresh(viewer->grep_preview_win);
+    return;
+  }
+
+  int commit_index = viewer->grep_scored_items[selected_item_index].item_index;
+  if (commit_index < 0 || commit_index >= viewer->commit_count) {
+    wrefresh(viewer->grep_preview_win);
+    return;
+  }
+
+  // Use the short hash directly (git commands accept short hashes)
+  const char *commit_hash = viewer->commits[commit_index].hash;
+
+  char *commit_content = malloc(50000);
+  if (!commit_content) {
+    wrefresh(viewer->grep_preview_win);
+    return;
+  }
+
+  if (!get_commit_details(commit_hash, commit_content, 50000)) {
+    free(commit_content);
+    wrefresh(viewer->grep_preview_win);
+    return;
+  }
+
+  int max_lines = getmaxy(viewer->grep_preview_win) - 2;
+  int max_width = getmaxx(viewer->grep_preview_win) - 2;
+
+  char *line = strtok(commit_content, "\n");
+  int line_num = 0;
+
+  while (line != NULL && line_num < max_lines) {
+    // Apply basic syntax highlighting
+    if (strncmp(line, "commit ", 7) == 0) {
+      wattron(viewer->grep_preview_win, A_BOLD | COLOR_PAIR(10));
+    } else if (strncmp(line, "Author:", 7) == 0) {
+      wattron(viewer->grep_preview_win, A_BOLD | COLOR_PAIR(3));
+    } else if (strncmp(line, "Date:", 5) == 0) {
+      wattron(viewer->grep_preview_win, COLOR_PAIR(3));
+    } else if (strncmp(line, "+", 1) == 0 && line[1] != '+') {
+      wattron(viewer->grep_preview_win, COLOR_PAIR(1));
+    } else if (strncmp(line, "-", 1) == 0 && line[1] != '-') {
+      wattron(viewer->grep_preview_win, COLOR_PAIR(2));
+    } else if (strncmp(line, "@@", 2) == 0) {
+      wattron(viewer->grep_preview_win, COLOR_PAIR(3));
+    }
+
+    char display_line[max_width + 1];
+    snprintf(display_line, max_width + 1, "%s", line);
+
+    mvwprintw(viewer->grep_preview_win, line_num + 1, 1, "%s", display_line);
+    wattroff(viewer->grep_preview_win, A_BOLD | COLOR_PAIR(1) | COLOR_PAIR(2) |
+                                           COLOR_PAIR(3) | COLOR_PAIR(10));
+
+    line = strtok(NULL, "\n");
+    line_num++;
+  }
+
+  free(commit_content);
+  wrefresh(viewer->grep_preview_win);
 }
 
 void extract_branch_from_stash(const char *stash_info, char *branch_name,
@@ -7548,13 +7637,20 @@ void enter_grep_search_mode(NCursesDiffViewer *viewer) {
   // Create grep search windows
   int input_height = 3;
   int list_height = viewer->terminal_height - input_height - 6;
-  int width = viewer->terminal_width * 0.5;
+  int width = viewer->terminal_width * 0.35;
   int start_y = (viewer->terminal_height - input_height - list_height) / 2;
-  int start_x = (viewer->terminal_width - width) / 2;
+  int start_x = viewer->terminal_width * 0.05;
 
   viewer->grep_input_win = newwin(input_height, width, start_y, start_x);
   viewer->grep_list_win =
       newwin(list_height, width, start_y + input_height, start_x);
+
+  int preview_width = viewer->terminal_width - start_x - width - 2;
+  if (preview_width > 20) {
+    viewer->grep_preview_win =
+        newwin(list_height, preview_width, start_y + input_height,
+               start_x + width + 1);
+  }
 
   // Initialize with all items
   update_grep_filter(viewer);
@@ -7725,6 +7821,9 @@ void render_grep_list_content(NCursesDiffViewer *viewer) {
       wattroff(viewer->grep_list_win, A_REVERSE);
     }
   }
+
+  // Render preview for currently selected item
+  render_grep_preview_window(viewer, viewer->grep_selected_index);
 
   // Show result count
   if (viewer->grep_filtered_count > 0) {

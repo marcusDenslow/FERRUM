@@ -1,4 +1,3 @@
-
 #ifndef NCURSES_DIFF_VIEWER_H
 #define NCURSES_DIFF_VIEWER_H
 
@@ -192,11 +191,12 @@ typedef struct {
   } grep_scored_items[MAX_COMMITS]; // Scored and sorted results (reuse
                                     // MAX_COMMITS)
 
-  int grep_filtered_count; // Number of filtered items
-  int grep_selected_index; // Currently selected in grep list
-  int grep_scroll_offset;  // Scroll position in grep list
-  WINDOW *grep_input_win;  // Input window for search
-  WINDOW *grep_list_win;   // Results list window
+  int grep_filtered_count;  // Number of filtered items
+  int grep_selected_index;  // Currently selected in grep list
+  int grep_scroll_offset;   // Scroll position in grep list
+  WINDOW *grep_input_win;   // Input window for search
+  WINDOW *grep_list_win;    // Results list window
+  WINDOW *grep_preview_win; // Grep search preview
 
   // State tracking for grep search rendering
   int grep_needs_full_redraw;   // 1 if full redraw needed

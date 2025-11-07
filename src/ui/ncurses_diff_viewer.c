@@ -1,6 +1,3 @@
-// this is a change
-// this is another change
-
 #include "ncurses_diff_viewer.h"
 #include "git_integration.h"
 #include <ctype.h>

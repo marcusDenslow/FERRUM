@@ -7349,8 +7349,15 @@ void render_grep_preview_window(NCursesDiffViewer *viewer,
   box(viewer->grep_preview_win, 0, 0);
 
   // draw title
+  const char *preview_title;
+  if (viewer->grep_search_mode == NCURSES_MODE_STASH_LIST) {
+    preview_title = "Stash Preview";
+  } else {
+    preview_title = "Commit Preview";
+  }
+
   wattron(viewer->grep_preview_win, A_BOLD | COLOR_PAIR(3));
-  mvwprintw(viewer->grep_preview_win, 0, 2, "Commit Preview");
+  mvwprintw(viewer->grep_preview_win, 0, 2, "%s", preview_title);
   wattroff(viewer->grep_preview_win, A_BOLD | COLOR_PAIR(3));
 
   if (selected_item_index < 0 ||
@@ -7359,19 +7366,11 @@ void render_grep_preview_window(NCursesDiffViewer *viewer,
     return;
   }
 
-  if (viewer->grep_search_mode != NCURSES_MODE_COMMIT_LIST) {
+  if (viewer->grep_search_mode != NCURSES_MODE_COMMIT_LIST &&
+      viewer->grep_search_mode != NCURSES_MODE_STASH_LIST) {
     wrefresh(viewer->grep_preview_win);
     return;
   }
-
-  int commit_index = viewer->grep_scored_items[selected_item_index].item_index;
-  if (commit_index < 0 || commit_index >= viewer->commit_count) {
-    wrefresh(viewer->grep_preview_win);
-    return;
-  }
-
-  // Use the short hash directly (git commands accept short hashes)
-  const char *commit_hash = viewer->commits[commit_index].hash;
 
   char *commit_content = malloc(50000);
   if (!commit_content) {
@@ -7379,7 +7378,31 @@ void render_grep_preview_window(NCursesDiffViewer *viewer,
     return;
   }
 
-  if (!get_commit_details(commit_hash, commit_content, 50000)) {
+  int success = 0;
+
+  if (viewer->grep_search_mode == NCURSES_MODE_COMMIT_LIST) {
+    int commit_index =
+        viewer->grep_scored_items[selected_item_index].item_index;
+    if (commit_index < 0 || commit_index >= viewer->commit_count) {
+      free(commit_content);
+      wrefresh(viewer->grep_preview_win);
+      return;
+    }
+
+    // Use the short hash directly (git commands accept short hashes)
+    const char *commit_hash = viewer->commits[commit_index].hash;
+    success = get_commit_details(commit_hash, commit_content, 50000);
+  } else if (viewer->grep_search_mode == NCURSES_MODE_STASH_LIST) {
+    int stash_index = viewer->grep_scored_items[selected_item_index].item_index;
+    if (stash_index < 0 || stash_index >= viewer->stash_count) {
+      free(commit_content);
+      wrefresh(viewer->grep_preview_win);
+      return;
+    }
+    success = get_stash_diff(stash_index, commit_content, 50000);
+  }
+
+  if (!success) {
     free(commit_content);
     wrefresh(viewer->grep_preview_win);
     return;

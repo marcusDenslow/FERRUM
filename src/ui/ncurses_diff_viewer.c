@@ -7629,6 +7629,7 @@ void enter_grep_search_mode(NCursesDiffViewer *viewer) {
     return;
   }
 
+  viewer->grep_search_active = 1;
   viewer->grep_search_mode = viewer->current_mode;
   viewer->grep_search_query[0] = '\0';
   viewer->grep_search_query_len = 0;
@@ -7636,7 +7637,7 @@ void enter_grep_search_mode(NCursesDiffViewer *viewer) {
   // Create grep search windows
   int input_height = 3;
   int list_height = viewer->terminal_height - input_height - 6;
-  int width = viewer->terminal_width * -1.35;
+  int width = viewer->terminal_width * 0.35;
   int start_y = (viewer->terminal_height - input_height - list_height) / 2;
   int start_x = viewer->terminal_width * 0.05;
 

@@ -1,9 +1,65 @@
 
 #include "git_integration.h"
+#include <ctype.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+
+static int is_safe_git_hash(const char *hash) {
+  if (!hash || strlen(hash) == 0) {
+    return 0;
+  }
+
+  size_t len = strlen(hash);
+  if (len < 7 || len > 40) {
+    return 0;
+  }
+
+  for (size_t i = 0; i < len; i++) {
+    char c = hash[i];
+    if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') ||
+          (c >= 'A' && c <= 'F'))) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+// Sanitize string by removing ANSI escape sequences and other control characters
+// Modifies the string in-place
+static void sanitize_terminal_output(char *str) {
+  if (!str)
+    return;
+
+  char *read_ptr = str;
+  char *write_ptr = str;
+
+  while (*read_ptr) {
+    // Check for ANSI escape sequence (ESC [ ... followed by letter)
+    if (*read_ptr == '\033' && *(read_ptr + 1) != '\0' &&
+        *(read_ptr + 1) == '[') {
+      // Skip until we hit a letter (end of escape sequence)
+      read_ptr += 2;
+      while (*read_ptr && !((*read_ptr >= 'A' && *read_ptr <= 'Z') ||
+                            (*read_ptr >= 'a' && *read_ptr <= 'z'))) {
+        read_ptr++;
+      }
+      if (*read_ptr)
+        read_ptr++; // Skip the final letter
+      continue;
+    }
+
+    // Filter out other control characters except newline and tab
+    if (*read_ptr >= 32 || *read_ptr == '\n' || *read_ptr == '\t') {
+      *write_ptr++ = *read_ptr;
+    }
+    read_ptr++;
+  }
+
+  *write_ptr = '\0';
+}
 
 void init_git_integration(void) {
   // No initialization needed for Linux
@@ -419,7 +475,9 @@ int get_commit_details(const char *commit_hash, char *commit_info,
   if (!commit_hash || !commit_info || info_size == 0) {
     return 0;
   }
-
+  if (!is_safe_git_hash(commit_hash)) {
+    return 0;
+  }
   char cmd[512];
   snprintf(
       cmd, sizeof(cmd),
@@ -431,21 +489,18 @@ int get_commit_details(const char *commit_hash, char *commit_info,
   if (!fp) {
     return 0;
   }
-
   size_t total_read = 0;
   char buffer[1024];
 
   while (fgets(buffer, sizeof(buffer), fp) != NULL &&
          total_read < info_size - 1) {
     size_t line_len = strlen(buffer);
-    if (total_read + line_len < info_size - 1) {
-      strcpy(commit_info + total_read, buffer);
-      total_read += line_len;
-    } else {
+    if (total_read + line_len >= info_size) {
       break;
     }
+    memcpy(commit_info + total_read, buffer, line_len);
+    total_read += line_len;
   }
-
   commit_info[total_read] = '\0';
   pclose(fp);
 
@@ -459,24 +514,25 @@ int get_commit_details(const char *commit_hash, char *commit_info,
 
   // Add spacing after file stats, before diff content
   if (total_read < info_size - 4) {
-    strcat(commit_info, "\n\n");
+    memcpy(commit_info + total_read, "\n\n", 2);
     total_read += 2;
+    commit_info[total_read] = '\0';
   }
 
-  // Read all the diff content (this includes diff --git headers, @@ hunks, and
-  // +/- lines)
+  // Read all the diff content (this includes diff --git headers, @@ hunks,
+  // and +/- lines)
   while (fgets(buffer, sizeof(buffer), fp) != NULL &&
          total_read < info_size - 1) {
     size_t line_len = strlen(buffer);
-    if (total_read + line_len < info_size - 1) {
-      strcpy(commit_info + total_read, buffer);
-      total_read += line_len;
-    } else {
+    if (total_read + line_len >= info_size) {
       break;
     }
+    memcpy(commit_info + total_read, buffer, line_len);
+    total_read += line_len;
   }
 
   commit_info[total_read] = '\0';
+  sanitize_terminal_output(commit_info);
   pclose(fp);
 
   return 1;
@@ -484,6 +540,11 @@ int get_commit_details(const char *commit_hash, char *commit_info,
 
 int get_stash_diff(int stash_index, char *stash_diff, size_t diff_size) {
   if (stash_index < 0 || !stash_diff || diff_size == 0) {
+    return 0;
+  }
+
+  // Validate stash_index is reasonable (prevent DOS with huge numbers)
+  if (stash_index > 9999) {
     return 0;
   }
 
@@ -502,15 +563,17 @@ int get_stash_diff(int stash_index, char *stash_diff, size_t diff_size) {
   while (fgets(buffer, sizeof(buffer), fp) != NULL &&
          total_read < diff_size - 1) {
     size_t line_len = strlen(buffer);
-    if (total_read + line_len < diff_size - 1) {
-      strcpy(stash_diff + total_read, buffer);
-      total_read += line_len;
-    } else {
+    // Ensure we have space for the new content plus null terminator
+    if (total_read + line_len >= diff_size) {
       break;
     }
+    // Use memcpy instead of strcpy for safety
+    memcpy(stash_diff + total_read, buffer, line_len);
+    total_read += line_len;
   }
 
   stash_diff[total_read] = '\0';
+  sanitize_terminal_output(stash_diff);
   pclose(fp);
 
   return total_read > 0 ? 1 : 0;

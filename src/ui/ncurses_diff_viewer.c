@@ -5,6 +5,7 @@
 #include <locale.h>
 #include <ncurses.h>
 #include <signal.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -4669,37 +4670,42 @@ int handle_ncurses_diff_input(NCursesDiffViewer *viewer, int key) {
 }
 
 int run_ncurses_diff_viewer(void) {
-  NCursesDiffViewer viewer;
+  NCursesDiffViewer *viewer = malloc(sizeof(NCursesDiffViewer));
+  if (!viewer) {
+    printf("Failed to allocate memory for ncurses diff viewer\n");
+    return 1;
+  }
 
-  if (!init_ncurses_diff_viewer(&viewer)) {
+  if (!init_ncurses_diff_viewer(viewer)) {
     printf("Failed to initialize ncurses diff viewer\n");
+    free(viewer);
     return 1;
   }
   signal(SIGWINCH, handle_sigwinch);
 
   // Get changed files (can be 0, that's okay)
-  get_ncurses_changed_files(&viewer);
+  get_ncurses_changed_files(viewer);
 
   // get stashes
-  get_ncurses_git_stashes(&viewer);
+  get_ncurses_git_stashes(viewer);
 
   // get branches
-  get_ncurses_git_branches(&viewer);
+  get_ncurses_git_branches(viewer);
 
   // Load commit history
-  get_commit_history(&viewer);
+  get_commit_history(viewer);
 
   // Initial preview will be handled by update_preview_for_current_selection
 
   // Initial display
   attron(COLOR_PAIR(3));
-  if (viewer.current_mode == NCURSES_MODE_FILE_LIST) {
+  if (viewer->current_mode == NCURSES_MODE_FILE_LIST) {
     mvprintw(0, 0,
              "Git Diff Viewer: 1=files 2=view 3=branches 4=commits 5=stashes | "
              "j/k=nav "
              "Space=mark "
              "A=all S=stash C=commit P=push | q=quit");
-  } else if (viewer.current_mode == NCURSES_MODE_FILE_VIEW) {
+  } else if (viewer->current_mode == NCURSES_MODE_FILE_VIEW) {
     mvprintw(0, 0,
              "Git Diff Viewer: 1=files 2=view 3=branches 4=commits 5=stashes | "
              "j/k=scroll "
@@ -4714,38 +4720,38 @@ int run_ncurses_diff_viewer(void) {
   attroff(COLOR_PAIR(3));
   refresh();
 
-  render_file_list_window(&viewer);
-  render_file_content_window(&viewer);
-  render_commit_list_window(&viewer);
-  render_branch_list_window(&viewer);
-  render_stash_list_window(&viewer);
-  render_status_bar(&viewer);
-  render_fuzzy_search(&viewer);
-  render_grep_search(&viewer);
+  render_file_list_window(viewer);
+  render_file_content_window(viewer);
+  render_commit_list_window(viewer);
+  render_branch_list_window(viewer);
+  render_stash_list_window(viewer);
+  render_status_bar(viewer);
+  render_fuzzy_search(viewer);
+  render_grep_search(viewer);
 
   // Main display loop
   int running = 1;
-  NCursesViewMode last_mode = viewer.current_mode;
+  NCursesViewMode last_mode = viewer->current_mode;
 
   while (running) {
 
     if (terminal_resized) {
-      handle_terminal_resize(&viewer);
+      handle_terminal_resize(viewer);
     }
 
     // Only update title if mode changed
-    if (viewer.current_mode != last_mode) {
+    if (viewer->current_mode != last_mode) {
       // Clear just the title line
       move(0, 0);
       clrtoeol();
 
       attron(COLOR_PAIR(3));
-      if (viewer.current_mode == NCURSES_MODE_FILE_LIST) {
+      if (viewer->current_mode == NCURSES_MODE_FILE_LIST) {
         mvprintw(0, 0,
                  "Git Diff Viewer: 1=files 2=view 3=branches 4=commits "
                  "5=stashes | j/k=nav "
                  "Space=mark A=all S=stash C=commit P=push | q=quit");
-      } else if (viewer.current_mode == NCURSES_MODE_FILE_VIEW) {
+      } else if (viewer->current_mode == NCURSES_MODE_FILE_VIEW) {
         mvprintw(0, 0,
                  "Git Diff Viewer: 1=files 2=view 3=branches 4=commits "
                  "5=stashes | j/k=scroll "
@@ -4759,42 +4765,43 @@ int run_ncurses_diff_viewer(void) {
       }
       attroff(COLOR_PAIR(3));
       refresh();
-      last_mode = viewer.current_mode;
+      last_mode = viewer->current_mode;
     }
     // Update sync status and check for new files
-    update_sync_status(&viewer);
+    update_sync_status(viewer);
 
     // Update preview based on current selection
-    update_preview_for_current_selection(&viewer);
+    update_preview_for_current_selection(viewer);
 
     // Skip main window rendering if fuzzy or grep search is active to prevent
     // flickering
-    if (!viewer.fuzzy_search_active && !viewer.grep_search_active) {
-      render_file_list_window(&viewer);
-      render_file_content_window(&viewer);
-      render_commit_list_window(&viewer);
-      render_branch_list_window(&viewer);
-      render_stash_list_window(&viewer);
-      render_status_bar(&viewer);
+    if (!viewer->fuzzy_search_active && !viewer->grep_search_active) {
+      render_file_list_window(viewer);
+      render_file_content_window(viewer);
+      render_commit_list_window(viewer);
+      render_branch_list_window(viewer);
+      render_stash_list_window(viewer);
+      render_status_bar(viewer);
     }
 
     // Always render search overlays (they handle their own visibility)
-    render_fuzzy_search(&viewer);
-    render_grep_search(&viewer);
+    render_fuzzy_search(viewer);
+    render_grep_search(viewer);
 
     // Keep cursor hidden
     curs_set(0);
 
     int c = getch();
     if (c != ERR) { // Only process if a key was actually pressed
-      running = handle_ncurses_diff_input(&viewer, c);
+      running = handle_ncurses_diff_input(viewer, c);
     }
 
     // Small delay to prevent excessive CPU usage and allow animations
     usleep(20000); // 20ms delay
   }
 
-  cleanup_ncurses_diff_viewer(&viewer);
+  cleanup_ncurses_diff_viewer(viewer);
+  free(viewer);
   return 0;
 }
 
@@ -6132,18 +6139,40 @@ int load_commit_for_viewing(NCursesDiffViewer *viewer,
     return 0;
   }
 
-  char *commit_content = malloc(50000); // Large buffer for commit details
-  if (!commit_content) {
+  // Start with reasonable buffer, grow if needed
+  size_t buffer_size = 100000;           // Start at 100KB
+  size_t max_buffer_size = 5 * 1024 * 1024; // Cap at 5MB
+  char *commit_content = NULL;
+
+  while (buffer_size <= max_buffer_size) {
+    commit_content = malloc(buffer_size);
+    if (!commit_content) {
+      return 0;
+    }
+
+    if (get_commit_details(commit_hash, commit_content, buffer_size)) {
+      // Check if content was likely truncated
+      size_t content_len = strlen(commit_content);
+      if (content_len >= buffer_size - 100 && buffer_size < max_buffer_size) {
+        // Might be truncated, try larger buffer
+        free(commit_content);
+        commit_content = NULL;
+        buffer_size *= 2;
+        continue;
+      }
+
+      // Content fit, parse it
+      int result = parse_content_lines(viewer, commit_content);
+      free(commit_content);
+      return result;
+    }
+
+    // get_commit_details failed
+    free(commit_content);
     return 0;
   }
 
-  if (get_commit_details(commit_hash, commit_content, 50000)) {
-    int result = parse_content_lines(viewer, commit_content);
-    free(commit_content);
-    return result;
-  }
-
-  free(commit_content);
+  // All attempts exhausted
   return 0;
 }
 
@@ -6152,18 +6181,40 @@ int load_stash_for_viewing(NCursesDiffViewer *viewer, int stash_index) {
     return 0;
   }
 
-  char *stash_content = malloc(50000); // Large buffer for stash details
-  if (!stash_content) {
+  // Start with reasonable buffer, grow if needed
+  size_t buffer_size = 100000;           // Start at 100KB
+  size_t max_buffer_size = 5 * 1024 * 1024; // Cap at 5MB
+  char *stash_content = NULL;
+
+  while (buffer_size <= max_buffer_size) {
+    stash_content = malloc(buffer_size);
+    if (!stash_content) {
+      return 0;
+    }
+
+    if (get_stash_diff(stash_index, stash_content, buffer_size)) {
+      // Check if content was likely truncated
+      size_t content_len = strlen(stash_content);
+      if (content_len >= buffer_size - 100 && buffer_size < max_buffer_size) {
+        // Might be truncated, try larger buffer
+        free(stash_content);
+        stash_content = NULL;
+        buffer_size *= 2;
+        continue;
+      }
+
+      // Content fit, parse it
+      int result = parse_content_lines(viewer, stash_content);
+      free(stash_content);
+      return result;
+    }
+
+    // get_stash_diff failed
+    free(stash_content);
     return 0;
   }
 
-  if (get_stash_diff(stash_index, stash_content, 50000)) {
-    int result = parse_content_lines(viewer, stash_content);
-    free(stash_content);
-    return result;
-  }
-
-  free(stash_content);
+  // All attempts exhausted
   return 0;
 }
 

@@ -628,3 +628,4 @@ int get_branch_commits(const char *branch_name, char commits[][2048],
   pclose(fp);
   return count;
 }
+
